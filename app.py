@@ -6,6 +6,7 @@ import hmac
 import io
 import logging
 import os
+import json
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -425,6 +426,7 @@ async def security_page(request):
             "log": await run(security.log_channel_sync, s.guild_id),
             "role": role.name if role else None,
             "role_ok": bool(role and me and me.top_role > role),
+            "phone": security.phone_required(guild) if guild else False,
             "options": [(c.id, c.name) for c in guild.text_channels] if guild else [],
         })
     pending = await run(db.list_joins, None, True, 200)
@@ -589,7 +591,7 @@ async def _security_lists(request) -> dict:
         names[s.guild_id] = (g.name if g else s.name) or "Unnamed server"
     pending = await run(db.list_joins, None, True, 200)
     history = [j for j in await run(db.list_joins, None, False, 80) if j.status != "pending"][:50]
-    codes = {j.id: await run(security.code_status_sync, j.id) for j in pending}
+    codes = {j.id: await run(security.panel_status_sync, j.id) for j in pending}
     stats = await run(_join_stats)
     return {"csrf": csrf_token(request), "pending": pending, "history": history, "codes": codes,
             "names": names, "multi": len(names) > 1, "tz": TZ_LABEL, "stats": stats}
@@ -613,6 +615,7 @@ async def security_page_v2(request):
             "log": await run(security.log_channel_sync, s.guild_id),
             "role": role.name if role else None,
             "role_ok": bool(role and me and me.top_role > role),
+            "phone": security.phone_required(guild) if guild else False,
             "options": [(c.id, c.name) for c in guild.text_channels] if guild else [],
         })
     ctx = await _security_lists(request)
@@ -696,6 +699,49 @@ class SecurityHeaders:
 
         await self.app(scope, receive, send_wrapper)
 
+# ---------- device verification page (public link from the DM) ----------
+async def verify_page(request):
+    token = request.path_params.get("token", "")
+    req = await run(security.join_for_token_sync, token)
+    guild = discord_bot.bot.get_guild(req.guild_id) if req else None
+    resp = templates.TemplateResponse(request=request, name="verify.html", context={
+        "valid": req is not None, "server": guild.name if guild else "the server",
+    })
+    if not request.cookies.get("dbv"):
+        resp.set_cookie("dbv", secrets.token_urlsafe(24), max_age=60 * 60 * 24 * 730,
+                        httponly=True, secure=bool(os.getenv("RENDER")), samesite="lax", path="/v/")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+async def verify_submit(request):
+    body = await request.body()
+    if len(body) > 8000:
+        return JSONResponse({"ok": False, "msg": "Request too large."}, status_code=413)
+    try:
+        fp = json.loads(body or b"{}")
+        if not isinstance(fp, dict):
+            raise ValueError
+    except ValueError:
+        return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
+    ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "")
+    result = await security.check_device(request.path_params.get("token", ""), request.cookies.get("dbv", ""),
+                                         fp, ip, request.headers.get("user-agent", "")[:400])
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+async def security_phone(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    gid, guild = await _approved_guild(form)
+    if gid is None or guild is None:
+        flash(request, "The bot must be online and inside that approved server.")
+        return redirect("/security")
+    flash(request, await security.set_phone_required(guild, str(form.get("on", "")) == "1"))
+    return redirect("/security")
+
+
 async def health(request):
     return PlainTextResponse("ok")
 
@@ -748,6 +794,9 @@ app = Starlette(
         Route("/uploads/settings", uploads_settings, methods=["POST"]),
         Route("/uploads/send", uploads_send, methods=["POST"]),
         Route("/health", health),
+        Route("/v/{token}", verify_page),
+        Route("/v/{token}", verify_submit, methods=["POST"]),
+        Route("/security/phone", security_phone, methods=["POST"]),
     ],
     middleware=[
         Middleware(SecurityHeaders),

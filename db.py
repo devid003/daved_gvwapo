@@ -96,6 +96,23 @@ class JoinRequest(Base):
     decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class DeviceCheck(Base):
+    """One device check from the verification web page (hashed, no raw IP)."""
+    __tablename__ = "device_checks"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    username: Mapped[str] = mapped_column(String(200), default="")
+    join_id: Mapped[int] = mapped_column(Integer, index=True)
+    cookie_hash: Mapped[str] = mapped_column(String(64), index=True, default="")
+    fp_hash: Mapped[str] = mapped_column(String(64), index=True, default="")
+    ip_hash: Mapped[str] = mapped_column(String(64), index=True, default="")
+    device: Mapped[str] = mapped_column(String(200), default="")
+    tz: Mapped[str] = mapped_column(String(64), default="")
+    screen: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class UploadChannel(Base):
     """Where upload-time / exchange-rate reports go, per approved server."""
     __tablename__ = "upload_channels"
@@ -266,6 +283,45 @@ def bump_job(job_id: int, next_run: float) -> None:
         j = s.get(Job, job_id)
         if j:
             j.next_run = next_run
+
+
+# ---------- device checks ----------
+def add_device_check(**kw) -> None:
+    with Session.begin() as s:
+        s.add(DeviceCheck(**kw))
+
+
+def latest_device(join_id: int):
+    with Session() as s:
+        return s.scalars(select(DeviceCheck).where(DeviceCheck.join_id == join_id)
+                         .order_by(DeviceCheck.created_at.desc()).limit(1)).first()
+
+
+def device_matches(guild_id: int, user_id: int, cookie_h: str, fp_h: str, ip_h: str) -> list[dict]:
+    """Other accounts in this server seen on the same browser, device or network."""
+    with Session() as s:
+        rows = s.scalars(select(DeviceCheck).where(
+            DeviceCheck.guild_id == guild_id, DeviceCheck.user_id != user_id)).all()
+    found = {}
+    for r in rows:
+        if cookie_h and r.cookie_hash == cookie_h:
+            kind, rank = "same browser", 3
+        elif fp_h and ip_h and r.fp_hash == fp_h and r.ip_hash == ip_h:
+            kind, rank = "same device", 2
+        elif ip_h and r.ip_hash == ip_h:
+            kind, rank = "same network", 1
+        else:
+            continue
+        if r.user_id not in found or found[r.user_id]["rank"] < rank:
+            found[r.user_id] = {"user_id": r.user_id, "username": r.username, "kind": kind, "rank": rank}
+    return sorted(found.values(), key=lambda x: -x["rank"])
+
+
+def set_join_flags(join_id: int, flags: str) -> None:
+    with Session.begin() as s:
+        row = s.get(JoinRequest, join_id)
+        if row:
+            row.flags = (flags or "")[:300]
 
 
 # ---------- join gate ----------

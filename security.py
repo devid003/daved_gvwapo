@@ -204,9 +204,151 @@ def code_status_sync(join_id: int) -> str:
 def _clear_code_sync(join_id: int) -> None:
     db.set_setting(f"code:{join_id}", "")
     db.set_setting(f"dm:{join_id}", "")
+    tok = db.get_setting(f"vtok_for:{join_id}", "")
+    if tok:
+        db.set_setting(f"vtok:{tok}", "")
+
+
+# ------------------------- device check (web link) -------------------------
+PUBLIC_URL = (os.getenv("PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").rstrip("/")
+_TOKEN_TRIES: dict[str, int] = {}
+
+_UA_OS = [("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"), ("Windows", "Windows"),
+          ("Mac OS X", "Mac"), ("CrOS", "ChromeOS"), ("Linux", "Linux")]
+_UA_BR = [("Edg/", "Edge"), ("OPR/", "Opera"), ("SamsungBrowser", "Samsung Internet"), ("CriOS", "Chrome"),
+          ("FxiOS", "Firefox"), ("Firefox/", "Firefox"), ("Chrome/", "Chrome"), ("Safari/", "Safari")]
+
+
+def _h(value: str) -> str:
+    """One-way hash, so raw IPs and fingerprints are never stored."""
+    return hmac.new(_CODE_KEY, value.encode(), hashlib.sha256).hexdigest() if value else ""
+
+
+def describe_ua(ua: str) -> str:
+    os_name = next((n for k, n in _UA_OS if k in ua), "Unknown device")
+    browser = next((n for k, n in _UA_BR if k in ua), "browser")
+    return f"{os_name}, {browser}"
+
+
+def _new_token_sync(join_id: int) -> str:
+    old = db.get_setting(f"vtok_for:{join_id}", "")
+    if old:
+        db.set_setting(f"vtok:{old}", "")
+    tok = secrets.token_urlsafe(24)
+    db.set_setting(f"vtok:{tok}", str(join_id))
+    db.set_setting(f"vtok_for:{join_id}", tok)
+    return tok
+
+
+def join_for_token_sync(token: str):
+    if not token or len(token) > 64:
+        return None
+    jid = db.get_setting(f"vtok:{token}", "")
+    if not jid.isdigit():
+        return None
+    req = db.get_join(int(jid))
+    return req if req is not None and req.status == "pending" else None
+
+
+def panel_status_sync(join_id: int) -> dict:
+    """What the panel shows in the Code column for a waiting member."""
+    dev = db.latest_device(join_id)
+    has_code = bool(db.get_setting(f"code:{join_id}", ""))
+    dm = db.get_setting(f"dm:{join_id}", "")
+    if dev is not None:
+        state = "code_shown" if has_code else "blocked"
+    elif dm == "fail":
+        state = "dm_closed"
+    elif dm == "ok":
+        state = "link_sent" if PUBLIC_URL else ("sent" if has_code else "")
+    else:
+        state = ""
+    return {"state": state, "device": f"{dev.device}, {dev.tz}" if dev else ""}
+
+
+async def check_device(token: str, cookie_id: str, fp: dict, ip: str, ua: str) -> dict:
+    """Called by the verification web page. Returns the code only for a clean device."""
+    _TOKEN_TRIES[token] = _TOKEN_TRIES.get(token, 0) + 1
+    if _TOKEN_TRIES[token] > 10:
+        return {"ok": False, "msg": "Too many tries. Ask the server owner to send you a new link."}
+    req = await run(join_for_token_sync, token)
+    if req is None:
+        return {"ok": False, "msg": "This link has expired or was already used. Ask the server owner for a new one."}
+    keys = ("platform", "tz", "langs", "screen", "depth", "ratio", "cores", "mem", "touch", "canvas", "gpu")
+    fp_h = _h("|".join(str(fp.get(k, ""))[:300] for k in keys))
+    cookie_h, ip_h = _h(cookie_id or ""), _h(ip or "")
+    device, tz = describe_ua(ua or ""), str(fp.get("tz", ""))[:64]
+    matches = await run(db.device_matches, req.guild_id, req.user_id, cookie_h, fp_h, ip_h)
+    await run(lambda: db.add_device_check(
+        guild_id=req.guild_id, user_id=req.user_id, username=req.username, join_id=req.id,
+        cookie_hash=cookie_h, fp_hash=fp_h, ip_hash=ip_h, device=device, tz=tz,
+        screen=str(fp.get("screen", ""))[:32]))
+    strong = [m for m in matches if m["rank"] >= 2]
+    keep = [f for f in (req.flags or "").split(", ")
+            if f and not f.startswith(("Same device as", "Same browser as", "Same network as"))]
+    keep += [f"{m['kind'].capitalize()} as {m['username'] or m['user_id']}" for m in matches]
+    await run(db.set_join_flags, req.id, ", ".join(keep))
+    guild = bot.get_guild(req.guild_id)
+    if strong:
+        log.warning("Duplicate device: %s matches %s", req.username, [m["username"] for m in strong])
+        if guild is not None:
+            e = discord.Embed(title="\u26a0\ufe0f Possible duplicate account", color=0xB42318,
+                              description=(f"**{req.username}** opened the verification link on a device "
+                                           f"already used by **{strong[0]['username'] or strong[0]['user_id']}**. "
+                                           "Their code was not shown."))
+            e.set_footer(text="Review in the bot panel \u2192 Security")
+            await notify(guild, e)
+        return {"ok": False, "msg": "This device is already linked to another account in this server. "
+                                    "Please contact the server owner."}
+    code = new_code()
+    await run(db.set_setting, f"code:{req.id}", _hash_code(code))
+    return {"ok": True, "code": code, "server": guild.name if guild else ""}
 
 
 async def send_code(guild: discord.Guild, member, join_id: int) -> bool:
+    """DM a verification link (device check first). Falls back to a plain code without PUBLIC_URL."""
+    if not PUBLIC_URL:
+        return await _send_code_dm_only(guild, member, join_id)
+    tok = await run(_new_token_sync, join_id)
+    e = discord.Embed(
+        title=f"Verify your access to {guild.name}",
+        description=("To keep the server safe, please verify your device first.\n\n"
+                     "**1.** Tap **Verify now** below.\n"
+                     "**2.** Your 6-character code will appear on the page.\n"
+                     "**3.** Send that code to the server owner.\n\n"
+                     "This link works only for you. Don't share it."),
+        color=0x2747C7,
+    )
+    view = discord.ui.View()
+    view.add_item(discord.ui.Button(label="Verify now", url=f"{PUBLIC_URL}/v/{tok}"))
+    try:
+        await member.send(embed=e, view=view)
+        await run(db.set_setting, f"dm:{join_id}", "ok")
+        return True
+    except (discord.Forbidden, discord.HTTPException):
+        await run(db.set_setting, f"dm:{join_id}", "fail")
+        log.info("Could not DM verification link to %s (DMs closed)", member)
+        return False
+
+
+# ------------------------- verified phone (Discord setting) -------------------------
+def phone_required(guild: discord.Guild) -> bool:
+    return guild.verification_level == discord.VerificationLevel.highest
+
+
+async def set_phone_required(guild: discord.Guild, on: bool) -> str:
+    level = discord.VerificationLevel.highest if on else discord.VerificationLevel.medium
+    try:
+        await guild.edit(verification_level=level, reason="Set from the bot panel")
+    except discord.Forbidden:
+        return "The bot needs the Manage Server permission to change this."
+    except discord.HTTPException as e:
+        return f"Discord error: {e.status}. Try again."
+    return ("Verified phone is now required. Accounts without a phone number can't chat in the server."
+            if on else "Verified phone is no longer required.")
+
+
+async def _send_code_dm_only(guild: discord.Guild, member, join_id: int) -> bool:
     code = new_code()
     await run(db.set_setting, f"code:{join_id}", code)
     e = discord.Embed(

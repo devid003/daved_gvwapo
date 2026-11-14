@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Verify your device{% endblock %}
+{% block public %}
+<style>
+.vwrap{min-height:100vh;display:grid;place-items:center;padding:24px}
+.vcard{width:100%;max-width:440px;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.vtop{padding:26px 26px 18px;border-bottom:1px solid var(--line)}
+.vtop h1{font-size:22px;margin:14px 0 4px}
+.vbody{padding:20px 26px 26px}
+.vlist{margin:8px 0 16px;padding-left:18px;color:var(--muted);font-size:14px}
+.vlist li{margin:3px 0}
+.vcode{font-size:40px;font-weight:700;letter-spacing:.18em;text-align:center;padding:18px 10px;border:1px dashed var(--line);border-radius:10px;margin:12px 0;background:var(--sunk);user-select:all}
+.vstate{display:none}
+.vok{color:var(--live);font-weight:600}
+.vbad{color:var(--bad);font-weight:600}
+.spin{width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:sp 1s linear infinite;vertical-align:-4px;margin-right:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+<div class="vwrap">
+  <div class="vcard">
+    <div class="vtop">
+      <svg width="34" height="34" viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="7" fill="#2747C7"/><path d="M7 17.5V8.5h4.2c3 0 4.8 1.7 4.8 4.5s-1.8 4.5-4.8 4.5H7z" fill="none" stroke="#fff" stroke-width="2"/><circle cx="19.5" cy="16.5" r="2" fill="#3CC48D"/></svg>
+      <h1>Verify your device</h1>
+      <div class="muted">for <b style="color:var(--ink)">{{ server }}</b></div>
+    </div>
+    <div class="vbody">
+      {% if not valid %}
+      <p class="vbad">This link has expired or was already used.</p>
+      <p class="muted">Ask the server owner to send you a new verification link.</p>
+      {% else %}
+      <div id="s-start">
+        <p>To keep this server free of duplicate accounts, we check your device once before you get your code.</p>
+        <div class="small"><b>What we check</b></div>
+        <ul class="vlist">
+          <li>Your device and browser type, screen size and timezone</li>
+          <li>A one-way fingerprint of this browser and your network (your real IP address is not stored)</li>
+        </ul>
+        <div class="small"><b>What we never access</b></div>
+        <ul class="vlist">
+          <li>Your contacts, photos, files, messages or location</li>
+        </ul>
+        <button class="btn primary" id="go" style="width:100%;justify-content:center;padding:11px">Verify my device</button>
+      </div>
+      <div id="s-wait" class="vstate"><p><span class="spin"></span>Checking your device...</p></div>
+      <div id="s-ok" class="vstate">
+        <p class="vok">Device verified.</p>
+        <p class="muted" style="margin:0">Your verification code is:</p>
+        <div class="vcode" id="code"></div>
+        <button class="btn" id="copy" style="width:100%;justify-content:center">Copy code</button>
+        <p class="muted small" style="margin-top:14px">Send this code to the server owner. You'll get a message from the bot once you're approved.</p>
+      </div>
+      <div id="s-bad" class="vstate">
+        <p class="vbad" id="bad-msg"></p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% if valid %}
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function show(id) { ['s-start', 's-wait', 's-ok', 's-bad'].forEach(function (x) { $(x).style.display = x === id ? 'block' : 'none'; }); }
+  function hash(str) { var h = 5381; for (var i = 0; i < str.length; i++) { h = ((h << 5) + h + str.charCodeAt(i)) | 0; } return (h >>> 0).toString(16); }
+  function canvasHash() {
+    try { var c = document.createElement('canvas'); c.width = 220; c.height = 40; var x = c.getContext('2d');
+      x.textBaseline = 'top'; x.font = '16px Arial'; x.fillStyle = '#f60'; x.fillRect(100, 1, 62, 20);
+      x.fillStyle = '#069'; x.fillText('Dabid verify 123', 2, 15); x.fillStyle = 'rgba(102,204,0,0.7)'; x.fillText('Dabid verify 123', 4, 17);
+      return hash(c.toDataURL()); } catch (e) { return ''; }
+  }
+  function gpu() {
+    try { var g = document.createElement('canvas').getContext('webgl'); var d = g.getExtension('WEBGL_debug_renderer_info');
+      return d ? g.getParameter(d.UNMASKED_RENDERER_WEBGL) : ''; } catch (e) { return ''; }
+  }
+  $('go').addEventListener('click', function () {
+    show('s-wait');
+    var fp = {
+      platform: navigator.platform || '', tz: (Intl.DateTimeFormat().resolvedOptions().timeZone || ''),
+      langs: (navigator.languages || [navigator.language]).join(','), screen: screen.width + 'x' + screen.height,
+      depth: screen.colorDepth, ratio: window.devicePixelRatio, cores: navigator.hardwareConcurrency || '',
+      mem: navigator.deviceMemory || '', touch: navigator.maxTouchPoints || 0, canvas: canvasHash(), gpu: gpu()
+    };
+    fetch(location.pathname, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fp) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.ok) { $('code').textContent = j.code; show('s-ok'); }
+        else { $('bad-msg').textContent = j.msg || 'Something went wrong.'; show('s-bad'); }
+      })
+      .catch(function () { $('bad-msg').textContent = 'Could not reach the server. Check your connection and try again.'; show('s-bad'); });
+  });
+  $('copy').addEventListener('click', function () {
+    var t = $('code').textContent;
+    if (navigator.clipboard) { navigator.clipboard.writeText(t).then(function () { $('copy').textContent = 'Copied'; }); }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

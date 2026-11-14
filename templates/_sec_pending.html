@@ -6,20 +6,24 @@
     <td><div class="who">{% if j.avatar_url %}<img src="{{ j.avatar_url }}" alt="" loading="lazy">{% else %}<span class="ph"></span>{% endif %}
       <div><b>{{ j.username }}</b><div class="mono small">{{ j.user_id }}</div>
         <div class="muted small nowrap" style="white-space:nowrap">Account made {{ j.account_created.strftime("%b %d, %Y") if j.account_created else "?" }}</div></div></div></td>
-    <td><div class="flags">{% for f in (j.flags or '').split(', ') if f %}<span class="badge pending">{{ f }}</span>{% else %}<span class="muted small">None</span>{% endfor %}</div></td>
-    <td class="nowrap">{% set c = codes.get(j.id, '') %}
-      {% if c == 'sent' %}<span class="badge live">Sent by DM</span>
-      {% elif c == 'dm_closed' %}<span class="badge off">DM closed</span>
-      {% else %}<span class="muted small">None</span>{% endif %}</td>
+    <td><div class="flags">{% for f in (j.flags or '').split(', ') if f %}<span class="badge {{ 'off' if f.startswith(('Same device','Same browser')) else 'pending' }}">{{ f }}</span>{% else %}<span class="muted small">None</span>{% endfor %}</div></td>
+    <td>{% set c = codes.get(j.id, {}) %}{% set st = c.get('state', '') %}
+      {% if st == 'code_shown' %}<span class="badge live">Device OK, code shown</span>
+      {% elif st == 'blocked' %}<span class="badge off">Blocked: same device</span>
+      {% elif st == 'link_sent' %}<span class="badge pending">Link sent, not opened</span>
+      {% elif st == 'sent' %}<span class="badge live">Code sent by DM</span>
+      {% elif st == 'dm_closed' %}<span class="badge off">DM closed</span>
+      {% else %}<span class="muted small">None</span>{% endif %}
+      {% if c.get('device') %}<div class="muted small nowrap" style="margin-top:4px;white-space:nowrap">{{ c.device }}</div>{% endif %}</td>
     <td class="nowrap">{{ (j.joined_at|local)[5:16] }}</td>
     {% if multi %}<td>{{ names.get(j.guild_id, j.guild_id) }}</td>{% endif %}
     <td class="actions">
       <form method="post" action="/security/resend" class="inline">
         <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ j.id }}">
-        <button class="btn sm">Resend code</button>
+        <button class="btn sm">Resend link</button>
       </form>
       {% for act, label, cls in [('deny','Deny','bad'),('ban','Ban','bad')] %}
-      <form method="post" action="/security/decide" class="inline" {% if act == 'ban' %}onsubmit='return confirm({{ ("Ban " ~ j.username ~ "? They will not be able to rejoin.")|tojson }})'{% elif act == 'approve' %}onsubmit='return confirm({{ ("Approve " ~ j.username ~ " without a code?")|tojson }})'{% endif %}>
+      <form method="post" action="/security/decide" class="inline" {% if act == 'ban' %}onsubmit='return confirm({{ ("Ban " ~ j.username ~ "? They will not be able to rejoin.")|tojson }})'{% endif %}>
         <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ j.id }}">
         <input type="hidden" name="action" value="{{ act }}"><button class="btn sm {{ cls }}">{{ label }}</button>
       </form>
