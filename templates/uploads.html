@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Upload times{% endblock %}
+{% block content %}
+<h1>📈 Upload times &amp; USD ⇄ PHP</h1>
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+<div class="grid">
+  <div class="stat">
+    <div class="n"><span class="dot {{ 'on' if online and not state.paused }}"></span>{{ 'Paused' if state.paused else ('Running' if online else 'Waiting for bot') }}</div>
+    <div class="l">Auto reports</div>
+  </div>
+  <div class="stat"><div class="n">{{ state.interval }} min</div><div class="l">Upload-time reports</div></div>
+  <div class="stat"><div class="n">{{ state.fx_interval }} min</div><div class="l">Exchange rate</div></div>
+  <div class="stat"><div class="n">{{ fx_rate }}</div><div class="l">1 USD · {{ fx_at }}</div></div>
+  <div class="stat"><div class="n" style="font-size:16px">{{ report_at }}</div><div class="l">Last reports sent ({{ tz }})</div></div>
+</div>
+
+<div class="card">
+  <h2>Controls</h2>
+  <div class="row">
+    <form method="post" action="/uploads/settings" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="interval" value="{{ state.interval }}">
+      <input type="hidden" name="fx_interval" value="{{ state.fx_interval }}">
+      {% if state.paused %}
+      <input type="hidden" name="action" value="resume"><button class="btn ok">▶️ Resume reports</button>
+      {% else %}
+      <input type="hidden" name="action" value="pause"><button class="btn">⏸️ Pause reports</button>
+      {% endif %}
+    </form>
+    <form method="post" action="/uploads/send" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="reports">
+      <button class="btn primary">📤 Send upload reports now</button>
+    </form>
+    <form method="post" action="/uploads/send" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="all">
+      <button class="btn">📅 Send reports + daily schedule</button>
+    </form>
+    <form method="post" action="/uploads/send" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="fx">
+      <button class="btn">💱 Send exchange rate now</button>
+    </form>
+  </div>
+
+  <form method="post" action="/uploads/settings" class="row" style="margin-top:14px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="action" value="save">
+    <label class="muted">Upload reports every
+      <input type="number" name="interval" min="1" max="1440" value="{{ state.interval }}" style="width:90px"> min</label>
+    <label class="muted">Exchange rate every
+      <input type="number" name="fx_interval" min="5" max="1440" value="{{ state.fx_interval }}" style="width:90px"> min</label>
+    <button class="btn primary">Save</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>📍 Report channels per server</h2>
+  <p class="muted">Pick where each report goes. Anything left on “use default” goes to the default channel. Only approved servers (Overview page) get reports.</p>
+  {% for s in servers %}
+  <div style="border-top:1px solid var(--line);padding:12px 0">
+    <div><b>{{ s.name }}</b> <span class="mono muted">{{ s.id }}</span>
+      {% if s.joined %}<span class="badge ok">bot inside</span>{% else %}<span class="badge pending">bot not inside / offline</span>{% endif %}</div>
+    {% if s.joined %}
+    <form method="post" action="/uploads/channels" style="margin-top:8px">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="guild_id" value="{{ s.id }}">
+      <div class="grid" style="margin-bottom:8px">
+        {% for key, label in kinds %}
+        <label class="muted">{{ label }}<br>
+          <select name="{{ key }}" style="width:100%">
+            <option value="">{{ '(none)' if key == 'default' else '(use default)' }}</option>
+            {% for cid, cname in s.options %}
+            <option value="{{ cid }}" {{ 'selected' if s.chans[key] == cid }}>#{{ cname }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% endfor %}
+      </div>
+      <button class="btn primary">Save channels</button>
+    </form>
+    {% else %}
+    <p class="muted" style="margin:6px 0 0">Channels appear here once the bot is online and inside this server.</p>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="muted">No approved servers yet. Add one on the Overview page.</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>🗓️ Today — {{ today }} (US)</h2>
+  <p class="muted">Current US time: {{ us_now }}</p>
+  {% for label, rows in [('▶️ YTA', yt_rows), ('📘 FBA', fb_rows)] %}
+  <div class="scroll"><table style="margin-bottom:12px">
+    <tr><th>{{ label }}</th><th>Best times today (ET)</th><th>Status</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.emoji }} {{ r.name }}</td>
+      <td>{{ r.windows }}</td>
+      <td>{% if r.live %}<span class="badge ok">UPLOAD NOW</span> {{ r.next }}{% else %}<span class="muted">Next: {{ r.next }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% endfor %}
+  <p class="muted" style="margin-bottom:0">Edit times and hashtags in <span class="mono">niches.py</span>.</p>
+</div>
+{% endblock %}
