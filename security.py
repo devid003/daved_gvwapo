@@ -28,7 +28,7 @@ from zoneinfo import ZoneInfo
 
 import db
 import discord
-from zoneinfo import ZoneInfo_bot
+import discord_bot
 from discord_bot import bot
 
 log = logging.getLogger("security")
