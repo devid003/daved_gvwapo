@@ -5,6 +5,9 @@ Join gate: new members wait for approval before they can see the server.
   "Pending approval" role. That role is denied "View Channel" on every channel,
   so they see nothing until the owner approves them in the panel.
 - Every join is logged with account age, avatar and risk flags.
+- While pending, any OTHER role they get (Onboarding, auto-role or verification
+  bots) is taken away and remembered, because a role that allows a channel beats
+  the Pending deny. Approve gives those roles back.
 - Approve = remove the role. Deny = kick. Ban = ban.
 Needs: "Server Members Intent" ON in the Developer Portal, and the bot role needs
 Manage Roles, Manage Channels, Kick Members and Ban Members, placed ABOVE the
@@ -102,6 +105,68 @@ async def notify(guild: discord.Guild, embed: discord.Embed):
         log.warning("Join gate log message failed in %s: %s", guild.id, e)
 
 
+# ------------------------- holding extra roles while pending -------------------------
+_STRIPS: dict[tuple[int, int, int], int] = {}   # (guild, user, role) -> times removed
+
+
+def _held_key(gid: int, uid: int) -> str:
+    return f"held:{gid}:{uid}"
+
+
+def held_roles_sync(gid: int, uid: int) -> list[int]:
+    v = db.get_setting(_held_key(gid, uid), "")
+    return [int(x) for x in v.split(",") if x.isdigit()]
+
+
+def _save_held_sync(gid: int, uid: int, ids: list[int]) -> None:
+    db.set_setting(_held_key(gid, uid), ",".join(str(i) for i in dict.fromkeys(ids)))
+
+
+async def strip_roles(member: discord.Member, pending: discord.Role, only=None) -> list[str]:
+    """Take away every role except Pending (or just `only`), remember them for approval."""
+    guild = member.guild
+    top = guild.me.top_role if guild.me else None
+    candidates = only if only is not None else member.roles
+    removable = []
+    for r in candidates:
+        if r.is_default() or r.id == pending.id or r.managed or (top is not None and not r < top):
+            continue
+        key = (guild.id, member.id, r.id)
+        _STRIPS[key] = _STRIPS.get(key, 0) + 1
+        if _STRIPS[key] > 3:          # another bot keeps re-adding it: stop fighting
+            log.warning("Role %s keeps coming back on %s; leaving it.", r.name, member)
+            continue
+        removable.append(r)
+    if not removable:
+        return []
+    try:
+        await member.remove_roles(*removable, reason="Join gate: roles held until approved")
+    except (discord.Forbidden, discord.HTTPException) as e:
+        log.warning("Could not hold roles for %s: %s", member, e)
+        return []
+    held = await run(held_roles_sync, guild.id, member.id)
+    await run(_save_held_sync, guild.id, member.id, held + [r.id for r in removable])
+    names = [r.name for r in removable]
+    log.info("Join gate: holding roles %s from %s until approved", names, member)
+    return names
+
+
+async def restore_roles(member: discord.Member) -> list[str]:
+    guild = member.guild
+    ids = await run(held_roles_sync, guild.id, member.id)
+    await run(db.set_setting, _held_key(guild.id, member.id), "")
+    top = guild.me.top_role if guild.me else None
+    roles = [r for r in (guild.get_role(i) for i in ids)
+             if r is not None and not r.managed and (top is None or r < top)]
+    if roles:
+        try:
+            await member.add_roles(*roles, reason="Join gate: approved, roles given back")
+        except (discord.Forbidden, discord.HTTPException) as e:
+            log.warning("Could not give back roles to %s: %s", member, e)
+            return []
+    return [r.name for r in roles]
+
+
 # ------------------------- turning the gate on/off -------------------------
 async def enable_gate(guild: discord.Guild) -> str:
     """Create the role, hide every channel from it, switch the gate on. Returns a short report."""
@@ -154,13 +219,16 @@ async def decide(join_id: int, action: str) -> str:
             role = await find_role(guild)
             if role and role in member.roles:
                 await member.remove_roles(role, reason="Join gate: approved in panel")
+            back = await restore_roles(member)
             await run(db.set_join_status, join_id, "approved")
             await notify(guild, discord.Embed(description=f"\u2705 **{name}** was approved.", color=0x12805A))
-            return f"\u2705 {name} approved. They can see the server now."
+            extra = f" Gave back: {', '.join(back)}." if back else ""
+            return f"\u2705 {name} approved. They can see the server now.{extra}"
 
         if action == "deny":
             if member is not None:
                 await member.kick(reason="Join gate: denied in panel")
+            await run(db.set_setting, _held_key(guild.id, req.user_id), "")
             await run(db.set_join_status, join_id, "denied")
             await notify(guild, discord.Embed(description=f"\U0001f6ab **{name}** was denied and removed.", color=0xB42318))
             return f"\U0001f6ab {name} denied and removed from the server."
@@ -168,6 +236,7 @@ async def decide(join_id: int, action: str) -> str:
         if action == "ban":
             await guild.ban(discord.Object(id=req.user_id), reason="Join gate: banned in panel",
                             delete_message_seconds=0)
+            await run(db.set_setting, _held_key(guild.id, req.user_id), "")
             await run(db.set_join_status, join_id, "banned")
             await notify(guild, discord.Embed(description=f"\u26d4 **{name}** was banned.", color=0xB42318))
             return f"\u26d4 {name} banned."
@@ -198,12 +267,15 @@ async def on_member_join(member: discord.Member):
 
     if await run(db.was_approved_before, guild.id, member.id):
         flags.append("Approved before")
+    role = None
     try:
         role = await ensure_role(guild)
         await member.add_roles(role, reason="Join gate: waiting for approval")
     except (discord.Forbidden, discord.HTTPException) as e:
         flags.append("Could not lock (check bot permissions)")
         log.warning("Could not give Pending role to %s in %s: %s", member, guild.id, e)
+    if role is not None:
+        await strip_roles(member, role)
 
     join_id = await run(db.add_join, guild.id, member.id, str(member), avatar, created,
                         ", ".join(flags), "pending")
@@ -216,6 +288,27 @@ async def on_member_join(member: discord.Member):
     e.set_thumbnail(url=avatar or None)
     e.set_footer(text="Approve or deny in the bot panel \u2192 Security")
     await notify(guild, e)
+
+    if role is not None:              # other bots often add roles a few seconds later
+        await asyncio.sleep(4)
+        fresh = guild.get_member(member.id)
+        if fresh is not None and role in fresh.roles:
+            await strip_roles(fresh, role)
+
+
+@bot.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    """If a pending member gets any new role, hold it until they are approved."""
+    added = [r for r in after.roles if r not in before.roles]
+    if not added:
+        return
+    guild = after.guild
+    pending = await find_role(guild)
+    if pending is None or pending not in after.roles:
+        return
+    if not await run(gate_on_sync, guild.id):
+        return
+    await strip_roles(after, pending, only=[r for r in added if r.id != pending.id])
 
 
 @bot.event
