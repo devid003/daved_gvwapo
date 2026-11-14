@@ -7,6 +7,7 @@ import io
 import logging
 import os
 import json
+from html import escape as html_escape
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -666,6 +667,95 @@ async def security_resend(request):
     flash(request, await security.resend_code(int(raw)))
     return redirect("/security")
 
+# ---------- hide the admin panel behind a secret path ----------
+ADMIN_PATH = os.getenv("ADMIN_PATH", "").strip().strip("/")
+ADMIN_HOSTS = {h.strip().lower() for h in os.getenv("ADMIN_HOSTS", "").split(",") if h.strip()}
+SITE_NAME = os.getenv("SITE_NAME", "Syndicate")
+_PUBLIC = ("/v/", "/health")
+_PLAIN_CSS = ("body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f131a;color:#e6e9ef;"
+              "font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}"
+              ".c{text-align:center;padding:24px;max-width:420px}h1{font-size:28px;margin:0 0 8px}p{color:#9aa3b2;margin:0}")
+
+
+def _plain_page(title: str, text: str) -> bytes:
+    t = html_escape(title)
+    return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' "
+            f"content='width=device-width, initial-scale=1'><meta name='robots' content='noindex'>"
+            f"<title>{t}</title><style>{_PLAIN_CSS}</style></head><body><div class='c'><h1>{t}</h1>"
+            f"<p>{html_escape(text)}</p></div></body></html>").encode()
+
+
+class AdminPath:
+    """With ADMIN_PATH set, the panel only answers at /<ADMIN_PATH>/...; the site root is a plain page."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not ADMIN_PATH:
+            return await self.app(scope, receive, send)
+        path = scope.get("path", "")
+        if path.startswith(_PUBLIC):
+            return await self.app(scope, receive, send)
+        pre = "/" + ADMIN_PATH
+        host = dict(scope.get("headers") or []).get(b"host", b"").decode().split(":")[0].lower()
+        if (path == pre or path.startswith(pre + "/")) and (not ADMIN_HOSTS or host in ADMIN_HOSTS):
+            inner = path[len(pre):] or "/"
+            scope = dict(scope, path=inner, raw_path=inner.encode())
+            return await self.app(scope, receive, self._rewriter(send, pre.encode()))
+        if path == "/":
+            return await self._send(send, 200, _plain_page(SITE_NAME, "Member verification. Open the link the bot sent you in your Discord DMs."))
+        return await self._send(send, 404, _plain_page("Not found", "This page doesn't exist."))
+
+    @staticmethod
+    async def _send(send, status, body):
+        await send({"type": "http.response.start", "status": status,
+                    "headers": [(b"content-type", b"text/html; charset=utf-8"),
+                                (b"content-length", str(len(body)).encode()), (b"cache-control", b"no-store")]})
+        await send({"type": "http.response.body", "body": body})
+
+    @staticmethod
+    def _rewriter(send, pre: bytes):
+        state = {"start": None, "chunks": [], "rewrite": False}
+        swaps = [(b'href="/', b'href="' + pre + b"/"), (b'action="/', b'action="' + pre + b"/"),
+                 (b"fetch('/", b"fetch('" + pre + b"/"), (b"location.href = '/", b"location.href = '" + pre + b"/"),
+                 (b'href=\\"/', b'href=\\"' + pre + b"/"), (b'action=\\"/', b'action=\\"' + pre + b"/")]
+
+        def fix_headers(headers):
+            out = []
+            for k, v in headers:
+                if k.lower() == b"location" and v.startswith(b"/") and not v.startswith(pre + b"/") and v != pre:
+                    v = pre + v
+                out.append((k, v))
+            return out
+
+        async def wrapped(message):
+            if message["type"] == "http.response.start":
+                headers = fix_headers(list(message.get("headers") or []))
+                ctype = dict((k.lower(), v) for k, v in headers).get(b"content-type", b"")
+                state["rewrite"] = ctype.startswith(b"text/html") or ctype.startswith(b"application/json")
+                message = dict(message, headers=headers)
+                if not state["rewrite"]:
+                    return await send(message)
+                state["start"] = message
+                return
+            if message["type"] == "http.response.body" and state["rewrite"]:
+                state["chunks"].append(message.get("body", b""))
+                if message.get("more_body"):
+                    return
+                body = b"".join(state["chunks"])
+                for old, new in swaps:
+                    body = body.replace(old, new)
+                start = state["start"]
+                headers = [(k, v) for k, v in start["headers"] if k.lower() != b"content-length"]
+                headers.append((b"content-length", str(len(body)).encode()))
+                await send(dict(start, headers=headers))
+                return await send({"type": "http.response.body", "body": body})
+            await send(message)
+
+        return wrapped
+
+
 class SecurityHeaders:
     """Browser security headers on every response: no framing, no sniffing, strict CSP."""
     CSP = ("default-src 'self'; img-src 'self' data: https://cdn.discordapp.com; "
@@ -800,6 +890,7 @@ app = Starlette(
     ],
     middleware=[
         Middleware(SecurityHeaders),
+        Middleware(AdminPath),
         Middleware(
             SessionMiddleware, secret_key=SECRET_KEY, same_site="lax",
             https_only=bool(os.getenv("RENDER")), max_age=60 * 60 * 12,
