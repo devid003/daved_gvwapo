@@ -28,6 +28,10 @@
 .chan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
 .server-block{padding:16px 20px;border-top:1px solid var(--line)}
 .server-block:first-of-type{border-top:0}
+.live-pill{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;padding:4px 10px;border:1px solid var(--line);border-radius:999px}
+.live-pill.stale .dot{background:var(--warn);box-shadow:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.live-pill .dot{animation:pulse 2s ease-in-out infinite}
 @media (max-width:820px){
   .air-row,.axis{grid-template-columns:1fr;gap:6px}
   .axis > div:first-child{display:none}
@@ -35,7 +39,7 @@
 </style>{% endblock %}
 {% block content %}
 <div class="head">
-  <div><h1>Upload times</h1><p>Shown in Philippine time. It's {{ ph_now }} here, {{ us_now }} in the US.</p></div>
+  <div><h1>Upload times</h1><p>Shown in Philippine time. It's <span id="ph-now">{{ ph_now }}</span> here, <span id="us-now">{{ us_now }}</span> in the US.</p></div>
   <div class="row">
     <form method="post" action="/uploads/send" class="inline">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="reports">
@@ -47,46 +51,22 @@
 
 <section class="panel">
   <div class="panel-head">
-    <div><h2>Today on air, {{ today }}</h2><p>Philippine time. Windows are timed for each niche's audience: US niches for viewers in the US. Green means post now.</p></div>
+    <div><h2>Today on air, <span id="today">{{ today }}</span></h2><p>Philippine time. Windows are timed for each niche's audience: US niches for viewers in the US. Green means post now.</p></div>
+    <span class="live-pill" id="live-pill"><span class="dot on"></span>Live <span class="muted" id="live-age">just now</span></span>
   </div>
-  <div class="air">
-    <div class="axis" aria-hidden="true">
-      <div></div>
-      <div class="ticks">
-        {% for h,l in [(0,'12a'),(3,'3a'),(6,'6a'),(9,'9a'),(12,'12p'),(15,'3p'),(18,'6p'),(21,'9p'),(24,'12a')] %}
-        <span style="left:{{ (h/24*100)|round(2) }}%">{{ l }}</span>
-        {% endfor %}
-      </div>
-    </div>
-    {% for label, key, rows in timeline %}
-    <div class="air-group {{ key }}">
-      <h3><i style="background:var(--{{ key }})"></i>{{ label }}</h3>
-      {% for r in rows %}
-      <div class="air-row">
-        <div class="air-name {{ 'is-live' if r.live }}">{{ r.emoji }} {{ r.name }} <span class="badge" style="font-size:11px;padding:0 7px">{{ 'PH audience' if r.local else 'US audience' }}</span><small>{{ r.status }}</small></div>
-        <div class="track">
-          {% if loop.first and loop.index0 == 0 and key == 'yt' %}<span class="now-tag" style="left:{{ now_pct }}%">{{ now_label }}</span>{% endif %}
-          <span class="now" style="left:{{ r.now_pct }}%"></span>
-          {% for b in r.bands %}
-          <span class="band {{ b.state }}" style="left:{{ b.left }}%;width:{{ b.width }}%" title="{{ b.label }}"></span>
-          {% endfor %}
-          <span class="sr">{{ r.name }}: {% for b in r.bands %}{{ b.label }}{{ ', ' if not loop.last }}{% endfor %}. {{ r.status }}.</span>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-    {% endfor %}
+  <div class="air" id="air">
+    {% include "_timeline.html" %}
   </div>
 </section>
 
 <section class="panel">
   <div class="panel-head">
     <div>
-      <h2>Automatic reports
+      <h2>Automatic reports <span id="report-badge">
         {% if state.paused %}<span class="badge pending" style="margin-left:6px">Paused</span>
         {% elif online %}<span class="badge live" style="margin-left:6px">Running</span>
-        {% else %}<span class="badge off" style="margin-left:6px">Bot offline</span>{% endif %}</h2>
-      <p>Last reports sent {{ report_at }} ({{ tz }}).</p>
+        {% else %}<span class="badge off" style="margin-left:6px">Bot offline</span>{% endif %}</span></h2>
+      <p>Last reports sent <span id="report-at">{{ report_at }}</span> ({{ tz }}).</p>
     </div>
     <div class="row">
       <form method="post" action="/uploads/settings" class="inline">
@@ -120,13 +100,13 @@
 
 <section class="panel">
   <div class="panel-head">
-    <div><h2>USD to PHP</h2><p>Mid-market rate, posted automatically every {{ state.fx_interval }} minutes.</p></div>
+    <div><h2>USD to PHP</h2><p>Mid-market rate, posted automatically every <span id="fx-interval">{{ state.fx_interval }}</span> minutes.</p></div>
     <form method="post" action="/uploads/send" class="inline">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="fx">
       <button class="btn">Send rate now</button>
     </form>
   </div>
-  <div class="panel-body">
+  <div class="panel-body" id="fx-body">
     {% if state.last_fx_rate %}
     <div class="fx"><span class="muted">1 USD =</span><b>{{ fx_rate }}</b><span class="muted small">from {{ state.last_fx_source }}, {{ fx_at }}</span></div>
     {% else %}
@@ -168,4 +148,59 @@
   <div class="empty">No approved servers yet. Add one on the Overview page.</div>
   {% endfor %}
 </section>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var opts = { weekday: 'short', hour: 'numeric', minute: '2-digit' };
+  var ph = new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: 'Asia/Manila' }, opts));
+  var et = new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: 'America/New_York' }, opts));
+  var lastOk = Date.now(), busy = false;
+  var esc = function (s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+
+  function tick() {
+    var d = new Date();
+    $('ph-now').textContent = ph.format(d).replace(',', '');
+    $('us-now').textContent = et.format(d).replace(',', '') + ' ET';
+    var s = Math.round((Date.now() - lastOk) / 1000);
+    $('live-age').textContent = s < 5 ? 'just now' : (s < 60 ? 'updated ' + s + 's ago' : 'updated ' + Math.round(s / 60) + 'm ago');
+  }
+
+  function badge(j) {
+    if (j.paused) return '<span class="badge pending" style="margin-left:6px">Paused</span>';
+    if (j.online) return '<span class="badge live" style="margin-left:6px">Running</span>';
+    return '<span class="badge off" style="margin-left:6px">Bot offline</span>';
+  }
+
+  function refresh() {
+    if (busy) return; busy = true;
+    fetch('/api/uploads/live', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) {
+        if (r.status === 401) { location.href = '/login'; throw 0; }
+        if (!r.ok) throw 0;
+        return r.json();
+      })
+      .then(function (j) {
+        $('air').innerHTML = j.timeline_html;
+        $('today').textContent = j.today;
+        $('report-badge').innerHTML = badge(j);
+        $('report-at').textContent = j.report_at;
+        $('fx-interval').textContent = j.fx_interval;
+        if (j.fx_rate) {
+          $('fx-body').innerHTML = '<div class="fx"><span class="muted">1 USD =</span><b>' + esc(j.fx_rate) +
+            '</b><span class="muted small">from ' + esc(j.fx_source) + ', ' + esc(j.fx_at) + '</span></div>';
+        }
+        lastOk = Date.now();
+        $('live-pill').classList.remove('stale');
+      })
+      .catch(function () { $('live-pill').classList.add('stale'); })
+      .then(function () { busy = false; tick(); });
+  }
+
+  tick();
+  setInterval(tick, 1000);
+  setInterval(function () { if (!document.hidden) refresh(); }, 30000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+})();
+</script>
 {% endblock %}

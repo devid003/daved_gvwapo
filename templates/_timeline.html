@@ -1,0 +1,26 @@
+    <div class="axis" aria-hidden="true">
+      <div></div>
+      <div class="ticks">
+        {% for h,l in [(0,'12a'),(3,'3a'),(6,'6a'),(9,'9a'),(12,'12p'),(15,'3p'),(18,'6p'),(21,'9p'),(24,'12a')] %}
+        <span style="left:{{ (h/24*100)|round(2) }}%">{{ l }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% for label, key, rows in timeline %}
+    <div class="air-group {{ key }}">
+      <h3><i style="background:var(--{{ key }})"></i>{{ label }}</h3>
+      {% for r in rows %}
+      <div class="air-row">
+        <div class="air-name {{ 'is-live' if r.live }}">{{ r.emoji }} {{ r.name }} <span class="badge" style="font-size:11px;padding:0 7px">{{ 'PH audience' if r.local else 'US audience' }}</span><small>{{ r.status }}</small></div>
+        <div class="track">
+          {% if loop.first and loop.index0 == 0 and key == 'yt' %}<span class="now-tag" style="left:{{ now_pct }}%">{{ now_label }}</span>{% endif %}
+          <span class="now" style="left:{{ r.now_pct }}%"></span>
+          {% for b in r.bands %}
+          <span class="band {{ b.state }}" style="left:{{ b.left }}%;width:{{ b.width }}%" title="{{ b.label }}"></span>
+          {% endfor %}
+          <span class="sr">{{ r.name }}: {% for b in r.bands %}{{ b.label }}{{ ', ' if not loop.last }}{% endfor %}. {{ r.status }}.</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}

@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.responses import PlainTextResponse, RedirectResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 from starlette.templating import Jinja2Templates
 
@@ -375,6 +375,32 @@ async def uploads_send(request):
     return redirect("/uploads")
 
 
+async def uploads_live(request):
+    """Fresh timeline + status for the Upload times page (polled every 30 s)."""
+    if not authed(request):
+        return JSONResponse({"error": "login"}, status_code=401)
+    now = upload_reports.datetime.now(upload_reports.ET)
+    ph_now = now.astimezone(upload_reports.PH)
+    st = upload_reports.STATE
+    html = templates.env.get_template("_timeline.html").render(
+        timeline=[("YouTube automation", "yt", upload_reports.timeline_rows(upload_reports.YOUTUBE, now)),
+                  ("Facebook automation", "fb", upload_reports.timeline_rows(upload_reports.FACEBOOK, now))],
+        now_pct=round((ph_now.hour * 60 + ph_now.minute) / 1440 * 100, 2),
+        now_label=upload_reports.fmt(ph_now, upload_reports.PH),
+    )
+    return JSONResponse({
+        "timeline_html": html,
+        "today": ph_now.strftime("%A, %B ") + str(ph_now.day),
+        "online": discord_bot.bot.is_ready(),
+        "paused": st["paused"],
+        "report_at": _utc_local(st["last_report_at"]),
+        "fx_rate": f"\u20b1{st['last_fx_rate']:,.4f}" if st["last_fx_rate"] else "",
+        "fx_source": st["last_fx_source"],
+        "fx_at": _utc_local(st["last_fx_at"]),
+        "fx_interval": st["fx_interval"],
+    }, headers={"Cache-Control": "no-store"})
+
+
 async def health(request):
     return PlainTextResponse("ok")
 
@@ -415,6 +441,7 @@ app = Starlette(
         Route("/members/set", members_set, methods=["POST"]),
         Route("/image/toggle", image_toggle, methods=["POST"]),
         Route("/uploads", uploads),
+        Route("/api/uploads/live", uploads_live),
         Route("/uploads/channels", uploads_channels, methods=["POST"]),
         Route("/uploads/settings", uploads_settings, methods=["POST"]),
         Route("/uploads/send", uploads_send, methods=["POST"]),
