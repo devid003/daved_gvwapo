@@ -904,7 +904,19 @@ async def member_warn(request):
     if joins:
         name = joins[0].username
     await run(db.add_warning, gid, uid, name, reason)
-    flash(request, "Warning added.")
+    total = await run(db.warning_count, gid, uid)
+    msg = "Warning added."
+    if discord_bot.bot.is_ready():
+        res = await security.send_warning(gid, uid, name or str(uid), reason, total, dt.datetime.now(dt.timezone.utc))
+        if res["dm"] and res["log"]:
+            msg = "Warning added. The member was notified by DM and in the mod-log."
+        elif res["dm"]:
+            msg = "Warning added and sent to the member by DM. (Set a mod-log channel on the Security page to also post it there.)"
+        elif res["log"]:
+            msg = "Warning added and posted to the mod-log. Their DMs are closed, so no direct message was sent."
+        else:
+            msg = "Warning added, but the member could not be messaged (DMs closed) and no mod-log channel is set."
+    flash(request, msg)
     return redirect(f"/member?u={uid}&g={gid}")
 
 

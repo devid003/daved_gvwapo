@@ -24,9 +24,11 @@ import hmac
 import os
 
 import discord
+from zoneinfo import ZoneInfo
 
 import db
-import discord_bot
+import discord
+from zoneinfo import ZoneInfo_bot
 from discord_bot import bot
 
 log = logging.getLogger("security")
@@ -420,6 +422,96 @@ async def enable_gate(guild: discord.Guild) -> str:
 
 async def disable_gate(guild_id: int):
     await run(db.set_setting, _key("gate", guild_id), "0")
+
+
+# ------------------------- warning message -------------------------
+MOD_NAME = os.getenv("MOD_NAME", "Syndicate Moderation")
+MOD_AVATAR = os.getenv("MOD_AVATAR", "").strip()
+
+
+def _ordinal(n: int) -> str:
+    return f"{n}th" if 11 <= n % 100 <= 13 else f"{n}{ {1:'st',2:'nd',3:'rd'}.get(n % 10, 'th') }"
+
+
+def _warn_fields(reason: str, total: int, when):
+    tz = ZoneInfo(os.getenv("DISPLAY_TZ", "Asia/Manila"))
+    local = when.astimezone(tz)
+    return {
+        "reason": reason,
+        "date": local.strftime("%A, %B ") + f"{local.day}, {local.year}",
+        "time": local.strftime("%I:%M %p").lstrip("0") + f" ({os.getenv('DISPLAY_TZ', 'Asia/Manila')})",
+        "total": total,
+    }
+
+
+def _warn_embed(guild_name: str, member_name: str, f: dict) -> discord.Embed:
+    e = discord.Embed(
+        title=f"\u26a0\ufe0f Warning from {guild_name}",
+        description="You have received a warning from the server moderators.",
+        color=0xC98A00, timestamp=discord.utils.utcnow(),
+    )
+    e.add_field(name="Member", value=member_name, inline=False)
+    e.add_field(name="Reason", value=f["reason"], inline=False)
+    e.add_field(name="Date", value=f["date"], inline=True)
+    e.add_field(name="Time", value=f["time"], inline=True)
+    e.add_field(name="Total warnings", value=str(f["total"]), inline=True)
+    e.set_footer(text=f"{MOD_NAME} \u2022 Please follow the server rules to avoid further action.")
+    return e
+
+
+async def send_warning(guild_id: int, user_id: int, member_name: str, reason: str, total: int, when) -> dict:
+    """DM the member AND post to the mod-log webhook/channel under the moderation name. Returns what worked."""
+    guild = bot.get_guild(guild_id)
+    f = _warn_fields(reason, total, when)
+    result = {"dm": False, "log": False}
+    if guild is None:
+        return result
+
+    # 1) real DM to the member
+    member = guild.get_member(user_id)
+    if member is None:
+        try:
+            member = await guild.fetch_member(user_id)
+        except (discord.NotFound, discord.HTTPException):
+            member = None
+    if member is not None:
+        try:
+            await member.send(embed=_warn_embed(guild.name, member_name, f))
+            result["dm"] = True
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+    # 2) mod-log: webhook (named + avatar) if we can, else a normal message
+    cid = await run(log_channel_sync, guild_id)
+    channel = guild.get_channel(cid) if cid else None
+    if channel is not None:
+        embed = _warn_embed(guild.name, member_name, f)
+        mention = member.mention if member is not None else f"<@{user_id}>"
+        try:
+            hook = await _mod_webhook(channel)
+            if hook is not None:
+                await hook.send(content=f"{mention}", embed=embed, username=MOD_NAME,
+                                avatar_url=MOD_AVATAR or None,
+                                allowed_mentions=discord.AllowedMentions(users=True))
+            else:
+                await channel.send(content=mention, embed=embed,
+                                   allowed_mentions=discord.AllowedMentions(users=True))
+            result["log"] = True
+        except (discord.Forbidden, discord.HTTPException) as e:
+            log.warning("Warning mod-log failed in %s: %s", guild_id, e)
+    return result
+
+
+async def _mod_webhook(channel):
+    """Find or create a reusable webhook named after the moderation identity."""
+    try:
+        hooks = await channel.webhooks()
+        for h in hooks:
+            if h.name == MOD_NAME and h.token:
+                return h
+        return await channel.create_webhook(name=MOD_NAME, reason="Moderation messages")
+    except (discord.Forbidden, discord.HTTPException):
+        return None
 
 
 # ------------------------- approval message -------------------------
