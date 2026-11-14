@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Members{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Members</h1><p>Everyone who has joined {{ server }}. Open a member to see their full history and warnings.</p></div>
+</div>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+<section class="panel">
+  <div class="panel-head">
+    <div><h2>Directory</h2><p>{{ people|length }} shown. Search by name or user ID.</p></div>
+    <form method="get" action="/members" class="row">
+      <input type="hidden" name="g" value="{{ gid }}">
+      <input type="text" name="q" value="{{ q }}" placeholder="Search name or ID" aria-label="Search">
+      <button class="btn">Search</button>
+      {% if q %}<a class="btn ghost" href="/members?g={{ gid }}">Clear</a>{% endif %}
+    </form>
+  </div>
+  <div class="scroll"><table>
+    <tr><th>Member</th><th>Status</th><th>Days in server</th><th>Warnings</th><th>First joined ({{ tz }})</th><th></th></tr>
+    {% for m in people %}
+    <tr>
+      <td><b>{{ m.username or m.user_id }}</b><div class="mono small">{{ m.user_id }}</div></td>
+      <td><span class="badge {{ {'approved':'live','allowed':'live','denied':'off','banned':'off','pending':'pending','left':''}.get(m.status,'') }}">{{ {'allowed':'Joined'}.get(m.status, m.status|capitalize) }}</span></td>
+      <td>{{ m.days }} day{{ '' if m.days == 1 else 's' }}</td>
+      <td>{% if m.warns %}<span class="badge off">{{ m.warns }}</span>{% else %}<span class="muted small">0</span>{% endif %}</td>
+      <td class="nowrap">{{ m.joined_at|local }}</td>
+      <td class="actions"><a class="btn sm" href="/member?u={{ m.user_id }}&g={{ gid }}">View history</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">No members found.</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endblock %}

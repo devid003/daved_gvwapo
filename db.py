@@ -96,6 +96,18 @@ class JoinRequest(Base):
     decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class Warning(Base):
+    """A warning an admin gave a member, with a timestamp and reason."""
+    __tablename__ = "warnings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    username: Mapped[str] = mapped_column(String(200), default="")
+    reason: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    active: Mapped[bool] = mapped_column(default=True)
+
+
 class DeviceCheck(Base):
     """One device check from the verification web page (hashed, no raw IP)."""
     __tablename__ = "device_checks"
@@ -322,6 +334,68 @@ def set_join_flags(join_id: int, flags: str) -> None:
         row = s.get(JoinRequest, join_id)
         if row:
             row.flags = (flags or "")[:300]
+
+
+# ---------- warnings & member history ----------
+def add_warning(guild_id: int, user_id: int, username: str, reason: str) -> int:
+    with Session.begin() as s:
+        w = Warning(guild_id=guild_id, user_id=user_id, username=(username or "")[:200], reason=(reason or "")[:500])
+        s.add(w)
+        s.flush()
+        return w.id
+
+
+def remove_warning(warn_id: int) -> None:
+    with Session.begin() as s:
+        w = s.get(Warning, warn_id)
+        if w:
+            w.active = False
+
+
+def list_warnings(guild_id: int, user_id: int) -> list:
+    with Session() as s:
+        return list(s.scalars(select(Warning).where(
+            Warning.guild_id == guild_id, Warning.user_id == user_id)
+            .order_by(Warning.created_at.desc())))
+
+
+def warning_count(guild_id: int, user_id: int) -> int:
+    with Session() as s:
+        return s.scalar(select(func.count()).select_from(Warning).where(
+            Warning.guild_id == guild_id, Warning.user_id == user_id, Warning.active.is_(True))) or 0
+
+
+def member_joins(guild_id: int, user_id: int) -> list:
+    with Session() as s:
+        return list(s.scalars(select(JoinRequest).where(
+            JoinRequest.guild_id == guild_id, JoinRequest.user_id == user_id)
+            .order_by(JoinRequest.joined_at.desc())))
+
+
+def member_devices(guild_id: int, user_id: int) -> list:
+    with Session() as s:
+        return list(s.scalars(select(DeviceCheck).where(
+            DeviceCheck.guild_id == guild_id, DeviceCheck.user_id == user_id)
+            .order_by(DeviceCheck.created_at.desc())))
+
+
+def find_members(guild_id: int, query: str, limit: int = 40) -> list[dict]:
+    """Distinct members seen in join records, newest first, optionally filtered by name or id."""
+    q = (query or "").strip().lower()
+    with Session() as s:
+        rows = s.scalars(select(JoinRequest).where(JoinRequest.guild_id == guild_id)
+                         .order_by(JoinRequest.joined_at.desc())).all()
+    out, seen = [], set()
+    for r in rows:
+        if r.user_id in seen:
+            continue
+        if q and q not in (r.username or "").lower() and q not in str(r.user_id):
+            continue
+        seen.add(r.user_id)
+        out.append({"user_id": r.user_id, "username": r.username, "joined_at": r.joined_at, "status": r.status})
+        if len(out) >= limit:
+            break
+    return out
 
 
 # ---------- join gate ----------

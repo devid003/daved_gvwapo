@@ -832,7 +832,127 @@ async def security_phone(request):
     return redirect("/security")
 
 
-async def health(request):
+# ---------- members directory + history ----------
+def _one_guild_id():
+    ids = sorted(db.allowed_guild_ids())
+    return ids[0] if ids else 0
+
+
+async def members_page(request):
+    if not authed(request):
+        return redirect("/login")
+    gid = parse_id(request.query_params.get("g")) or _one_guild_id()
+    q = request.query_params.get("q", "")
+    rows = await run(db.find_members, gid, q) if gid else []
+    today = dt.datetime.now(dt.timezone.utc)
+    people = []
+    for m in rows:
+        joins = await run(db.member_joins, gid, m["user_id"])
+        first = min((j.joined_at for j in joins), default=m["joined_at"])
+        days = (today - first.replace(tzinfo=dt.timezone.utc)).days if first else 0
+        people.append({**m, "days": days, "warns": await run(db.warning_count, gid, m["user_id"])})
+    guild = discord_bot.bot.get_guild(gid) if discord_bot.bot.is_ready() else None
+    return templates.TemplateResponse(request=request, name="members.html", context={
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+        "people": people, "q": q, "gid": gid, "tz": TZ_LABEL,
+        "server": (guild.name if guild else "") or "your server",
+    })
+
+
+async def member_history(request):
+    if not authed(request):
+        return redirect("/login")
+    gid = parse_id(request.query_params.get("g")) or _one_guild_id()
+    uid = parse_id(request.query_params.get("u"))
+    if not uid:
+        return redirect("/members")
+    joins = await run(db.member_joins, gid, uid)
+    warns = await run(db.list_warnings, gid, uid)
+    devices = await run(db.member_devices, gid, uid)
+    guild = discord_bot.bot.get_guild(gid) if discord_bot.bot.is_ready() else None
+    member = guild.get_member(uid) if guild else None
+    name = (joins[0].username if joins else None) or (str(member) if member else str(uid))
+    first_join = min((j.joined_at for j in joins), default=None)
+    today = dt.datetime.now(dt.timezone.utc)
+    days = (today - first_join.replace(tzinfo=dt.timezone.utc)).days if first_join else None
+    status = joins[0].status if joins else "unknown"
+    in_server = member is not None
+    return templates.TemplateResponse(request=request, name="member.html", context={
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+        "uid": uid, "gid": gid, "name": name, "joins": joins, "warns": warns, "devices": devices,
+        "active_warns": sum(1 for w in warns if w.active), "days": days, "status": status,
+        "in_server": in_server, "server": (guild.name if guild else "") or "your server",
+        "first_join": first_join, "tz": TZ_LABEL, "now": today,
+    })
+
+
+async def member_warn(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    gid = parse_id(form.get("gid"))
+    uid = parse_id(form.get("uid"))
+    reason = str(form.get("reason", "")).strip()[:500]
+    if gid is None or uid is None or gid not in await run(db.allowed_guild_ids):
+        flash(request, "Invalid request.")
+        return redirect("/members")
+    if not reason:
+        flash(request, "Please type a reason for the warning.")
+        return redirect(f"/member?u={uid}&g={gid}")
+    name = ""
+    joins = await run(db.member_joins, gid, uid)
+    if joins:
+        name = joins[0].username
+    await run(db.add_warning, gid, uid, name, reason)
+    flash(request, "Warning added.")
+    return redirect(f"/member?u={uid}&g={gid}")
+
+
+async def member_unwarn(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    wid = parse_id(form.get("warn_id"))
+    uid = parse_id(form.get("uid"))
+    gid = parse_id(form.get("gid"))
+    if wid is None:
+        flash(request, "Invalid request.")
+        return redirect("/members")
+    await run(db.remove_warning, wid)
+    flash(request, "Warning removed.")
+    return redirect(f"/member?u={uid}&g={gid}")
+
+
+async def member_export(request):
+    if not authed(request):
+        return redirect("/login")
+    gid = parse_id(request.query_params.get("g")) or _one_guild_id()
+    uid = parse_id(request.query_params.get("u"))
+    if not uid:
+        return redirect("/members")
+    joins = await run(db.member_joins, gid, uid)
+    warns = await run(db.list_warnings, gid, uid)
+    devices = await run(db.member_devices, gid, uid)
+    name = (joins[0].username if joins else None) or str(uid)
+    first = min((j.joined_at for j in joins), default=None)
+    days = (dt.datetime.now(dt.timezone.utc) - first.replace(tzinfo=dt.timezone.utc)).days if first else "-"
+    L = [f"MEMBER HISTORY  -  {name}", f"User ID: {uid}", f"Days in server: {days}",
+         f"Current status: {joins[0].status if joins else 'unknown'}",
+         f"Generated: {local(dt.datetime.now(dt.timezone.utc).replace(tzinfo=None))} {TZ_LABEL}", "",
+         f"WARNINGS ({sum(1 for w in warns if w.active)} active / {len(warns)} total)"]
+    L += [f"  [{local(w.created_at)}] {'ACTIVE ' if w.active else 'removed'} - {w.reason}" for w in warns] if warns else ["  none"]
+    L += ["", "JOIN HISTORY"]
+    L += [f"  [{local(j.joined_at)}] {j.status}" + (f" (decided {local(j.decided_at)})" if j.decided_at else "")
+          + (f" flags: {j.flags}" if j.flags else "") for j in joins] if joins else ["  none"]
+    L += ["", "DEVICES SEEN"]
+    L += [f"  [{local(d.created_at)}] {d.device} | {d.tz} | {d.screen}" for d in devices] if devices else ["  none"]
+    body = "\n".join(L).encode()
+    safe = "".join(ch for ch in name if ch.isalnum() or ch in "-_") or "member"
+    return Response(body, media_type="text/plain; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="history-{safe}-{uid}.txt"'})
+
+
+async def health(request):async def health(request):
     return PlainTextResponse("ok")
 
 
@@ -878,6 +998,11 @@ app = Starlette(
         Route("/security/decide", security_decide, methods=["POST"]),
         Route("/security/verify", security_verify, methods=["POST"]),
         Route("/security/resend", security_resend, methods=["POST"]),
+        Route("/members", members_page),
+        Route("/member", member_history),
+        Route("/member/warn", member_warn, methods=["POST"]),
+        Route("/member/unwarn", member_unwarn, methods=["POST"]),
+        Route("/member/export", member_export),
         Route("/api/security/live", security_live),
         Route("/api/uploads/live", uploads_live),
         Route("/uploads/channels", uploads_channels, methods=["POST"]),

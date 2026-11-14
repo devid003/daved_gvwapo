@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ name }}{% endblock %}
+{% block head %}
+<style>
+@media print{
+  .side,.head .row,.noprint{display:none!important}
+  .shell{grid-template-columns:1fr} .main{padding:0}
+  .panel{break-inside:avoid;border-color:#ccc}
+  body{background:#fff}
+}
+.tl{position:relative;margin:0;padding:4px 0 4px 22px;list-style:none}
+.tl:before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:var(--line)}
+.tl li{position:relative;padding:8px 0}
+.tl li:before{content:"";position:absolute;left:-19px;top:13px;width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--surface)}
+.tl .when{font-size:12px;color:var(--muted)}
+.idrow{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:14px}
+</style>
+{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>{{ name }}</h1>
+    <p class="idrow"><span class="mono">ID {{ uid }}</span><span>Status: {{ {'allowed':'Joined'}.get(status, status|capitalize) }}</span>
+      {% if days is not none %}<span>{{ days }} day{{ '' if days == 1 else 's' }} in server</span>{% endif %}
+      <span>{{ 'In the server now' if in_server else 'Not in the server' }}</span></p></div>
+  <div class="row noprint">
+    <a class="btn ghost" href="/members?g={{ gid }}">Back</a>
+    <button class="btn" onclick="window.print()">Print / Save PDF</button>
+    <a class="btn" href="/member/export?u={{ uid }}&g={{ gid }}">Export .txt</a>
+  </div>
+</div>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Warnings <span class="badge {{ 'off' if active_warns else '' }}" style="margin-left:6px">{{ active_warns }} active</span></h2>
+    <p>Total {{ warns|length }} on record.</p></div></div>
+  <div class="panel-body noprint">
+    <form method="post" action="/member/warn" class="row" style="align-items:flex-end">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="uid" value="{{ uid }}"><input type="hidden" name="gid" value="{{ gid }}">
+      <label class="field" style="flex:1;min-width:220px">Reason for warning
+        <input type="text" name="reason" placeholder="e.g. Spamming links in #general" required></label>
+      <button class="btn bad">Add warning</button>
+    </form>
+  </div>
+  {% if warns %}
+  <div class="scroll"><table>
+    <tr><th>When ({{ tz }})</th><th>Reason</th><th>State</th><th class="noprint"></th></tr>
+    {% for w in warns %}
+    <tr>
+      <td class="nowrap">{{ w.created_at|local }}</td>
+      <td>{{ w.reason }}</td>
+      <td>{% if w.active %}<span class="badge off">Active</span>{% else %}<span class="muted small">Removed</span>{% endif %}</td>
+      <td class="actions noprint">{% if w.active %}
+        <form method="post" action="/member/unwarn" class="inline">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="warn_id" value="{{ w.id }}">
+          <input type="hidden" name="uid" value="{{ uid }}"><input type="hidden" name="gid" value="{{ gid }}">
+          <button class="btn sm">Remove</button>
+        </form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">No warnings.</div>{% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Join history</h2><p>Every time this member joined and what happened.</p></div></div>
+  <div class="panel-body">
+  {% if joins %}
+  <ul class="tl">
+    {% for j in joins %}
+    <li>
+      <div><b>{{ {'allowed':'Joined (gate off)','approved':'Approved','denied':'Denied','banned':'Banned','pending':'Joined, waiting for approval','left':'Left while pending'}.get(j.status, j.status|capitalize) }}</b></div>
+      <div class="when">Joined {{ j.joined_at|local }}{% if j.decided_at %} &middot; decided {{ j.decided_at|local }}{% endif %}
+        {% if j.account_created %} &middot; account made {{ j.account_created.strftime("%b %d, %Y") }}{% endif %}</div>
+      {% if j.flags %}<div class="when">Flags: {{ j.flags }}</div>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<div class="muted">No join records.</div>{% endif %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Devices seen</h2><p>From the verification page. No raw IPs are stored.</p></div></div>
+  {% if devices %}
+  <div class="scroll"><table>
+    <tr><th>When ({{ tz }})</th><th>Device</th><th>Timezone</th><th>Screen</th></tr>
+    {% for d in devices %}
+    <tr><td class="nowrap">{{ d.created_at|local }}</td><td>{{ d.device }}</td><td>{{ d.tz }}</td><td>{{ d.screen }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">No device checks recorded.</div>{% endif %}
+</section>
+{% endblock %}
