@@ -18,7 +18,7 @@
         <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ j.id }}">
         <button class="btn sm">Resend code</button>
       </form>
-      {% for act, label, cls in [('approve','Approve','ok'),('deny','Deny','bad'),('ban','Ban','bad')] %}
+      {% for act, label, cls in [('deny','Deny','bad'),('ban','Ban','bad')] %}
       <form method="post" action="/security/decide" class="inline" {% if act == 'ban' %}onsubmit='return confirm({{ ("Ban " ~ j.username ~ "? They will not be able to rejoin.")|tojson }})'{% elif act == 'approve' %}onsubmit='return confirm({{ ("Approve " ~ j.username ~ " without a code?")|tojson }})'{% endif %}>
         <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ j.id }}">
         <input type="hidden" name="action" value="{{ act }}"><button class="btn sm {{ cls }}">{{ label }}</button>

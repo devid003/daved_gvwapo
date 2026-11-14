@@ -19,6 +19,9 @@ import asyncio
 import datetime as dt
 import logging
 import secrets
+import hashlib
+import hmac
+import os
 
 import discord
 
@@ -173,6 +176,18 @@ async def restore_roles(member: discord.Member) -> list[str]:
 # ------------------------- verification codes -------------------------
 CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no 0/O or 1/I to avoid mix-ups
 MAX_TRIES = 5
+_CODE_KEY = (os.getenv("SECRET_KEY") or "dabid-bots-code-key").encode()
+
+
+def _hash_code(code: str) -> str:
+    """Codes are stored hashed, so a database dump does not reveal them."""
+    return hmac.new(_CODE_KEY, code.encode(), hashlib.sha256).hexdigest()
+
+
+def _code_matches(saved: str, code: str) -> bool:
+    if len(saved) == 64:                      # hashed (new)
+        return hmac.compare_digest(saved, _hash_code(code))
+    return hmac.compare_digest(saved, code)   # plain codes saved before this update
 
 
 def new_code() -> str:
@@ -234,7 +249,7 @@ async def verify_code(raw: str) -> str:
     _TRIES["n"] += 1
     for j in await run(db.list_joins, None, True, 500):
         saved = await run(db.get_setting, f"code:{j.id}", "")
-        if saved and secrets.compare_digest(saved, code):
+        if saved and _code_matches(saved, code):
             _TRIES["n"] = 0
             return await decide(j.id, "approve")
     if _TRIES["n"] >= MAX_TRIES:

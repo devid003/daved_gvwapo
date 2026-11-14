@@ -91,7 +91,7 @@
 <section class="panel">
   <div class="panel-head">
     <div><h2>Waiting for approval <span class="badge pending" id="pending-count" style="margin-left:6px{{ ';display:none' if not pending }}">{{ pending|length }}</span></h2>
-      <p>Verify their code above, or decide here. Deny removes them. Ban removes them and blocks them from coming back.</p></div>
+      <p>Approve by typing their code above. Deny removes them. Ban removes them and blocks them from coming back.</p></div>
     <span class="live-pill" id="live-pill"><span class="dot on"></span>Live <span class="muted" id="live-age">just now</span></span>
   </div>
   <div id="pending-wrap">{% include "_sec_pending.html" %}</div>

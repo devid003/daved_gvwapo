@@ -490,7 +490,7 @@ async def security_decide(request):
     raw = str(form.get("id", "")).strip()
     jid = int(raw) if raw.isdigit() else None
     action = str(form.get("action", ""))
-    if jid is None or action not in ("approve", "deny", "ban"):
+    if jid is None or action not in ("deny", "ban"):   # approving needs the member's code
         flash(request, "Invalid request.")
         return redirect("/security")
     if not discord_bot.bot.is_ready():
@@ -581,6 +581,39 @@ async def security_resend(request):
     flash(request, await security.resend_code(int(raw)))
     return redirect("/security")
 
+class SecurityHeaders:
+    """Browser security headers on every response: no framing, no sniffing, strict CSP."""
+    CSP = ("default-src 'self'; img-src 'self' data: https://cdn.discordapp.com; "
+           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+           "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; "
+           "base-uri 'none'; form-action 'self'; object-src 'none'")
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                extra = {
+                    b"x-frame-options": b"DENY",
+                    b"x-content-type-options": b"nosniff",
+                    b"referrer-policy": b"no-referrer",
+                    b"permissions-policy": b"camera=(), microphone=(), geolocation=()",
+                    b"content-security-policy": self.CSP.encode(),
+                }
+                if os.getenv("RENDER"):
+                    extra[b"strict-transport-security"] = b"max-age=31536000"
+                have = {k.lower() for k, _ in headers}
+                headers += [(k, v) for k, v in extra.items() if k not in have]
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
 async def health(request):
     return PlainTextResponse("ok")
 
@@ -635,6 +668,7 @@ app = Starlette(
         Route("/health", health),
     ],
     middleware=[
+        Middleware(SecurityHeaders),
         Middleware(
             SessionMiddleware, secret_key=SECRET_KEY, same_site="lax",
             https_only=bool(os.getenv("RENDER")), max_age=60 * 60 * 12,
