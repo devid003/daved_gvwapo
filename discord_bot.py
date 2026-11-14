@@ -1,3 +1,5 @@
+
+"""Discord bot: only works in servers and for members approved in the dashboard."""
 import asyncio
 import base64
 import io
@@ -34,6 +36,10 @@ DAILY_LIMIT = int(os.getenv("DAILY_LIMIT_PER_USER", "0"))
 
 run = asyncio.to_thread
 
+# Image generation ON/OFF switch (changed from the dashboard, saved in the database)
+IMAGE_STATE = {"enabled": os.getenv("IMAGE_ENABLED", "true").lower() not in ("0", "false", "no", "off")}
+DISABLED_MSG = "🔒 Image generation is temporarily disabled by the owner. Please try again later."
+
 
 def clean(msg: str) -> str:
     """Never let a secret end up in logs or the dashboard."""
@@ -63,6 +69,8 @@ async def log_use(interaction, command, prompt, status, ms, error=""):
         error,
     )
 
+
+# ---------- access control ----------
 class LockedTree(app_commands.CommandTree):
     """Runs before every command: server must be allowed AND member approved."""
 
@@ -114,6 +122,8 @@ class LockedTree(app_commands.CommandTree):
         )
         return False
 
+
+# Other modules (e.g. upload_reports) add start-up functions here
 EXTRA_SETUP: list = []
 
 
@@ -180,6 +190,7 @@ async def _wait_reconcile():
     await bot.wait_until_ready()
 
 
+# ---------- image generation ----------
 async def generate_image(prompt: str) -> bytes:
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=120)
@@ -212,7 +223,9 @@ async def generate_image(prompt: str) -> bytes:
                 async with s.get(item["url"]) as img:
                     return await img.read()
 
-
+        # Pollinations: the token MUST be sent, otherwise requests count as
+        # anonymous and get a watermark. Tries the newer API first, then the
+        # classic one. POLLINATIONS_URL in .env overrides both.
         headers = {"Authorization": f"Bearer {POLLINATIONS_TOKEN}"} if POLLINATIONS_TOKEN else {}
         params = {"width": 1024, "height": 1024, "nologo": "true", "private": "true",
                   "model": POLLINATIONS_MODEL}
@@ -243,6 +256,7 @@ def ms_since(t0: float) -> int:
     return int((time.monotonic() - t0) * 1000)
 
 
+# ---------- commands ----------
 @bot.tree.command(
     name="imagine",
     description="Generate a picture from a prompt",
@@ -256,6 +270,9 @@ async def imagine(
     interaction: discord.Interaction,
     prompt: app_commands.Range[str, 1, 1000],
 ):
+    if not IMAGE_STATE["enabled"]:
+        await interaction.response.send_message(DISABLED_MSG, ephemeral=True)
+        return
     uid = interaction.user.id
 
     if DAILY_LIMIT and uid not in OWNER_IDS:
@@ -329,6 +346,10 @@ async def auto_start(
     prompt: app_commands.Range[str, 1, 1000],
     every_minutes: app_commands.Range[int, 1, 10080],
 ):
+    if not IMAGE_STATE["enabled"]:
+        await interaction.response.send_message(DISABLED_MSG, ephemeral=True)
+        return
+
     if every_minutes < MIN_INTERVAL_MIN:
         await interaction.response.send_message(
             f"Minimum interval is {MIN_INTERVAL_MIN} minutes.",
@@ -424,6 +445,8 @@ async def on_error(
             msg, ephemeral=True
         )
 
+
+# ---------- scheduler ----------
 @tasks.loop(seconds=30)
 async def scheduler():
     try:
@@ -432,6 +455,9 @@ async def scheduler():
 
         for job in await run(db.due_jobs, now):
             await run(db.bump_job, job.id, now + job.interval_s)
+
+            if not IMAGE_STATE["enabled"]:
+                continue  # image generation switched off: skip this run
 
             if job.guild_id not in allowed:
                 continue
@@ -481,6 +507,8 @@ async def scheduler():
 async def _wait_scheduler():
     await bot.wait_until_ready()
 
+
+# ---------- start-up with rate-limit protection ----------
 async def start_with_backoff(token: str):
     """
     Like bot.start(), but if Discord answers 429 (shared host IP temporarily

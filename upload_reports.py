@@ -1,5 +1,6 @@
 """
-YTA + FBA best-upload-time reports (US audience) and live USD <-> PHP rate.
+YTA + FBA best-upload-time reports (US audience, plus Philippine audience for
+Pinoy niches) and live USD <-> PHP rate.
 
 Runs inside the same Discord bot as the image generator:
 - every N minutes: a separate BEST TIME TO UPLOAD report per niche
@@ -75,23 +76,42 @@ def us_times(t: datetime, with_day: bool = False) -> str:
     return f"{fmt(t, ET, with_day)} ET • {fmt(t, CT)} CT • {fmt(t, MT)} MT • {fmt(t, PT)} PT"
 
 
+# Each niche has an audience. Its "days" windows are written in that audience's local time.
+AUDIENCES = {
+    "US": {"tz": ET, "flag": "🇺🇸", "label": "US audience", "abbr": "ET"},
+    "PH": {"tz": PH, "flag": "🇵🇭", "label": "Philippine audience", "abbr": "PH time"},
+}
+
+
+def aud(niche: dict) -> dict:
+    return AUDIENCES.get(niche.get("audience", "US"), AUDIENCES["US"])
+
+
+def local_times(niche: dict, t: datetime, with_day: bool = False) -> str:
+    """'Sat 7:00 PM ET • 6:00 PM CT • ...' for US niches, 'Sat 7:00 PM PH time' for PH niches."""
+    if aud(niche)["tz"] is ET:
+        return us_times(t, with_day)
+    return f"{fmt(t, aud(niche)['tz'], with_day)} {aud(niche)['abbr']}"
+
+
 def windows_for(niche: dict, day) -> list:
     return sorted(niche["days"][day.weekday()])
 
 
-def window_dt(day, w):
+def window_dt(day, w, tz: ZoneInfo = ET):
     sh, sm, eh, em = w
-    return (datetime.combine(day, time(sh, sm), tzinfo=ET),
-            datetime.combine(day, time(eh, em), tzinfo=ET))
+    return (datetime.combine(day, time(sh, sm), tzinfo=tz),
+            datetime.combine(day, time(eh, em), tzinfo=tz))
 
 
 def find_window(niche: dict, now: datetime):
-    """(start, end, is_live) of the current or next upload window, in ET."""
-    now = now.astimezone(ET)
+    """(start, end, is_live) of the current or next upload window, in the niche's audience time."""
+    tz = aud(niche)["tz"]
+    now = now.astimezone(tz)
     for offset in range(8):
         day = (now + timedelta(days=offset)).date()
         for w in windows_for(niche, day):
-            start, end = window_dt(day, w)
+            start, end = window_dt(day, w, tz)
             if start <= now < end:
                 return start, end, True
             if start > now:
@@ -105,37 +125,46 @@ def countdown(delta: timedelta) -> str:
     return f"{h}h {m}m" if h else f"{m}m"
 
 
+def _window_line(niche: dict, s: datetime, e: datetime) -> str:
+    a = aud(niche)
+    if a["tz"] is ET:
+        return (f"**{fmt(s, ET)}–{fmt(e, ET)} ET**\n"
+                f"　{fmt(s, CT)}–{fmt(e, CT)} CT • {fmt(s, MT)}–{fmt(e, MT)} MT • {fmt(s, PT)}–{fmt(e, PT)} PT")
+    return f"**{fmt(s, a['tz'])}–{fmt(e, a['tz'])} {a['abbr']}**"
+
+
 # ------------------------- embeds -------------------------
 def niche_embed(platform: str, niche: dict, now: datetime) -> discord.Embed:
     is_yt = platform == "youtube"
-    now = now.astimezone(ET)
+    a = aud(niche)
+    now = now.astimezone(a["tz"])
     start, end, live = find_window(niche, now)
     if live:
-        status = f"🟢 **UPLOAD NOW!** Best time until **{fmt(end, ET)} ET**\n({countdown(end - now)} left)"
+        status = (f"🟢 **UPLOAD NOW!** Best time until **{fmt(end, a['tz'])} {a['abbr']}**\n"
+                  f"({countdown(end - now)} left)")
     else:
-        status = f"⏳ **Next best time:** {us_times(start, True)}\nStarts in **{countdown(start - now)}**"
+        status = f"⏳ **Next best time:** {local_times(niche, start, True)}\nStarts in **{countdown(start - now)}**"
 
     lines = []
     for w in windows_for(niche, now.date()):
-        s, e = window_dt(now.date(), w)
+        s, e = window_dt(now.date(), w, a["tz"])
         mark = "✅" if e <= now else ("🟢" if s <= now < e else "🕐")
-        lines.append(f"{mark} **{fmt(s, ET)}–{fmt(e, ET)} ET**\n"
-                     f"　{fmt(s, CT)}–{fmt(e, CT)} CT • {fmt(s, MT)}–{fmt(e, MT)} MT • "
-                     f"{fmt(s, PT)}–{fmt(e, PT)} PT")
+        lines.append(f"{mark} {_window_line(niche, s, e)}")
 
     tag = "▶️ YTA" if is_yt else "📘 FBA"
+    where = "US" if a["tz"] is ET else "PH"
     embed = discord.Embed(
-        title=f"{tag} • {niche['emoji']} {niche['name']} — BEST TIME TO UPLOAD 🇺🇸",
-        description=f"🕒 **Current US time:** {us_times(now, True)}",
+        title=f"{tag} • {niche['emoji']} {niche['name']} — BEST TIME TO UPLOAD {a['flag']}",
+        description=f"🕒 **Current {where} time:** {local_times(niche, now, True)}",
         color=(0x00C853 if live else (0xFF0000 if is_yt else 0x1877F2)),
         timestamp=now,
     )
     embed.add_field(name="⏱️ Status", value=status, inline=False)
-    embed.add_field(name=f"📅 Best Time to Upload Today ({DAY_NAMES[now.weekday()]})",
+    embed.add_field(name=f"📅 Best Time to Upload Today ({DAY_NAMES[now.weekday()]}, {where})",
                     value="\n".join(lines), inline=False)
     embed.add_field(name="🏷️ Hashtags", value=" ".join(niche["hashtags"]), inline=False)
     embed.set_footer(text=f"{'YouTube Automation' if is_yt else 'Facebook Automation'} • "
-                          f"Target: US audience • Report every {STATE['interval']} mins")
+                          f"Target: {a['label']} • Report every {STATE['interval']} mins")
     return embed
 
 
@@ -147,17 +176,46 @@ def build_reports(now: datetime | None = None) -> list[tuple[str, discord.Embed]
 
 
 def schedule_rows(niches: dict, now: datetime) -> list[dict]:
-    """Today's schedule as plain data (used by the embed and the dashboard)."""
-    now = now.astimezone(ET)
+    """Today's schedule as plain data (each niche in its own audience time)."""
     rows = []
     for n in niches.values():
-        start, end, live = find_window(n, now)
-        wins = [window_dt(now.date(), w) for w in windows_for(n, now.date())]
+        a = aud(n)
+        local_now = now.astimezone(a["tz"])
+        start, end, live = find_window(n, local_now)
+        wins = [window_dt(local_now.date(), w, a["tz"]) for w in windows_for(n, local_now.date())]
         rows.append({
-            "emoji": n["emoji"], "name": n["name"], "live": live,
-            "windows": " | ".join(f"{fmt(s, ET)}–{fmt(e, ET)}" for s, e in wins),
-            "next": (f"until {fmt(end, ET)} ET" if live else
-                     f"{fmt(start, ET, True)} ET (in {countdown(start - now)})"),
+            "emoji": n["emoji"], "name": n["name"], "live": live, "abbr": a["abbr"], "flag": a["flag"],
+            "windows": " | ".join(f"{fmt(s, a['tz'])}–{fmt(e, a['tz'])}" for s, e in wins),
+            "next": (f"until {fmt(end, a['tz'])} {a['abbr']}" if live else
+                     f"{fmt(start, a['tz'], True)} {a['abbr']} (in {countdown(start - local_now)})"),
+        })
+    return rows
+
+
+def timeline_rows(niches: dict, now: datetime) -> list[dict]:
+    """Today's windows on a 24-hour track in each niche's own audience time (dashboard timeline)."""
+    rows = []
+    for n in niches.values():
+        a = aud(n)
+        local_now = now.astimezone(a["tz"])
+        now_min = local_now.hour * 60 + local_now.minute
+        start, end, live = find_window(n, local_now)
+        bands = []
+        for sh, sm, eh, em in windows_for(n, local_now.date()):
+            s0, s1 = sh * 60 + sm, eh * 60 + em
+            s, e = window_dt(local_now.date(), (sh, sm, eh, em), a["tz"])
+            bands.append({
+                "left": round(s0 / 1440 * 100, 2), "width": round((s1 - s0) / 1440 * 100, 2),
+                "label": f"{fmt(s, a['tz'])}–{fmt(e, a['tz'])} {a['abbr']}",
+                "state": "live" if s0 <= now_min < s1 else ("past" if s1 <= now_min else "next"),
+            })
+        rows.append({
+            "emoji": n["emoji"], "name": n["name"], "live": live, "bands": bands,
+            "local": a["tz"] is not ET, "abbr": a["abbr"],
+            "now_pct": round(now_min / 1440 * 100, 2),
+            "status": (f"Live until {fmt(end, a['tz'])} {a['abbr']}" if live else
+                       f"Next {fmt(start, a['tz'], start.date() != local_now.date())} {a['abbr']}, "
+                       f"in {countdown(start - local_now)}"),
         })
     return rows
 
@@ -165,31 +223,37 @@ def schedule_rows(niches: dict, now: datetime) -> list[dict]:
 def schedule_embed(now: datetime | None = None) -> discord.Embed:
     now = (now or datetime.now(ET)).astimezone(ET)
     embed = discord.Embed(
-        title=f"📅 TODAY'S BEST UPLOAD TIMES — {now.strftime('%A, %B')} {now.day} (US) 🇺🇸",
+        title=f"📅 TODAY'S BEST UPLOAD TIMES — {now.strftime('%A, %B')} {now.day}",
         color=0xFFB300, timestamp=now,
     )
     for label, niches in (("▶️ YTA", YOUTUBE), ("📘 FBA", FACEBOOK)):
         embed.add_field(name=label, inline=False, value="\n".join(
-            f"{r['emoji']} **{r['name']}:** {r['windows']} ET" for r in schedule_rows(niches, now)))
-    embed.set_footer(text="Daily schedule • Target: US audience")
+            f"{r['emoji']} **{r['name']}:** {r['windows']} {r['abbr']}" for r in schedule_rows(niches, now)))
+    embed.set_footer(text="Daily schedule • US niches in ET, Pinoy niches in PH time")
     return embed
 
 
 def niche_detail_embed(key: str) -> discord.Embed:
     niche = ALL_NICHES[key]
-    now = datetime.now(ET)
+    a = aud(niche)
+    now = datetime.now(a["tz"])
     start, end, live = find_window(niche, now)
-    embed = discord.Embed(title=f"{niche['emoji']} {niche['name']} — Weekly Best Upload Times (US)",
+    embed = discord.Embed(title=f"{niche['emoji']} {niche['name']} — Weekly Best Upload Times {a['flag']}",
                           color=0xFF0000 if key.startswith("yt:") else 0x1877F2)
     for wd in range(7):
         day = now.date() + timedelta(days=(wd - now.weekday()))
-        wins = "\n".join(f"**{fmt(s, ET)}–{fmt(e, ET)} ET** • {fmt(s, PT)}–{fmt(e, PT)} PT"
-                         for s, e in (window_dt(day, w) for w in windows_for(niche, day)))
+        if a["tz"] is ET:
+            wins = "\n".join(f"**{fmt(s, ET)}–{fmt(e, ET)} ET** • {fmt(s, PT)}–{fmt(e, PT)} PT"
+                             for s, e in (window_dt(day, w, ET) for w in windows_for(niche, day)))
+        else:
+            wins = "\n".join(f"**{fmt(s, a['tz'])}–{fmt(e, a['tz'])} {a['abbr']}**"
+                             for s, e in (window_dt(day, w, a["tz"]) for w in windows_for(niche, day)))
         embed.add_field(name=DAY_NAMES[wd], value=wins, inline=True)
     embed.add_field(name="⏱️ Status", inline=False,
                     value="🟢 Upload now!" if live else
-                    f"Next: {fmt(start, ET, True)} ET (in {countdown(start - now)})")
+                    f"Next: {fmt(start, a['tz'], True)} {a['abbr']} (in {countdown(start - now)})")
     embed.add_field(name="🏷️ Hashtags", value=" ".join(niche["hashtags"]), inline=False)
+    embed.set_footer(text=f"Target: {a['label']}")
     return embed
 
 

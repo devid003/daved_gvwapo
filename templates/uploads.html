@@ -1,74 +1,158 @@
 {% extends "base.html" %}
 {% block title %}Upload times{% endblock %}
+{% block head %}
+<style>
+.air{padding:6px 20px 18px}
+.air-group{margin-top:14px}
+.air-group h3{font-size:13px;font-weight:600;margin:0 0 6px;display:flex;align-items:center;gap:8px;color:var(--muted)}
+.air-group h3 i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.air-row{display:grid;grid-template-columns:200px minmax(0,1fr);gap:14px;align-items:center;padding:7px 0;border-top:1px solid var(--line)}
+.air-name{font-weight:600;font-size:14px;line-height:1.3}
+.air-name small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.air-name.is-live small{color:var(--live);font-weight:600}
+.track{position:relative;height:26px;background:var(--sunk);border-radius:5px;
+  background-image:linear-gradient(to right,var(--line) 1px,transparent 1px);background-size:12.5% 100%}
+.band{position:absolute;top:4px;bottom:4px;border-radius:4px;opacity:.9}
+.yt .band{background:var(--yt)} .fb .band{background:var(--fb)}
+.band.past{opacity:.28}
+.band.live{background:var(--live)!important;opacity:1;box-shadow:0 0 0 2px color-mix(in srgb,var(--live) 30%,transparent)}
+.now{position:absolute;top:-6px;bottom:-6px;width:2px;background:var(--ink);border-radius:2px;z-index:2}
+.axis{display:grid;grid-template-columns:200px minmax(0,1fr);gap:14px;margin-top:6px}
+.ticks{position:relative;height:18px;font-size:12px;color:var(--faint)}
+.ticks span{position:absolute;transform:translateX(-50%)}
+.ticks span:first-child{transform:none} .ticks span:last-child{transform:translateX(-100%)}
+.now-tag{position:absolute;top:-30px;transform:translateX(-50%);background:var(--ink);color:var(--surface);font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;white-space:nowrap;z-index:3}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.fx{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.fx b{font-size:28px;line-height:1}
+.chan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.server-block{padding:16px 20px;border-top:1px solid var(--line)}
+.server-block:first-of-type{border-top:0}
+@media (max-width:820px){
+  .air-row,.axis{grid-template-columns:1fr;gap:6px}
+  .axis > div:first-child{display:none}
+}
+</style>
+{% endblock %}
 {% block content %}
-<h1>📈 Upload times &amp; USD ⇄ PHP</h1>
-{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
-
-<div class="grid">
-  <div class="stat">
-    <div class="n"><span class="dot {{ 'on' if online and not state.paused }}"></span>{{ 'Paused' if state.paused else ('Running' if online else 'Waiting for bot') }}</div>
-    <div class="l">Auto reports</div>
-  </div>
-  <div class="stat"><div class="n">{{ state.interval }} min</div><div class="l">Upload-time reports</div></div>
-  <div class="stat"><div class="n">{{ state.fx_interval }} min</div><div class="l">Exchange rate</div></div>
-  <div class="stat"><div class="n">{{ fx_rate }}</div><div class="l">1 USD · {{ fx_at }}</div></div>
-  <div class="stat"><div class="n" style="font-size:16px">{{ report_at }}</div><div class="l">Last reports sent ({{ tz }})</div></div>
-</div>
-
-<div class="card">
-  <h2>Controls</h2>
+<div class="head">
+  <div><h1>Upload times</h1><p>Best posting windows for a US audience. It’s {{ us_now }} right now.</p></div>
   <div class="row">
-    <form method="post" action="/uploads/settings" class="inline">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input type="hidden" name="interval" value="{{ state.interval }}">
-      <input type="hidden" name="fx_interval" value="{{ state.fx_interval }}">
-      {% if state.paused %}
-      <input type="hidden" name="action" value="resume"><button class="btn ok">▶️ Resume reports</button>
-      {% else %}
-      <input type="hidden" name="action" value="pause"><button class="btn">⏸️ Pause reports</button>
-      {% endif %}
-    </form>
     <form method="post" action="/uploads/send" class="inline">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="reports">
-      <button class="btn primary">📤 Send upload reports now</button>
-    </form>
-    <form method="post" action="/uploads/send" class="inline">
-      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="all">
-      <button class="btn">📅 Send reports + daily schedule</button>
-    </form>
-    <form method="post" action="/uploads/send" class="inline">
-      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="fx">
-      <button class="btn">💱 Send exchange rate now</button>
+      <button class="btn primary">Send reports now</button>
     </form>
   </div>
-
-  <form method="post" action="/uploads/settings" class="row" style="margin-top:14px">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <input type="hidden" name="action" value="save">
-    <label class="muted">Upload reports every
-      <input type="number" name="interval" min="1" max="1440" value="{{ state.interval }}" style="width:90px"> min</label>
-    <label class="muted">Exchange rate every
-      <input type="number" name="fx_interval" min="5" max="1440" value="{{ state.fx_interval }}" style="width:90px"> min</label>
-    <button class="btn primary">Save</button>
-  </form>
 </div>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
 
-<div class="card">
-  <h2>📍 Report channels per server</h2>
-  <p class="muted">Pick where each report goes. Anything left on “use default” goes to the default channel. Only approved servers (Overview page) get reports.</p>
+<section class="panel">
+  <div class="panel-head">
+    <div><h2>Today on air, {{ today }}</h2><p>US niches in Eastern time, Pinoy niches in Philippine time. Green means post now.</p></div>
+  </div>
+  <div class="air">
+    <div class="axis" aria-hidden="true">
+      <div></div>
+      <div class="ticks">
+        {% for h,l in [(0,'12a'),(3,'3a'),(6,'6a'),(9,'9a'),(12,'12p'),(15,'3p'),(18,'6p'),(21,'9p'),(24,'12a')] %}
+        <span style="left:{{ (h/24*100)|round(2) }}%">{{ l }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% for label, key, rows in timeline %}
+    <div class="air-group {{ key }}">
+      <h3><i style="background:var(--{{ key }})"></i>{{ label }}</h3>
+      {% for r in rows %}
+      <div class="air-row">
+        <div class="air-name {{ 'is-live' if r.live }}">{{ r.emoji }} {{ r.name }}{% if r.local %} <span class="badge" style="font-size:11px;padding:0 7px">PH time</span>{% endif %}<small>{{ r.status }}</small></div>
+        <div class="track">
+          {% if loop.first and loop.index0 == 0 and key == 'yt' %}<span class="now-tag" style="left:{{ now_pct }}%">{{ now_label }}</span>{% endif %}
+          <span class="now" style="left:{{ r.now_pct }}%"></span>
+          {% for b in r.bands %}
+          <span class="band {{ b.state }}" style="left:{{ b.left }}%;width:{{ b.width }}%" title="{{ b.label }}"></span>
+          {% endfor %}
+          <span class="sr">{{ r.name }}: {% for b in r.bands %}{{ b.label }}{{ ', ' if not loop.last }}{% endfor %}. {{ r.status }}.</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>Automatic reports
+        {% if state.paused %}<span class="badge pending" style="margin-left:6px">Paused</span>
+        {% elif online %}<span class="badge live" style="margin-left:6px">Running</span>
+        {% else %}<span class="badge off" style="margin-left:6px">Bot offline</span>{% endif %}</h2>
+      <p>Last reports sent {{ report_at }} ({{ tz }}).</p>
+    </div>
+    <div class="row">
+      <form method="post" action="/uploads/settings" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="interval" value="{{ state.interval }}">
+        <input type="hidden" name="fx_interval" value="{{ state.fx_interval }}">
+        {% if state.paused %}
+        <input type="hidden" name="action" value="resume"><button class="btn ok">Resume reports</button>
+        {% else %}
+        <input type="hidden" name="action" value="pause"><button class="btn">Pause reports</button>
+        {% endif %}
+      </form>
+      <form method="post" action="/uploads/send" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="all">
+        <button class="btn">Send reports and today's schedule</button>
+      </form>
+    </div>
+  </div>
+  <div class="panel-body">
+    <form method="post" action="/uploads/settings" class="row" style="align-items:flex-end">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="action" value="save">
+      <label class="field">Upload-time reports, every (minutes)
+        <input type="number" name="interval" min="1" max="1440" value="{{ state.interval }}" style="width:150px"></label>
+      <label class="field">Exchange rate, every (minutes)
+        <input type="number" name="fx_interval" min="5" max="1440" value="{{ state.fx_interval }}" style="width:150px"></label>
+      <button class="btn primary">Save intervals</button>
+    </form>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <div><h2>USD to PHP</h2><p>Mid-market rate, posted automatically every {{ state.fx_interval }} minutes.</p></div>
+    <form method="post" action="/uploads/send" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="fx">
+      <button class="btn">Send rate now</button>
+    </form>
+  </div>
+  <div class="panel-body">
+    {% if state.last_fx_rate %}
+    <div class="fx"><span class="muted">1 USD =</span><b>{{ fx_rate }}</b><span class="muted small">from {{ state.last_fx_source }}, {{ fx_at }}</span></div>
+    {% else %}
+    <div class="muted">No rate yet. It appears after the first automatic post, or press Send rate now.</div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Where reports go</h2><p>Pick a channel for each report. Anything on “Use default” goes to the default channel.</p></div></div>
   {% for s in servers %}
-  <div style="border-top:1px solid var(--line);padding:12px 0">
-    <div><b>{{ s.name }}</b> <span class="mono muted">{{ s.id }}</span>
-      {% if s.joined %}<span class="badge ok">bot inside</span>{% else %}<span class="badge pending">bot not inside / offline</span>{% endif %}</div>
+  <div class="server-block">
+    <div class="row" style="margin-bottom:12px">
+      <b>{{ s.name }}</b><span class="mono small">{{ s.id }}</span>
+      {% if s.joined %}<span class="badge live">Bot is in this server</span>{% else %}<span class="badge pending">Bot not connected here</span>{% endif %}
+    </div>
     {% if s.joined %}
-    <form method="post" action="/uploads/channels" style="margin-top:8px">
+    <form method="post" action="/uploads/channels">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="guild_id" value="{{ s.id }}">
-      <div class="grid" style="margin-bottom:8px">
+      <div class="chan-grid">
         {% for key, label in kinds %}
-        <label class="muted">{{ label }}<br>
-          <select name="{{ key }}" style="width:100%">
-            <option value="">{{ '(none)' if key == 'default' else '(use default)' }}</option>
+        <label class="field">{{ label }}
+          <select name="{{ key }}">
+            <option value="">{{ 'None' if key == 'default' else 'Use default' }}</option>
             {% for cid, cname in s.options %}
             <option value="{{ cid }}" {{ 'selected' if s.chans[key] == cid }}>#{{ cname }}</option>
             {% endfor %}
@@ -76,32 +160,14 @@
         </label>
         {% endfor %}
       </div>
-      <button class="btn primary">Save channels</button>
+      <button class="btn primary" style="margin-top:14px">Save channels</button>
     </form>
     {% else %}
-    <p class="muted" style="margin:6px 0 0">Channels appear here once the bot is online and inside this server.</p>
+    <p class="muted small" style="margin:0">Channels show up here once the bot is online and inside this server.</p>
     {% endif %}
   </div>
   {% else %}
-  <p class="muted">No approved servers yet. Add one on the Overview page.</p>
+  <div class="empty">No approved servers yet. Add one on the Overview page.</div>
   {% endfor %}
-</div>
-
-<div class="card">
-  <h2>🗓️ Today — {{ today }} (US)</h2>
-  <p class="muted">Current US time: {{ us_now }}</p>
-  {% for label, rows in [('▶️ YTA', yt_rows), ('📘 FBA', fb_rows)] %}
-  <div class="scroll"><table style="margin-bottom:12px">
-    <tr><th>{{ label }}</th><th>Best times today (ET)</th><th>Status</th></tr>
-    {% for r in rows %}
-    <tr>
-      <td>{{ r.emoji }} {{ r.name }}</td>
-      <td>{{ r.windows }}</td>
-      <td>{% if r.live %}<span class="badge ok">UPLOAD NOW</span> {{ r.next }}{% else %}<span class="muted">Next: {{ r.next }}</span>{% endif %}</td>
-    </tr>
-    {% endfor %}
-  </table></div>
-  {% endfor %}
-  <p class="muted" style="margin-bottom:0">Edit times and hashtags in <span class="mono">niches.py</span>.</p>
-</div>
+</section>
 {% endblock %}

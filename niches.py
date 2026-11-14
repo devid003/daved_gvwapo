@@ -1,5 +1,7 @@
 # =====================================================================
-#  NICHE DATA — all times are US EASTERN TIME (ET, New York), 24-hour.
+#  NICHE DATA — times are 24-hour, in the niche's AUDIENCE time:
+#    audience "US" (default) = US Eastern Time (ET, New York)
+#    audience "PH"           = Philippine time (Asia/Manila)
 #  Each niche has its own best upload windows for EVERY day of the week.
 #  Window format: (start_hour, start_min, end_hour, end_min)
 # =====================================================================
@@ -52,14 +54,15 @@ YOUTUBE = {
 
 FACEBOOK = {
     "ai_drama_pinoy": {
-        "name": "AI Drama Pinoy", "emoji": "🇵🇭",
+        "name": "AI Drama Pinoy", "emoji": "🇵🇭", "audience": "PH",
+        # Philippine time: lunch break and evening teleserye hours
         "days": week(
             [(12, 0, 14, 0), (19, 0, 22, 0)], [(12, 0, 14, 0), (19, 0, 22, 0)],
             [(12, 0, 14, 0), (19, 0, 22, 0)], [(12, 0, 14, 0), (19, 0, 22, 0)],
-            [(12, 0, 14, 0), (20, 0, 23, 0)], [(11, 0, 14, 0), (19, 0, 23, 0)],
-            [(11, 0, 14, 0), (18, 0, 22, 0)]),
-        "hashtags": ["#AIDrama", "#PinoyDrama", "#FilipinoStory", "#FilAm", "#KwentongBuhay",
-                     "#DramaSerye", "#AIStory", "#Teleserye", "#PinoyAmerican", "#Reels"],
+            [(12, 0, 14, 0), (19, 0, 23, 0)], [(10, 0, 13, 0), (19, 0, 23, 0)],
+            [(10, 0, 13, 0), (18, 0, 22, 0)]),
+        "hashtags": ["#AIDrama", "#PinoyDrama", "#FilipinoStory", "#KwentongBuhay", "#DramaSerye",
+                     "#AIStory", "#Teleserye", "#PinoyReels", "#TrendingPH", "#Reels"],
     },
     "ai_drama_english": {
         "name": "AI Drama English", "emoji": "🎭",

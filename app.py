@@ -43,7 +43,22 @@ except Exception:
     TZ = dt.timezone.utc
 
 run = asyncio.to_thread
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+
+def shell_context(request) -> dict:
+    """Bot status shown in the sidebar of every page."""
+    b = discord_bot.bot
+    ready = b.is_ready()
+    return {
+        "nav_bot_online": ready,
+        "nav_bot_name": str(b.user) if b.user else "Not connected",
+        "nav_bot_ping": round(b.latency * 1000) if ready and b.latency == b.latency else None,
+        "nav_path": request.url.path,
+    }
+
+
+templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"),
+                            context_processors=[shell_context])
 
 
 def local(v):
@@ -166,6 +181,7 @@ async def index(request):
         "gen24": data["gen24"],
         "jobs": data["jobs"],
         "tz": TZ_LABEL,
+        "image_enabled": discord_bot.IMAGE_STATE["enabled"],
     }
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
 
@@ -246,6 +262,17 @@ async def members_set(request):
     return redirect("/")
 
 
+async def image_toggle(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    enabled = str(form.get("enabled", "")) == "1"
+    discord_bot.IMAGE_STATE["enabled"] = enabled
+    await run(db.set_setting, "image_enabled", "1" if enabled else "0")
+    flash(request, "🟢 Image generation turned ON." if enabled else "🔴 Image generation turned OFF.")
+    return redirect("/")
+
+
 # ---------- upload-time reports ----------
 UPLOAD_KINDS = [("default", "Default channel"), ("yt", "YTA reports"), ("fb", "FBA reports"),
                 ("schedule", "Daily schedule"), ("fx", "USD ⇄ PHP rate")]
@@ -283,10 +310,13 @@ async def uploads(request):
         "report_at": _utc_local(st["last_report_at"]),
         "servers": servers,
         "kinds": UPLOAD_KINDS,
-        "us_now": upload_reports.us_times(now, True),
+        "us_now": f"{upload_reports.fmt(now, upload_reports.ET, True)} ET, "
+                  f"{upload_reports.fmt(now, upload_reports.PT)} PT",
         "today": now.strftime("%A, %B ") + str(now.day),
-        "yt_rows": upload_reports.schedule_rows(upload_reports.YOUTUBE, now),
-        "fb_rows": upload_reports.schedule_rows(upload_reports.FACEBOOK, now),
+        "timeline": [("YouTube automation", "yt", upload_reports.timeline_rows(upload_reports.YOUTUBE, now)),
+                     ("Facebook automation", "fb", upload_reports.timeline_rows(upload_reports.FACEBOOK, now))],
+        "now_pct": round((now.hour * 60 + now.minute) / 1440 * 100, 2),
+        "now_label": upload_reports.fmt(now, upload_reports.ET),
         "tz": TZ_LABEL,
     }
     return templates.TemplateResponse(request=request, name="uploads.html", context=ctx)
@@ -359,6 +389,9 @@ async def lifespan(app):
     for gid in _env_server_ids():          # servers listed in .env are always approved
         await run(db.add_server, gid, "")
     await run(upload_reports.load_settings_sync)
+    saved = await run(db.get_setting, "image_enabled", "")
+    if saved:
+        discord_bot.IMAGE_STATE["enabled"] = saved == "1"
     task = None
     if discord_bot.TOKEN:
         task = asyncio.create_task(discord_bot.start_with_backoff(discord_bot.TOKEN))
@@ -379,6 +412,7 @@ app = Starlette(
         Route("/servers/add", servers_add, methods=["POST"]),
         Route("/servers/remove", servers_remove, methods=["POST"]),
         Route("/members/set", members_set, methods=["POST"]),
+        Route("/image/toggle", image_toggle, methods=["POST"]),
         Route("/uploads", uploads),
         Route("/uploads/channels", uploads_channels, methods=["POST"]),
         Route("/uploads/settings", uploads_settings, methods=["POST"]),
