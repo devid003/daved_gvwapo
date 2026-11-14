@@ -952,7 +952,7 @@ async def member_export(request):
                     headers={"Content-Disposition": f'attachment; filename="history-{safe}-{uid}.txt"'})
 
 
-async def health(request):async def health(request):
+async def health(request):
     return PlainTextResponse("ok")
 
 
