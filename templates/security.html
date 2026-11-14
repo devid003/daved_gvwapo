@@ -10,6 +10,11 @@
 .gate-meta{display:flex;flex-direction:column;gap:3px}
 .warnbox{border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line));background:var(--warn-soft);border-radius:var(--radius);padding:14px 18px;margin-bottom:18px}
 .warnbox ol{margin:8px 0 0;padding-left:20px}
+.code-in{font-size:20px;letter-spacing:.25em;text-transform:uppercase;width:190px;font-weight:600}
+.live-pill{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;padding:4px 10px;border:1px solid var(--line);border-radius:999px}
+.live-pill.stale .dot{background:var(--warn);box-shadow:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.live-pill .dot{animation:pulse 2s ease-in-out infinite}
 </style>
 {% endblock %}
 {% block content %}
@@ -28,6 +33,17 @@
   </ol>
 </div>
 {% endif %}
+
+<section class="panel">
+  <div class="panel-head" style="border-bottom:0">
+    <div><h2>Verify a code</h2><p>New members get a 6-character code by DM. When they send it to you, type it here to let them in.</p></div>
+    <form method="post" action="/security/verify" class="row" autocomplete="off">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="text" name="code" class="code-in" maxlength="8" placeholder="K7MQ2X" aria-label="Verification code" required autocapitalize="characters" spellcheck="false">
+      <button class="btn primary">Verify</button>
+    </form>
+  </div>
+</section>
 
 <section class="panel">
   <div class="panel-head"><div><h2>Join gate</h2><p>When on, new members get the "Pending approval" role and see nothing until approved.</p></div></div>
@@ -74,63 +90,52 @@
 
 <section class="panel">
   <div class="panel-head">
-    <div><h2>Waiting for approval {% if pending %}<span class="badge pending" style="margin-left:6px">{{ pending|length }}</span>{% endif %}</h2>
-      <p>Approve lets them in. Deny removes them from the server. Ban removes them and blocks them from coming back.</p></div>
+    <div><h2>Waiting for approval <span class="badge pending" id="pending-count" style="margin-left:6px{{ ';display:none' if not pending }}">{{ pending|length }}</span></h2>
+      <p>Verify their code above, or decide here. Deny removes them. Ban removes them and blocks them from coming back.</p></div>
+    <span class="live-pill" id="live-pill"><span class="dot on"></span>Live <span class="muted" id="live-age">just now</span></span>
   </div>
-  {% if pending %}
-  <div class="scroll"><table>
-    <tr><th>Member</th><th>Account created</th><th>Flags</th><th>Joined ({{ tz }})</th>{% if servers|length > 1 %}<th>Server</th>{% endif %}<th></th></tr>
-    {% for j in pending %}
-    <tr>
-      <td><div class="who">{% if j.avatar_url %}<img src="{{ j.avatar_url }}" alt="" loading="lazy">{% else %}<span class="ph"></span>{% endif %}
-        <div><b>{{ j.username }}</b><div class="mono small">{{ j.user_id }}</div></div></div></td>
-      <td class="nowrap">{{ j.account_created.strftime("%b %d, %Y") if j.account_created else "" }}</td>
-      <td><div class="flags">{% for f in (j.flags or '').split(', ') if f %}<span class="badge pending">{{ f }}</span>{% else %}<span class="muted small">None</span>{% endfor %}</div></td>
-      <td class="nowrap">{{ j.joined_at|local }}</td>
-      {% if servers|length > 1 %}<td>{{ names.get(j.guild_id, j.guild_id) }}</td>{% endif %}
-      <td class="actions">
-        {% for act, label, cls in [('approve','Approve','ok'),('deny','Deny','bad'),('ban','Ban','bad')] %}
-        <form method="post" action="/security/decide" class="inline" {% if act == 'ban' %}onsubmit='return confirm({{ ("Ban " ~ j.username ~ "? They will not be able to rejoin.")|tojson }})'{% endif %}>
-          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ j.id }}">
-          <input type="hidden" name="action" value="{{ act }}"><button class="btn sm {{ cls }}">{{ label }}</button>
-        </form>
-        {% endfor %}
-      </td>
-    </tr>
-    {% endfor %}
-  </table></div>
-  {% else %}
-  <div class="empty">Nobody is waiting. New members show up here as soon as they join.</div>
-  {% endif %}
+  <div id="pending-wrap">{% include "_sec_pending.html" %}</div>
 </section>
 
 <section class="panel">
   <div class="panel-head"><div><h2>Recent joins</h2><p>Everyone who joined, and what happened.</p></div></div>
-  {% if history %}
-  <div class="scroll"><table>
-    <tr><th>Member</th><th>Status</th><th>Flags</th><th>Joined ({{ tz }})</th><th>Decided</th>{% if servers|length > 1 %}<th>Server</th>{% endif %}</tr>
-    {% for j in history %}
-    <tr>
-      <td><b>{{ j.username }}</b><div class="mono small">{{ j.user_id }}</div></td>
-      <td><span class="badge {{ {'approved':'live','allowed':'live','denied':'off','banned':'off','left':''}.get(j.status,'') }}">{{ {'allowed':'Joined (gate off)'}.get(j.status, j.status|capitalize) }}</span></td>
-      <td class="small muted">{{ j.flags or '' }}</td>
-      <td class="nowrap">{{ j.joined_at|local }}</td>
-      <td class="nowrap">{{ j.decided_at|local }}</td>
-      {% if servers|length > 1 %}<td>{{ names.get(j.guild_id, j.guild_id) }}</td>{% endif %}
-    </tr>
-    {% endfor %}
-  </table></div>
-  {% else %}
-  <div class="empty">No joins recorded yet.</div>
-  {% endif %}
+  <div id="history-wrap">{% include "_sec_history.html" %}</div>
 </section>
 
 <script>
-// Auto-refresh every 20 s so new members appear without reloading,
-// but never while you're picking something in a form.
-setInterval(function () {
-  var a = document.activeElement;
-  if (!document.hidden && (!a || a === document.body)) location.reload();
-}, 20000);
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var lastOk = Date.now(), busy = false;
+  function age() {
+    var s = Math.round((Date.now() - lastOk) / 1000);
+    $('live-age').textContent = s < 5 ? 'just now' : (s < 60 ? 'updated ' + s + 's ago' : 'updated ' + Math.round(s / 60) + 'm ago');
+  }
+  function refresh() {
+    if (busy) return;
+    var a = document.activeElement;
+    if (a && $('pending-wrap').contains(a)) return;   // don't redraw under your cursor
+    busy = true;
+    fetch('/api/security/live', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) {
+        if (r.status === 401) { location.href = '/login'; throw 0; }
+        if (!r.ok) throw 0;
+        return r.json();
+      })
+      .then(function (j) {
+        $('pending-wrap').innerHTML = j.pending_html;
+        $('history-wrap').innerHTML = j.history_html;
+        var c = $('pending-count');
+        c.textContent = j.pending_count; c.style.display = j.pending_count ? '' : 'none';
+        document.title = (j.pending_count ? '(' + j.pending_count + ') ' : '') + 'Security \u00b7 Dabid Bots';
+        lastOk = Date.now(); $('live-pill').classList.remove('stale');
+      })
+      .catch(function () { $('live-pill').classList.add('stale'); })
+      .then(function () { busy = false; age(); });
+  }
+  age();
+  setInterval(age, 1000);
+  setInterval(function () { if (!document.hidden) refresh(); }, 10000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+})();
 </script>
 {% endblock %}

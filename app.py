@@ -499,6 +499,88 @@ async def security_decide(request):
     flash(request, await security.decide(jid, action))
     return redirect("/security")
 
+# ---------- security v2: codes + live ----------
+async def _security_lists(request) -> dict:
+    b = discord_bot.bot
+    data = await run(db.overview)
+    names = {}
+    for s in data["servers"]:
+        g = b.get_guild(s.guild_id) if b.is_ready() else None
+        names[s.guild_id] = (g.name if g else s.name) or "Unnamed server"
+    pending = await run(db.list_joins, None, True, 200)
+    history = [j for j in await run(db.list_joins, None, False, 80) if j.status != "pending"][:50]
+    codes = {j.id: await run(security.code_status_sync, j.id) for j in pending}
+    return {"csrf": csrf_token(request), "pending": pending, "history": history, "codes": codes,
+            "names": names, "multi": len(names) > 1, "tz": TZ_LABEL}
+
+
+async def security_page_v2(request):
+    if not authed(request):
+        return redirect("/login")
+    b = discord_bot.bot
+    data = await run(db.overview)
+    servers = []
+    for s in data["servers"]:
+        guild = b.get_guild(s.guild_id) if b.is_ready() else None
+        role = await security.find_role(guild) if guild else None
+        me = guild.me if guild else None
+        servers.append({
+            "id": s.guild_id,
+            "name": (guild.name if guild else s.name) or "Unnamed server",
+            "joined": guild is not None,
+            "gate": await run(security.gate_on_sync, s.guild_id),
+            "log": await run(security.log_channel_sync, s.guild_id),
+            "role": role.name if role else None,
+            "role_ok": bool(role and me and me.top_role > role),
+            "options": [(c.id, c.name) for c in guild.text_channels] if guild else [],
+        })
+    ctx = await _security_lists(request)
+    ctx.update({
+        "flash": request.session.pop("flash", None),
+        "servers": servers,
+        "intent_ok": security.members_intent_ok(),
+        "online": b.is_ready(),
+    })
+    return templates.TemplateResponse(request=request, name="security.html", context=ctx)
+
+
+async def security_live(request):
+    if not authed(request):
+        return JSONResponse({"error": "login"}, status_code=401)
+    ctx = await _security_lists(request)
+    env = templates.env
+    return JSONResponse({
+        "pending_html": env.get_template("_sec_pending.html").render(**ctx),
+        "history_html": env.get_template("_sec_history.html").render(**ctx),
+        "pending_count": len(ctx["pending"]),
+    }, headers={"Cache-Control": "no-store"})
+
+
+async def security_verify(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    if not discord_bot.bot.is_ready():
+        flash(request, "The bot is not connected to Discord yet. Try again in a moment.")
+        return redirect("/security")
+    flash(request, await security.verify_code(str(form.get("code", ""))))
+    return redirect("/security")
+
+
+async def security_resend(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    raw = str(form.get("id", "")).strip()
+    if not raw.isdigit():
+        flash(request, "Invalid request.")
+        return redirect("/security")
+    if not discord_bot.bot.is_ready():
+        flash(request, "The bot is not connected to Discord yet. Try again in a moment.")
+        return redirect("/security")
+    flash(request, await security.resend_code(int(raw)))
+    return redirect("/security")
+
 async def health(request):
     return PlainTextResponse("ok")
 
@@ -539,10 +621,13 @@ app = Starlette(
         Route("/members/set", members_set, methods=["POST"]),
         Route("/image/toggle", image_toggle, methods=["POST"]),
         Route("/uploads", uploads),
-        Route("/security", security_page),
+        Route("/security", security_page_v2),
         Route("/security/gate", security_gate, methods=["POST"]),
         Route("/security/log", security_log, methods=["POST"]),
         Route("/security/decide", security_decide, methods=["POST"]),
+        Route("/security/verify", security_verify, methods=["POST"]),
+        Route("/security/resend", security_resend, methods=["POST"]),
+        Route("/api/security/live", security_live),
         Route("/api/uploads/live", uploads_live),
         Route("/uploads/channels", uploads_channels, methods=["POST"]),
         Route("/uploads/settings", uploads_settings, methods=["POST"]),

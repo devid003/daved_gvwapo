@@ -8,6 +8,8 @@ Join gate: new members wait for approval before they can see the server.
 - While pending, any OTHER role they get (Onboarding, auto-role or verification
   bots) is taken away and remembered, because a role that allows a channel beats
   the Pending deny. Approve gives those roles back.
+- The bot DMs each new member a 6-character code. They give it to the owner, who
+  types it in the panel to approve them (the panel never shows the code).
 - Approve = remove the role. Deny = kick. Ban = ban.
 Needs: "Server Members Intent" ON in the Developer Portal, and the bot role needs
 Manage Roles, Manage Channels, Kick Members and Ban Members, placed ABOVE the
@@ -16,6 +18,7 @@ Manage Roles, Manage Channels, Kick Members and Ban Members, placed ABOVE the
 import asyncio
 import datetime as dt
 import logging
+import secrets
 
 import discord
 
@@ -167,6 +170,78 @@ async def restore_roles(member: discord.Member) -> list[str]:
     return [r.name for r in roles]
 
 
+# ------------------------- verification codes -------------------------
+CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no 0/O or 1/I to avoid mix-ups
+MAX_TRIES = 5
+
+
+def new_code() -> str:
+    return "".join(secrets.choice(CODE_CHARS) for _ in range(6))
+
+
+def code_status_sync(join_id: int) -> str:
+    """'sent', 'dm_closed' or '' (no code)."""
+    if not db.get_setting(f"code:{join_id}", ""):
+        return ""
+    return "sent" if db.get_setting(f"dm:{join_id}", "") == "ok" else "dm_closed"
+
+
+def _clear_code_sync(join_id: int) -> None:
+    db.set_setting(f"code:{join_id}", "")
+    db.set_setting(f"dm:{join_id}", "")
+
+
+async def send_code(guild: discord.Guild, member, join_id: int) -> bool:
+    code = new_code()
+    await run(db.set_setting, f"code:{join_id}", code)
+    e = discord.Embed(
+        title=f"Verification code for {guild.name}",
+        description=(f"Your code is **`{code}`**\n\n"
+                     "Send this code to the server owner. They will enter it to let you in.\n"
+                     "Don't share it with anyone else."),
+        color=0x2747C7,
+    )
+    try:
+        await member.send(embed=e)
+        await run(db.set_setting, f"dm:{join_id}", "ok")
+        return True
+    except (discord.Forbidden, discord.HTTPException):
+        await run(db.set_setting, f"dm:{join_id}", "fail")
+        log.info("Could not DM code to %s (DMs closed)", member)
+        return False
+
+
+async def resend_code(join_id: int) -> str:
+    req = await run(db.get_join, join_id)
+    if req is None or req.status != "pending":
+        return "That member is no longer waiting."
+    guild = bot.get_guild(req.guild_id)
+    member = guild.get_member(req.user_id) if guild else None
+    if member is None:
+        return "That member is not in the server anymore."
+    ok = await send_code(guild, member, join_id)
+    return (f"New code sent to {req.username} by DM." if ok else
+            f"{req.username} has DMs closed. Ask them to allow DMs from server members, then resend.")
+
+
+_TRIES: dict[str, int] = {"n": 0}
+
+
+async def verify_code(raw: str) -> str:
+    code = "".join(ch for ch in (raw or "").upper() if ch.isalnum())
+    if len(code) != 6:
+        return "Codes are 6 characters, like K7MQ2X."
+    _TRIES["n"] += 1
+    for j in await run(db.list_joins, None, True, 500):
+        saved = await run(db.get_setting, f"code:{j.id}", "")
+        if saved and secrets.compare_digest(saved, code):
+            _TRIES["n"] = 0
+            return await decide(j.id, "approve")
+    if _TRIES["n"] >= MAX_TRIES:
+        await asyncio.sleep(2)        # slow down repeated wrong guesses
+    return "No one waiting has that code. Check it and try again."
+
+
 # ------------------------- turning the gate on/off -------------------------
 async def enable_gate(guild: discord.Guild) -> str:
     """Create the role, hide every channel from it, switch the gate on. Returns a short report."""
@@ -210,6 +285,7 @@ async def decide(join_id: int, action: str) -> str:
         except discord.HTTPException:
             return "Discord did not answer. Try again in a moment."
     name = req.username or str(req.user_id)
+    await run(_clear_code_sync, join_id)
 
     try:
         if action == "approve":
@@ -280,13 +356,17 @@ async def on_member_join(member: discord.Member):
     join_id = await run(db.add_join, guild.id, member.id, str(member), avatar, created,
                         ", ".join(flags), "pending")
     log.info("Join gate: %s is waiting for approval in %s (#%s)", member, guild.name, join_id)
+    dm_ok = await send_code(guild, member, join_id)
 
     e = discord.Embed(title="\U0001f6c2 New member waiting for approval", color=0xA35C00)
     e.add_field(name="Member", value=f"{member.mention}\n`{member}`", inline=True)
     e.add_field(name="Account created", value=discord.utils.format_dt(member.created_at, "R"), inline=True)
     e.add_field(name="Flags", value=", ".join(flags) if flags else "None", inline=False)
+    e.add_field(name="Code", inline=False,
+                value="Sent by DM. Ask them for it and enter it in the panel." if dm_ok else
+                "Their DMs are closed. Use Resend code in the panel after they open DMs.")
     e.set_thumbnail(url=avatar or None)
-    e.set_footer(text="Approve or deny in the bot panel \u2192 Security")
+    e.set_footer(text="Verify the code or decide in the bot panel \u2192 Security")
     await notify(guild, e)
 
     if role is not None:              # other bots often add roles a few seconds later

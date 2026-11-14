@@ -1,0 +1,17 @@
+{% if history %}
+<div class="scroll"><table>
+  <tr><th>Member</th><th>Status</th><th>Flags</th><th>Joined ({{ tz }})</th><th>Decided</th>{% if multi %}<th>Server</th>{% endif %}</tr>
+  {% for j in history %}
+  <tr>
+    <td><b>{{ j.username }}</b><div class="mono small">{{ j.user_id }}</div></td>
+    <td><span class="badge {{ {'approved':'live','allowed':'live','denied':'off','banned':'off','left':''}.get(j.status,'') }}">{{ {'allowed':'Joined (gate off)'}.get(j.status, j.status|capitalize) }}</span></td>
+    <td class="small muted">{{ j.flags or '' }}</td>
+    <td class="nowrap">{{ j.joined_at|local }}</td>
+    <td class="nowrap">{{ j.decided_at|local }}</td>
+    {% if multi %}<td>{{ names.get(j.guild_id, j.guild_id) }}</td>{% endif %}
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}
+<div class="empty">No joins recorded yet.</div>
+{% endif %}
