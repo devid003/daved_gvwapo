@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Security{% endblock %}
+{% block head %}
+<style>
+.who{display:flex;align-items:center;gap:10px}
+.who img,.who .ph{width:32px;height:32px;border-radius:50%;flex:none;background:var(--sunk);object-fit:cover}
+.flags{display:flex;flex-wrap:wrap;gap:4px}
+.gate-row{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:16px 20px;border-top:1px solid var(--line)}
+.gate-row:first-of-type{border-top:0}
+.gate-meta{display:flex;flex-direction:column;gap:3px}
+.warnbox{border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line));background:var(--warn-soft);border-radius:var(--radius);padding:14px 18px;margin-bottom:18px}
+.warnbox ol{margin:8px 0 0;padding-left:20px}
+</style>
+{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Security</h1><p>New members wait here until you approve them. They can't see any channel before that.</p></div>
+</div>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+
+{% if not intent_ok %}
+<div class="warnbox" role="alert">
+  <b>The bot can't see new members yet.</b> Turn on the Server Members Intent:
+  <ol>
+    <li>Open discord.com/developers/applications and pick your bot.</li>
+    <li>Go to Bot, scroll to Privileged Gateway Intents, and switch on <b>Server Members Intent</b>. Save.</li>
+    <li>On Render, choose Manual Deploy, then Restart service.</li>
+  </ol>
+</div>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Join gate</h2><p>When on, new members get the "Pending approval" role and see nothing until approved.</p></div></div>
+  {% for s in servers %}
+  <div class="gate-row">
+    <div class="gate-meta">
+      <div class="row"><b>{{ s.name }}</b><span class="mono small">{{ s.id }}</span>
+        <span class="badge {{ 'live' if s.gate else 'off' }}">{{ 'On' if s.gate else 'Off' }}</span></div>
+      {% if s.gate and s.role and not s.role_ok %}
+      <span class="small" style="color:var(--bad)">Move the bot's role above "{{ s.role }}" in Server Settings, Roles, or approvals will fail.</span>
+      {% elif s.gate and s.role %}
+      <span class="muted small">Role "{{ s.role }}" is ready.</span>
+      {% elif not s.joined %}
+      <span class="muted small">The bot isn't connected to this server right now.</span>
+      {% endif %}
+    </div>
+    <div class="row">
+      {% if s.joined %}
+      <form method="post" action="/security/log" class="row">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="guild_id" value="{{ s.id }}">
+        <label class="field">Notify me in
+          <select name="channel">
+            <option value="">No notifications</option>
+            {% for cid, cname in s.options %}<option value="{{ cid }}" {{ 'selected' if s.log == cid }}>#{{ cname }}</option>{% endfor %}
+          </select>
+        </label>
+        <button class="btn" style="align-self:flex-end">Save</button>
+      </form>
+      {% endif %}
+      <form method="post" action="/security/gate" class="inline" style="align-self:flex-end">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="guild_id" value="{{ s.id }}">
+        {% if s.gate %}
+        <input type="hidden" name="on" value="0"><button class="btn bad">Turn gate off</button>
+        {% else %}
+        <input type="hidden" name="on" value="1"><button class="btn ok" {{ 'disabled' if not s.joined }}>Turn gate on</button>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty">No approved servers yet. Add one on the Overview page.</div>
+  {% endfor %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <div><h2>Waiting for approval {% if pending %}<span class="badge pending" style="margin-left:6px">{{ pending|length }}</span>{% endif %}</h2>
+      <p>Approve lets them in. Deny removes them from the server. Ban removes them and blocks them from coming back.</p></div>
+  </div>
+  {% if pending %}
+  <div class="scroll"><table>
+    <tr><th>Member</th><th>Account created</th><th>Flags</th><th>Joined ({{ tz }})</th>{% if servers|length > 1 %}<th>Server</th>{% endif %}<th></th></tr>
+    {% for j in pending %}
+    <tr>
+      <td><div class="who">{% if j.avatar_url %}<img src="{{ j.avatar_url }}" alt="" loading="lazy">{% else %}<span class="ph"></span>{% endif %}
+        <div><b>{{ j.username }}</b><div class="mono small">{{ j.user_id }}</div></div></div></td>
+      <td class="nowrap">{{ j.account_created.strftime("%b %d, %Y") if j.account_created else "" }}</td>
+      <td><div class="flags">{% for f in (j.flags or '').split(', ') if f %}<span class="badge pending">{{ f }}</span>{% else %}<span class="muted small">None</span>{% endfor %}</div></td>
+      <td class="nowrap">{{ j.joined_at|local }}</td>
+      {% if servers|length > 1 %}<td>{{ names.get(j.guild_id, j.guild_id) }}</td>{% endif %}
+      <td class="actions">
+        {% for act, label, cls in [('approve','Approve','ok'),('deny','Deny','bad'),('ban','Ban','bad')] %}
+        <form method="post" action="/security/decide" class="inline" {% if act == 'ban' %}onsubmit='return confirm({{ ("Ban " ~ j.username ~ "? They will not be able to rejoin.")|tojson }})'{% endif %}>
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ j.id }}">
+          <input type="hidden" name="action" value="{{ act }}"><button class="btn sm {{ cls }}">{{ label }}</button>
+        </form>
+        {% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <div class="empty">Nobody is waiting. New members show up here as soon as they join.</div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Recent joins</h2><p>Everyone who joined, and what happened.</p></div></div>
+  {% if history %}
+  <div class="scroll"><table>
+    <tr><th>Member</th><th>Status</th><th>Flags</th><th>Joined ({{ tz }})</th><th>Decided</th>{% if servers|length > 1 %}<th>Server</th>{% endif %}</tr>
+    {% for j in history %}
+    <tr>
+      <td><b>{{ j.username }}</b><div class="mono small">{{ j.user_id }}</div></td>
+      <td><span class="badge {{ {'approved':'live','allowed':'live','denied':'off','banned':'off','left':''}.get(j.status,'') }}">{{ {'allowed':'Joined (gate off)'}.get(j.status, j.status|capitalize) }}</span></td>
+      <td class="small muted">{{ j.flags or '' }}</td>
+      <td class="nowrap">{{ j.joined_at|local }}</td>
+      <td class="nowrap">{{ j.decided_at|local }}</td>
+      {% if servers|length > 1 %}<td>{{ names.get(j.guild_id, j.guild_id) }}</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <div class="empty">No joins recorded yet.</div>
+  {% endif %}
+</section>
+
+<script>
+// Auto-refresh every 20 s so new members appear without reloading,
+// but never while you're picking something in a form.
+setInterval(function () {
+  var a = document.activeElement;
+  if (!document.hidden && (!a || a === document.body)) location.reload();
+}, 20000);
+</script>
+{% endblock %}

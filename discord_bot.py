@@ -123,13 +123,19 @@ class LockedTree(app_commands.CommandTree):
         return False
 
 
+# Set to True when Discord refuses the Server Members Intent (join gate needs it)
+GATE_STATE = {"intent_missing": False}
+
 # Other modules (e.g. upload_reports) add start-up functions here
 EXTRA_SETUP: list = []
 
 
 class ImageBot(discord.Client):
     def __init__(self):
-        super().__init__(intents=discord.Intents.default())
+        intents = discord.Intents.default()
+        # Needed to see who joins (join gate). Turn on "Server Members Intent" in the Developer Portal.
+        intents.members = os.getenv("MEMBERS_INTENT", "true").lower() not in ("0", "false", "no", "off")
+        super().__init__(intents=intents)
         self.tree = LockedTree(self)
 
     async def setup_hook(self):
@@ -527,4 +533,15 @@ async def start_with_backoff(token: str):
                       "Retrying login in %d seconds...", delay)
             await asyncio.sleep(delay)
             delay = min(delay * 2, 1800)   # 1m, 2m, 4m ... max 30m
-    await bot.connect(reconnect=True)
+    while True:
+        try:
+            await bot.connect(reconnect=True)
+            return
+        except discord.PrivilegedIntentsRequired:
+            if not bot._connection._intents.members:
+                raise
+            GATE_STATE["intent_missing"] = True
+            log.error("Server Members Intent is OFF in the Discord Developer Portal. "
+                      "The join gate cannot see new members until you turn it on. "
+                      "Continuing without it.")
+            bot._connection._intents.members = False

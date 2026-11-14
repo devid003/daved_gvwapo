@@ -146,6 +146,7 @@ td.actions .btn{margin-left:4px}
       <a href="/" class="{{ 'on' if nav_path == '/' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</a>
       <a href="/uploads" class="{{ 'on' if nav_path.startswith('/uploads') }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Upload times</a>
       <a href="/usage" class="{{ 'on' if nav_path.startswith('/usage') }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Usage</a>
+      <a href="/security" class="{{ 'on' if nav_path.startswith('/security') }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>Security</a>
     </nav>
     <div class="side-foot">
       <div class="who"><span class="dot {{ 'on' if nav_bot_online }}"></span>{{ nav_bot_name }}</div>

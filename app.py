@@ -27,6 +27,7 @@ log = logging.getLogger("panel")
 import db  # noqa: E402
 import discord_bot  # noqa: E402
 import upload_reports  # noqa: E402  (adds upload-time reports + commands to the bot)
+import security  # noqa: E402  (join gate: new members need approval)
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 if not ADMIN_PASSWORD:
@@ -401,6 +402,103 @@ async def uploads_live(request):
     }, headers={"Cache-Control": "no-store"})
 
 
+# ---------- security (join gate) ----------
+async def security_page(request):
+    if not authed(request):
+        return redirect("/login")
+    b = discord_bot.bot
+    data = await run(db.overview)
+    servers = []
+    for s in data["servers"]:
+        guild = b.get_guild(s.guild_id) if b.is_ready() else None
+        role = await security.find_role(guild) if guild else None
+        me = guild.me if guild else None
+        servers.append({
+            "id": s.guild_id,
+            "name": (guild.name if guild else s.name) or "Unnamed server",
+            "joined": guild is not None,
+            "gate": await run(security.gate_on_sync, s.guild_id),
+            "log": await run(security.log_channel_sync, s.guild_id),
+            "role": role.name if role else None,
+            "role_ok": bool(role and me and me.top_role > role),
+            "options": [(c.id, c.name) for c in guild.text_channels] if guild else [],
+        })
+    pending = await run(db.list_joins, None, True, 200)
+    history = [j for j in await run(db.list_joins, None, False, 80) if j.status != "pending"][:50]
+    ctx = {
+        "csrf": csrf_token(request),
+        "flash": request.session.pop("flash", None),
+        "servers": servers,
+        "names": {s["id"]: s["name"] for s in servers},
+        "pending": pending,
+        "history": history,
+        "intent_ok": security.members_intent_ok(),
+        "online": b.is_ready(),
+        "tz": TZ_LABEL,
+    }
+    return templates.TemplateResponse(request=request, name="security.html", context=ctx)
+
+
+async def _approved_guild(form):
+    gid = parse_id(form.get("guild_id"))
+    if gid is None or gid not in await run(db.allowed_guild_ids):
+        return None, None
+    return gid, discord_bot.bot.get_guild(gid)
+
+
+async def security_gate(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    gid, guild = await _approved_guild(form)
+    if gid is None:
+        flash(request, "That server is not approved.")
+        return redirect("/security")
+    if str(form.get("on", "")) == "1":
+        if guild is None:
+            flash(request, "The bot must be online and inside the server to turn the gate on.")
+            return redirect("/security")
+        try:
+            flash(request, await security.enable_gate(guild))
+        except Exception as e:  # noqa: BLE001
+            log.exception("enable_gate failed")
+            flash(request, f"Could not turn on the gate: {type(e).__name__}. Check the bot's permissions.")
+    else:
+        await security.disable_gate(gid)
+        flash(request, "Join gate is OFF. New members can see the server right away.")
+    return redirect("/security")
+
+
+async def security_log(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    gid, _ = await _approved_guild(form)
+    if gid is None:
+        flash(request, "That server is not approved.")
+        return redirect("/security")
+    ch = str(form.get("channel", "")).strip()
+    await run(db.set_setting, f"gate_log:{gid}", ch if ch.isdigit() else "")
+    flash(request, "Notification channel saved.")
+    return redirect("/security")
+
+
+async def security_decide(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    raw = str(form.get("id", "")).strip()
+    jid = int(raw) if raw.isdigit() else None
+    action = str(form.get("action", ""))
+    if jid is None or action not in ("approve", "deny", "ban"):
+        flash(request, "Invalid request.")
+        return redirect("/security")
+    if not discord_bot.bot.is_ready():
+        flash(request, "The bot is not connected to Discord yet. Try again in a moment.")
+        return redirect("/security")
+    flash(request, await security.decide(jid, action))
+    return redirect("/security")
+
 async def health(request):
     return PlainTextResponse("ok")
 
@@ -441,6 +539,10 @@ app = Starlette(
         Route("/members/set", members_set, methods=["POST"]),
         Route("/image/toggle", image_toggle, methods=["POST"]),
         Route("/uploads", uploads),
+        Route("/security", security_page),
+        Route("/security/gate", security_gate, methods=["POST"]),
+        Route("/security/log", security_log, methods=["POST"]),
+        Route("/security/decide", security_decide, methods=["POST"]),
         Route("/api/uploads/live", uploads_live),
         Route("/uploads/channels", uploads_channels, methods=["POST"]),
         Route("/uploads/settings", uploads_settings, methods=["POST"]),

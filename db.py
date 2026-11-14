@@ -81,6 +81,21 @@ class Job(Base):
     created_by: Mapped[int] = mapped_column(BigInteger, default=0)
 
 
+class JoinRequest(Base):
+    """A member who joined an approved server (join gate log + approvals)."""
+    __tablename__ = "join_requests"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    username: Mapped[str] = mapped_column(String(200), default="")
+    avatar_url: Mapped[str] = mapped_column(String(500), default="")
+    account_created: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    joined_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|approved|denied|banned|left|allowed
+    flags: Mapped[str] = mapped_column(String(300), default="")
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class UploadChannel(Base):
     """Where upload-time / exchange-rate reports go, per approved server."""
     __tablename__ = "upload_channels"
@@ -251,6 +266,59 @@ def bump_job(job_id: int, next_run: float) -> None:
         j = s.get(Job, job_id)
         if j:
             j.next_run = next_run
+
+
+# ---------- join gate ----------
+def add_join(guild_id: int, user_id: int, username: str, avatar_url: str,
+             account_created, flags: str, status: str) -> int:
+    with Session.begin() as s:
+        row = JoinRequest(guild_id=guild_id, user_id=user_id, username=(username or "")[:200],
+                          avatar_url=(avatar_url or "")[:500], account_created=account_created,
+                          flags=(flags or "")[:300], status=status)
+        s.add(row)
+        s.flush()
+        return row.id
+
+
+def get_join(join_id: int):
+    with Session() as s:
+        return s.get(JoinRequest, join_id)
+
+
+def set_join_status(join_id: int, status: str) -> None:
+    with Session.begin() as s:
+        row = s.get(JoinRequest, join_id)
+        if row:
+            row.status = status
+            row.decided_at = utcnow()
+
+
+def mark_join_left(guild_id: int, user_id: int) -> None:
+    with Session.begin() as s:
+        rows = s.scalars(select(JoinRequest).where(
+            JoinRequest.guild_id == guild_id, JoinRequest.user_id == user_id,
+            JoinRequest.status == "pending"))
+        for row in rows:
+            row.status = "left"
+            row.decided_at = utcnow()
+
+
+def was_approved_before(guild_id: int, user_id: int) -> bool:
+    with Session() as s:
+        return s.scalar(select(func.count()).select_from(JoinRequest).where(
+            JoinRequest.guild_id == guild_id, JoinRequest.user_id == user_id,
+            JoinRequest.status == "approved")) > 0
+
+
+def list_joins(guild_id: int | None = None, pending: bool = False, limit: int = 100) -> list:
+    with Session() as s:
+        q = select(JoinRequest)
+        if guild_id is not None:
+            q = q.where(JoinRequest.guild_id == guild_id)
+        if pending:
+            q = q.where(JoinRequest.status == "pending")
+        q = q.order_by(JoinRequest.joined_at.desc()).limit(limit)
+        return list(s.scalars(q))
 
 
 # ---------- upload reports ----------
