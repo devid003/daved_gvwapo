@@ -32,11 +32,10 @@
   .air-row,.axis{grid-template-columns:1fr;gap:6px}
   .axis > div:first-child{display:none}
 }
-</style>
-{% endblock %}
+</style>{% endblock %}
 {% block content %}
 <div class="head">
-  <div><h1>Upload times</h1><p>Shown in Philippine time. It’s {{ ph_now }} here, {{ us_now }} in the US.</p></div>
+  <div><h1>Upload times</h1><p>Shown in Philippine time. It's {{ ph_now }} here, {{ us_now }} in the US.</p></div>
   <div class="row">
     <form method="post" action="/uploads/send" class="inline">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="reports">
@@ -48,7 +47,7 @@
 
 <section class="panel">
   <div class="panel-head">
-    <div><h2>Today on air, {{ today }}</h2><p>Philippine time. Windows are timed for each niche’s audience: US niches for viewers in the US. Green means post now.</p></div>
+    <div><h2>Today on air, {{ today }}</h2><p>Philippine time. Windows are timed for each niche's audience: US niches for viewers in the US. Green means post now.</p></div>
   </div>
   <div class="air">
     <div class="axis" aria-hidden="true">
@@ -136,4 +135,37 @@
   </div>
 </section>
 
+<section class="panel">
+  {% for s in servers %}
+  <div class="server-block">
+    <div class="row" style="margin-bottom:12px">
+      <b>{{ s.name }}</b><span class="mono small">{{ s.id }}</span>
+      {% if s.joined %}<span class="badge live">Bot is in this server</span>{% else %}<span class="badge pending">Bot not connected here</span>{% endif %}
+    </div>
+    {% if s.joined %}
+    <form method="post" action="/uploads/channels">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="guild_id" value="{{ s.id }}">
+      <div class="chan-grid">
+        {% for key, label in kinds %}
+        <label class="field">{{ label }}
+          <select name="{{ key }}">
+            <option value="">{{ 'None' if key == 'default' else 'Use default' }}</option>
+            {% for cid, cname in s.options %}
+            <option value="{{ cid }}" {{ 'selected' if s.chans[key] == cid }}>#{{ cname }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% endfor %}
+      </div>
+      <button class="btn primary" style="margin-top:14px">Save channels</button>
+    </form>
+    {% else %}
+    <p class="muted small" style="margin:0">Channels show up here once the bot is online and inside this server.</p>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="empty">No approved servers yet. Add one on the Overview page.</div>
+  {% endfor %}
+</section>
 {% endblock %}
