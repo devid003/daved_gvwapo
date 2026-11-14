@@ -504,6 +504,82 @@ async def security_decide(request):
     return redirect("/security")
 
 # ---------- security v2: codes + live ----------
+def _join_stats(days: int = 14) -> dict:
+    """Numbers and a day-by-day chart for the Security insights panel (local dates)."""
+    now_local = dt.datetime.now(TZ)
+    today = now_local.date()
+    first = today - dt.timedelta(days=days - 1)
+    prev_first = first - dt.timedelta(days=days)
+    rows = db.list_joins(None, False, 5000)
+
+    def day_of(t):
+        return t.replace(tzinfo=dt.timezone.utc).astimezone(TZ).date() if t else None
+
+    buckets = {first + dt.timedelta(days=i): {"approved": 0, "rejected": 0, "pending": 0, "left": 0, "open": 0}
+               for i in range(days)}
+    cur = {"joins": 0, "codes": 0, "approved": 0, "rejected": 0}
+    prev = {"joins": 0, "codes": 0, "approved": 0, "rejected": 0}
+    waits = []
+    for j in rows:
+        d = day_of(j.joined_at)
+        if d is None or d < prev_first:
+            continue
+        side = cur if d >= first else prev
+        side["joins"] += 1
+        if j.status != "allowed":
+            side["codes"] += 1
+        if j.status == "approved":
+            side["approved"] += 1
+        if j.status in ("denied", "banned"):
+            side["rejected"] += 1
+        if d >= first:
+            key = {"approved": "approved", "denied": "rejected", "banned": "rejected",
+                   "pending": "pending", "left": "left"}.get(j.status, "open")
+            buckets[d][key] += 1
+            if j.status == "approved" and j.decided_at and j.joined_at:
+                waits.append((j.decided_at - j.joined_at).total_seconds() / 60)
+
+    def delta(k):
+        a, b = cur[k], prev[k]
+        if b == 0:
+            return "new" if a else ""
+        pct = round((a - b) / b * 100)
+        return f"{'+' if pct >= 0 else ''}{pct}%"
+
+    decided = cur["approved"] + cur["rejected"]
+    waits.sort()
+    med = waits[len(waits) // 2] if waits else None
+    if med is None:
+        med_txt = "\u2014"
+    elif med < 60:
+        med_txt = f"{max(1, round(med))}m"
+    else:
+        med_txt = f"{med / 60:.1f}h"
+
+    top = max([sum(v.values()) for v in buckets.values()] + [1])
+    step = 1 if top <= 5 else (2 if top <= 10 else (5 if top <= 25 else 10))
+    ymax = ((top + step - 1) // step) * step
+    chart, x = [], 0
+    for d, v in buckets.items():
+        y = 0
+        segs = []
+        for k in ("approved", "rejected", "pending", "left", "open"):
+            if v[k]:
+                segs.append({"k": k, "y": y, "h": v[k]})
+                y += v[k]
+        chart.append({"label": d.strftime("%b %d"), "short": d.strftime("%d"), "total": y,
+                      "segs": segs, "x": x, "today": d == today, "v": v})
+        x += 1
+    return {
+        "days": days, "cur": cur, "pending_now": sum(1 for j in rows if j.status == "pending"),
+        "rate": f"{round(cur['approved'] / decided * 100)}%" if decided else "\u2014",
+        "median": med_txt, "d_joins": delta("joins"), "d_codes": delta("codes"),
+        "d_approved": delta("approved"), "d_rejected": delta("rejected"),
+        "chart": chart, "ymax": ymax, "ticks": list(range(0, ymax + 1, step)),
+        "totals": {k: sum(v[k] for v in buckets.values()) for k in ("approved", "rejected", "pending", "left", "open")},
+    }
+
+
 async def _security_lists(request) -> dict:
     b = discord_bot.bot
     data = await run(db.overview)
@@ -514,8 +590,9 @@ async def _security_lists(request) -> dict:
     pending = await run(db.list_joins, None, True, 200)
     history = [j for j in await run(db.list_joins, None, False, 80) if j.status != "pending"][:50]
     codes = {j.id: await run(security.code_status_sync, j.id) for j in pending}
+    stats = await run(_join_stats)
     return {"csrf": csrf_token(request), "pending": pending, "history": history, "codes": codes,
-            "names": names, "multi": len(names) > 1, "tz": TZ_LABEL}
+            "names": names, "multi": len(names) > 1, "tz": TZ_LABEL, "stats": stats}
 
 
 async def security_page_v2(request):
@@ -557,6 +634,7 @@ async def security_live(request):
         "pending_html": env.get_template("_sec_pending.html").render(**ctx),
         "history_html": env.get_template("_sec_history.html").render(**ctx),
         "pending_count": len(ctx["pending"]),
+        "stats_html": env.get_template("_sec_stats.html").render(**ctx),
     }, headers={"Cache-Control": "no-store"})
 
 

@@ -22,6 +22,7 @@
   <div><h1>Security</h1><p>New members wait here until you approve them. They can't see any channel before that.</p></div>
 </div>
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+<div id="stats-wrap">{% include "_sec_stats.html" %}</div>
 
 {% if not intent_ok %}
 <div class="warnbox" role="alert">
@@ -124,6 +125,7 @@
       .then(function (j) {
         $('pending-wrap').innerHTML = j.pending_html;
         $('history-wrap').innerHTML = j.history_html;
+        if (j.stats_html) $('stats-wrap').innerHTML = j.stats_html;
         var c = $('pending-count');
         c.textContent = j.pending_count; c.style.display = j.pending_count ? '' : 'none';
         document.title = (j.pending_count ? '(' + j.pending_count + ') ' : '') + 'Security \u00b7 Dabid Bots';

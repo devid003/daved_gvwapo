@@ -280,6 +280,28 @@ async def disable_gate(guild_id: int):
     await run(db.set_setting, _key("gate", guild_id), "0")
 
 
+# ------------------------- approval message -------------------------
+async def send_welcome(guild: discord.Guild, member: discord.Member) -> bool:
+    """Tell the member they are in. Fails quietly if their DMs are closed."""
+    e = discord.Embed(
+        title="\u2705 You're approved",
+        description=(f"Welcome to **{guild.name}**.\n\n"
+                     "Your verification code was confirmed and your access has been approved. "
+                     "All channels are now open to you.\n\n"
+                     "Please take a moment to read the server rules before you start. "
+                     "We're glad to have you here."),
+        color=0x12805A, timestamp=discord.utils.utcnow(),
+    )
+    if guild.icon:
+        e.set_thumbnail(url=guild.icon.url)
+    e.set_footer(text=f"{guild.name} \u2022 Member verification")
+    try:
+        await member.send(embed=e)
+        return True
+    except (discord.Forbidden, discord.HTTPException):
+        return False
+
+
 # ------------------------- decisions -------------------------
 async def decide(join_id: int, action: str) -> str:
     """action: approve | deny | ban. Returns a message for the panel."""
@@ -311,6 +333,7 @@ async def decide(join_id: int, action: str) -> str:
             if role and role in member.roles:
                 await member.remove_roles(role, reason="Join gate: approved in panel")
             back = await restore_roles(member)
+            await send_welcome(guild, member)
             await run(db.set_join_status, join_id, "approved")
             await notify(guild, discord.Embed(description=f"\u2705 **{name}** was approved.", color=0x12805A))
             extra = f" Gave back: {', '.join(back)}." if back else ""
