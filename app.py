@@ -371,7 +371,11 @@ async def uploads_send(request):
         asyncio.create_task(upload_reports.send_fx_reports())
         flash(request, "📤 Sending the exchange rate now…")
     else:
+        live_n = len(upload_reports.live_now())
         asyncio.create_task(upload_reports.send_upload_reports(include_schedule=(what == "all")))
+        if not live_n and what != "all":
+            flash(request, "No niche is in its best time right now, so nothing was sent.")
+            return redirect("/uploads")
         flash(request, "📤 Sending upload-time reports now…")
     return redirect("/uploads")
 

@@ -353,7 +353,74 @@ async def send_embed(guild: discord.Guild, channel_id: int, embed: discord.Embed
     await channel.send(embed=embed)
 
 
+# ------------------------- live "UPLOAD NOW" alerts -------------------------
+def live_now(now: datetime | None = None) -> list[tuple]:
+    """Niches whose best upload window is open right now: (kind, platform, key, niche, start, end)."""
+    now = now or datetime.now(ET)
+    out = []
+    for kind, platform, niches in (("yt", "youtube", YOUTUBE), ("fb", "facebook", FACEBOOK)):
+        for key, n in niches.items():
+            start, end, live = find_window(n, now)
+            if live:
+                out.append((kind, platform, key, n, start, end))
+    return out
+
+
+def live_embed(platform: str, niche: dict, end: datetime, now: datetime) -> discord.Embed:
+    is_yt = platform == "youtube"
+    tag = "YTA" if is_yt else "FBA"
+    e = discord.Embed(
+        title=f"\U0001f7e2 UPLOAD NOW \u2014 {tag} \u2022 {niche['emoji']} {niche['name']}",
+        description=(f"It's the best time to upload.\n"
+                     f"Window closes in **{countdown(end - now)}** ({fmt(end, PH)} PH)."),
+        color=0x00C853, timestamp=now,
+    )
+    e.add_field(name="\U0001f3f7\ufe0f Hashtags", value=" ".join(niche["hashtags"]), inline=False)
+    e.set_footer(text=f"{'YouTube' if is_yt else 'Facebook'} Automation \u2022 {aud(niche)['label']}")
+    return e
+
+
+async def send_live_alerts(force: bool = False, include_schedule: bool = False) -> int:
+    """Post one alert per niche when its window opens. force=True re-sends every open window."""
+    now = datetime.now(ET)
+    todo = []
+    for kind, platform, key, n, start, end in live_now(now):
+        mark = start.isoformat()
+        if force or await run(db.get_setting, f"live_sent:{key}", "") != mark:
+            todo.append((kind, platform, key, n, end, mark))
+    guilds = await approved_guilds()
+    sent = 0
+    for g in guilds:
+        if include_schedule and (cid := await channel_for(g, "schedule")):
+            try:
+                await send_embed(g, cid, schedule_embed(now))
+            except Exception:
+                log.exception("Schedule failed in %s", g.id)
+            await asyncio.sleep(1.5)
+        for kind, platform, key, n, end, mark in todo:
+            cid = await channel_for(g, kind)
+            if not cid:
+                continue
+            try:
+                await send_embed(g, cid, live_embed(platform, n, end, now))
+                sent += 1
+            except Exception:
+                log.exception("Live alert failed in %s: %s", g.id, n["name"])
+            await asyncio.sleep(1.5)
+    for kind, platform, key, n, end, mark in todo:
+        await run(db.set_setting, f"live_sent:{key}", mark)
+    if sent:
+        STATE["last_report_at"] = datetime.now(timezone.utc)
+        log.info("Sent %d UPLOAD NOW alert(s).", sent)
+    return sent
+
+
 async def send_upload_reports(include_schedule: bool = False) -> int:
+    """Dashboard 'send now': post every niche that is live right now."""
+    return await send_live_alerts(force=True, include_schedule=include_schedule)
+
+
+async def _old_send_all_reports(include_schedule: bool = False) -> int:
     now = datetime.now(ET)
     reports = build_reports(now)
     sent = 0
@@ -404,7 +471,7 @@ async def report_loop():
     if daily:
         STATE["last_schedule_date"] = now.date()
     try:
-        await send_upload_reports(include_schedule=daily)
+        await send_live_alerts(include_schedule=daily)
     except Exception:
         log.exception("Report cycle failed (retry next cycle)")
 
@@ -431,7 +498,7 @@ async def _wait_fx():
 
 def apply_settings(interval: int, fx_interval: int, paused: bool):
     STATE.update(interval=interval, fx_interval=fx_interval, paused=paused)
-    report_loop.change_interval(minutes=interval)
+    report_loop.change_interval(minutes=1)   # check every minute for windows that just opened
     fx_loop.change_interval(minutes=fx_interval)
 
 

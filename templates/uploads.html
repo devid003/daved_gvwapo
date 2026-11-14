@@ -43,7 +43,7 @@
   <div class="row">
     <form method="post" action="/uploads/send" class="inline">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="reports">
-      <button class="btn primary">Send reports now</button>
+      <button class="btn primary">Send live niches now</button>
     </form>
   </div>
 </div>
@@ -66,7 +66,7 @@
         {% if state.paused %}<span class="badge pending" style="margin-left:6px">Paused</span>
         {% elif online %}<span class="badge live" style="margin-left:6px">Running</span>
         {% else %}<span class="badge off" style="margin-left:6px">Bot offline</span>{% endif %}</span></h2>
-      <p>Last reports sent <span id="report-at">{{ report_at }}</span> ({{ tz }}).</p>
+      <p>An alert goes out the moment a niche turns green. Last alert <span id="report-at">{{ report_at }}</span> ({{ tz }}).</p>
     </div>
     <div class="row">
       <form method="post" action="/uploads/settings" class="inline">
@@ -89,7 +89,7 @@
     <form method="post" action="/uploads/settings" class="row" style="align-items:flex-end">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="action" value="save">
-      <label class="field">Upload-time reports, every (minutes)
+      <label class="field" style="display:none">Upload-time reports, every (minutes)
         <input type="number" name="interval" min="1" max="1440" value="{{ state.interval }}" style="width:150px"></label>
       <label class="field">Exchange rate, every (minutes)
         <input type="number" name="fx_interval" min="5" max="1440" value="{{ state.fx_interval }}" style="width:150px"></label>
