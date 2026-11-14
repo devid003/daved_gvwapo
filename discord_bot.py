@@ -1,5 +1,3 @@
-
-"""Discord bot: only works in servers and for members approved in the dashboard."""
 import asyncio
 import base64
 import io
@@ -25,7 +23,10 @@ OWNER_IDS = {
     if x.strip().isdigit()
 }
 PROVIDER = os.getenv("IMAGE_PROVIDER", "pollinations").lower()
-POLLINATIONS_TOKEN = os.getenv("POLLINATIONS_TOKEN", "")
+POLLINATIONS_TOKEN = os.getenv("POLLINATIONS_TOKEN", "").strip()
+POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "flux")
+POLLINATIONS_URL = os.getenv("POLLINATIONS_URL", "").strip()
+POLLINATIONS_BASES = ["https://gen.pollinations.ai/image", "https://image.pollinations.ai/prompt"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1")
 MIN_INTERVAL_MIN = int(os.getenv("MIN_INTERVAL_MINUTES", "10"))
@@ -62,8 +63,6 @@ async def log_use(interaction, command, prompt, status, ms, error=""):
         error,
     )
 
-
-# ---------- access control ----------
 class LockedTree(app_commands.CommandTree):
     """Runs before every command: server must be allowed AND member approved."""
 
@@ -115,8 +114,6 @@ class LockedTree(app_commands.CommandTree):
         )
         return False
 
-
-# Other modules (e.g. upload_reports) add start-up functions here
 EXTRA_SETUP: list = []
 
 
@@ -183,7 +180,6 @@ async def _wait_reconcile():
     await bot.wait_until_ready()
 
 
-# ---------- image generation ----------
 async def generate_image(prompt: str) -> bytes:
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=120)
@@ -216,23 +212,24 @@ async def generate_image(prompt: str) -> bytes:
                 async with s.get(item["url"]) as img:
                     return await img.read()
 
-       
-        url = (
-            "https://image.pollinations.ai/prompt/"
-            + urllib.parse.quote(prompt)
-        )
-        params = {
-            "width": 1024,
-            "height": 1024,
-            "nologo": "true",
-        }
 
-        async with s.get(url, params=params) as r:
-            if r.status != 200:
-                raise RuntimeError(
-                    f"Image service returned {r.status}"
-                )
-            return await r.read()
+        headers = {"Authorization": f"Bearer {POLLINATIONS_TOKEN}"} if POLLINATIONS_TOKEN else {}
+        params = {"width": 1024, "height": 1024, "nologo": "true", "private": "true",
+                  "model": POLLINATIONS_MODEL}
+        bases = [POLLINATIONS_URL] if POLLINATIONS_URL else POLLINATIONS_BASES
+        last = "no endpoint"
+        for base in bases:
+            url = base.rstrip("/") + "/" + urllib.parse.quote(prompt)
+            try:
+                async with s.get(url, params=params, headers=headers) as r:
+                    ctype = r.headers.get("Content-Type", "")
+                    if r.status == 200 and ctype.startswith("image/"):
+                        return await r.read()
+                    last = f"Image service returned {r.status}"
+                    log.warning("Pollinations %s -> %s (%s)", base, r.status, ctype)
+            except aiohttp.ClientError as e:
+                last = f"Image service unreachable ({type(e).__name__})"
+        raise RuntimeError(last)
 
 
 def to_file(data: bytes) -> discord.File:
@@ -246,7 +243,6 @@ def ms_since(t0: float) -> int:
     return int((time.monotonic() - t0) * 1000)
 
 
-# ---------- commands ----------
 @bot.tree.command(
     name="imagine",
     description="Generate a picture from a prompt",
@@ -428,8 +424,6 @@ async def on_error(
             msg, ephemeral=True
         )
 
-
-# ---------- scheduler ----------
 @tasks.loop(seconds=30)
 async def scheduler():
     try:
@@ -487,8 +481,6 @@ async def scheduler():
 async def _wait_scheduler():
     await bot.wait_until_ready()
 
-
-# ---------- start-up with rate-limit protection ----------
 async def start_with_backoff(token: str):
     """
     Like bot.start(), but if Discord answers 429 (shared host IP temporarily
