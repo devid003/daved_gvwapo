@@ -299,6 +299,7 @@ async def uploads(request):
         servers.append({"id": s.guild_id, "name": (guild.name if guild else s.name) or "—",
                         "joined": guild is not None, "chans": chans, "options": options})
     now = upload_reports.datetime.now(upload_reports.ET)
+    ph_now = now.astimezone(upload_reports.PH)
     st = upload_reports.STATE
     ctx = {
         "csrf": csrf_token(request),
@@ -310,13 +311,13 @@ async def uploads(request):
         "report_at": _utc_local(st["last_report_at"]),
         "servers": servers,
         "kinds": UPLOAD_KINDS,
-        "us_now": f"{upload_reports.fmt(now, upload_reports.ET, True)} ET, "
-                  f"{upload_reports.fmt(now, upload_reports.PT)} PT",
-        "today": now.strftime("%A, %B ") + str(now.day),
+        "ph_now": upload_reports.fmt(ph_now, upload_reports.PH, True),
+        "us_now": f"{upload_reports.fmt(now, upload_reports.ET, True)} ET",
+        "today": ph_now.strftime("%A, %B ") + str(ph_now.day),
         "timeline": [("YouTube automation", "yt", upload_reports.timeline_rows(upload_reports.YOUTUBE, now)),
                      ("Facebook automation", "fb", upload_reports.timeline_rows(upload_reports.FACEBOOK, now))],
-        "now_pct": round((now.hour * 60 + now.minute) / 1440 * 100, 2),
-        "now_label": upload_reports.fmt(now, upload_reports.ET),
+        "now_pct": round((ph_now.hour * 60 + ph_now.minute) / 1440 * 100, 2),
+        "now_label": upload_reports.fmt(ph_now, upload_reports.PH),
         "tz": TZ_LABEL,
     }
     return templates.TemplateResponse(request=request, name="uploads.html", context=ctx)

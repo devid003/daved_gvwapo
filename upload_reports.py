@@ -192,30 +192,51 @@ def schedule_rows(niches: dict, now: datetime) -> list[dict]:
     return rows
 
 
-def timeline_rows(niches: dict, now: datetime) -> list[dict]:
-    """Today's windows on a 24-hour track in each niche's own audience time (dashboard timeline)."""
+def timeline_rows(niches: dict, now: datetime, display_tz: ZoneInfo = PH) -> list[dict]:
+    """
+    Today's windows on a 24-hour track shown in the OWNER's time (Philippine time by default).
+    The windows themselves stay in each niche's audience time (US niches = US Eastern),
+    they are only converted for display. A window can cross midnight, so it may be cut.
+    """
+    local_now = now.astimezone(display_tz)
+    day_start = datetime.combine(local_now.date(), time(0, 0), tzinfo=display_tz)
+    day_end = day_start + timedelta(days=1)
+    day_len = (day_end - day_start).total_seconds()
     rows = []
     for n in niches.values():
         a = aud(n)
-        local_now = now.astimezone(a["tz"])
-        now_min = local_now.hour * 60 + local_now.minute
-        start, end, live = find_window(n, local_now)
         bands = []
-        for sh, sm, eh, em in windows_for(n, local_now.date()):
-            s0, s1 = sh * 60 + sm, eh * 60 + em
-            s, e = window_dt(local_now.date(), (sh, sm, eh, em), a["tz"])
-            bands.append({
-                "left": round(s0 / 1440 * 100, 2), "width": round((s1 - s0) / 1440 * 100, 2),
-                "label": f"{fmt(s, a['tz'])}–{fmt(e, a['tz'])} {a['abbr']}",
-                "state": "live" if s0 <= now_min < s1 else ("past" if s1 <= now_min else "next"),
-            })
+        first_day = day_start.astimezone(a["tz"]).date() - timedelta(days=1)
+        for k in range(4):
+            d = first_day + timedelta(days=k)
+            for w in windows_for(n, d):
+                s, e = window_dt(d, w, a["tz"])
+                cs, ce = max(s, day_start), min(e, day_end)
+                if cs >= ce:
+                    continue
+                label = f"{fmt(s, display_tz)}–{fmt(e, display_tz)} PH"
+                if a["tz"] is not display_tz:
+                    label += f" ({fmt(s, a['tz'])}–{fmt(e, a['tz'])} {a['abbr']})"
+                bands.append({
+                    "left": round((cs - day_start).total_seconds() / day_len * 100, 2),
+                    "width": round((ce - cs).total_seconds() / day_len * 100, 2),
+                    "label": label,
+                    "state": "live" if s <= now < e else ("past" if e <= now else "next"),
+                })
+        bands.sort(key=lambda x: x["left"])
+        start, end, live = find_window(n, now)
+        if live:
+            status = f"Live until {fmt(end, display_tz)} PH"
+        else:
+            other_day = start.astimezone(display_tz).date() != local_now.date()
+            status = f"Next {fmt(start, display_tz, other_day)} PH, in {countdown(start - now)}"
+        if a["tz"] is not display_tz and start:
+            status += f" ({fmt(end if live else start, a['tz'])} {a['abbr']})"
         rows.append({
             "emoji": n["emoji"], "name": n["name"], "live": live, "bands": bands,
-            "local": a["tz"] is not ET, "abbr": a["abbr"],
-            "now_pct": round(now_min / 1440 * 100, 2),
-            "status": (f"Live until {fmt(end, a['tz'])} {a['abbr']}" if live else
-                       f"Next {fmt(start, a['tz'], start.date() != local_now.date())} {a['abbr']}, "
-                       f"in {countdown(start - local_now)}"),
+            "audience": a["label"], "local": a["tz"] is display_tz,
+            "now_pct": round((local_now - day_start).total_seconds() / day_len * 100, 2),
+            "status": status,
         })
     return rows
 
