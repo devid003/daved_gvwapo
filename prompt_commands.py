@@ -47,9 +47,14 @@ async def _can_use_prompts(interaction: discord.Interaction) -> bool:
     return True
 
 
-@bot.tree.command(name="register", description="Register to use the prompt commands")
+@bot.tree.command(name="register", description="Register to use the bot")
 @discord.app_commands.guild_only()
-async def register_cmd(interaction: discord.Interaction):
+@discord.app_commands.describe(access="What do you want to use?")
+@discord.app_commands.choices(access=[
+    discord.app_commands.Choice(name="Image generation (/imagine)", value="image"),
+    discord.app_commands.Choice(name="Prompts (/ghibli, /cooking, ...)", value="prompt"),
+])
+async def register_cmd(interaction: discord.Interaction, access: discord.app_commands.Choice[str]):
     await interaction.response.defer(ephemeral=True)
     gid, user = interaction.guild_id, interaction.user
     if not await _is_cleared(gid, user.id):
@@ -57,17 +62,34 @@ async def register_cmd(interaction: discord.Interaction):
             "You need to be a verified member first. Please finish the server verification, then run /register.",
             ephemeral=True)
         return
+
+    if access.value == "image":
+        status = await run(db.member_status, user.id)
+        if user.id in OWNER_IDS or status == "approved":
+            await run(db.set_member, user.id, "approved", str(user))
+            await interaction.followup.send("You're approved for **image generation**. Use /imagine.", ephemeral=True)
+            return
+        if status == "denied":
+            await interaction.followup.send("Your image access was declined. Contact the server owner.", ephemeral=True)
+            return
+        await run(db.request_access, user.id, str(user), gid)
+        await interaction.followup.send(
+            "Registered for **image generation**. The owner will approve you shortly, then you can use /imagine.",
+            ephemeral=True)
+        return
+
+    # prompts
     reg, created = await run(db.register_user, gid, user.id, str(user))
     num = f"ID{reg.number:04d}"
     if not created:
         state = {"pending": "still waiting for approval", "approved": "already approved",
                  "denied": "was declined"}.get(reg.status, reg.status)
-        await interaction.followup.send(f"You're already registered as **{user} {num}** ({state}).", ephemeral=True)
+        await interaction.followup.send(f"You're already registered for **prompts** as **{user} {num}** ({state}).", ephemeral=True)
         return
     if user.id in OWNER_IDS:
         await run(db.set_registration_status, reg.id, "approved")
     await interaction.followup.send(
-        f"Registered as **{user} {num}**. The owner will approve you shortly, then you can use the prompt commands.",
+        f"Registered for **prompts** as **{user} {num}**. The owner will approve you shortly, then you can use the prompt commands.",
         ephemeral=True)
 
 

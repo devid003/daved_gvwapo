@@ -117,8 +117,8 @@ class LockedTree(app_commands.CommandTree):
         )
         await deny(
             interaction,
-            "🔒 You're not approved yet. I sent an access request "
-            "to the owner. You can use the bot once it's approved.",
+            "🔒 You're not approved for image generation yet. "
+            "Run **/register** and choose Image generation, then wait for the owner to approve you.",
         )
         return False
 
