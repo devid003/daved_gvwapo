@@ -102,10 +102,15 @@ async def prompt_cmd(interaction: discord.Interaction, niche: str):
     await run(db.log_prompt_use, interaction.guild_id, interaction.user.id, niche)
     file = discord.File(io.BytesIO(data), filename=f"{niche}-prompt.txt")
     note = f"\n-# This message will be removed in {PROMPT_DELETE_AFTER // 60} min." if PROMPT_DELETE_AFTER else ""
-    kwargs = {"content": f"Here's a **{n.label}** prompt:{note}", "file": file}
-    if PROMPT_DELETE_AFTER:
-        kwargs["delete_after"] = PROMPT_DELETE_AFTER
-    await interaction.followup.send(**kwargs)
+    msg = await interaction.followup.send(content=f"Here's a **{n.label}** prompt:{note}", file=file, wait=True)
+    if PROMPT_DELETE_AFTER and msg is not None:
+        async def _later(m=msg):
+            await asyncio.sleep(PROMPT_DELETE_AFTER)
+            try:
+                await m.delete()
+            except Exception:
+                pass
+        asyncio.create_task(_later())
 
 
 @prompt_cmd.autocomplete("niche")
