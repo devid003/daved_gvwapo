@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Site{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Landing page</h1><p>This is your public page. The live stats update on their own. Add your links below.</p></div>
+  <a class="btn" href="/" target="_blank" rel="noopener">View public page</a>
+</div>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Content</h2><p>Shown at the top of your public page.</p></div></div>
+  <div class="panel-body">
+    <form method="post" action="/site/save">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field" style="margin-bottom:14px">Community name
+        <input type="text" name="site_title" value="{{ g.site_title }}" placeholder="{{ default_title }}"></label>
+      <label class="field" style="margin-bottom:14px">Description
+        <input type="text" name="site_desc" value="{{ g.site_desc }}" placeholder="A free creator community. Join us and start creating."></label>
+      <h2 style="margin:18px 0 10px;font-size:15px">Links (leave blank to hide a button)</h2>
+      <div class="grid">
+        <label class="field">Discord invite URL
+          <input type="text" name="link_discord" value="{{ g.link_discord }}" placeholder="https://discord.gg/..."></label>
+        <label class="field">TikTok URL
+          <input type="text" name="link_tiktok" value="{{ g.link_tiktok }}" placeholder="https://tiktok.com/@..."></label>
+        <label class="field">YouTube URL
+          <input type="text" name="link_youtube" value="{{ g.link_youtube }}" placeholder="https://youtube.com/@..."></label>
+        <label class="field">Facebook URL
+          <input type="text" name="link_facebook" value="{{ g.link_facebook }}" placeholder="https://facebook.com/..."></label>
+      </div>
+      <button class="btn primary" style="margin-top:16px">Save landing page</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

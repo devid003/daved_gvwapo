@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 from starlette.templating import Jinja2Templates
 
@@ -685,7 +685,7 @@ async def security_resend(request):
 ADMIN_PATH = os.getenv("ADMIN_PATH", "").strip().strip("/")
 ADMIN_HOSTS = {h.strip().lower() for h in os.getenv("ADMIN_HOSTS", "").split(",") if h.strip()}
 SITE_NAME = os.getenv("SITE_NAME", "Syndicate")
-_PUBLIC = ("/v/", "/health")
+_PUBLIC = ("/v/", "/health", "/api/public/", "/static/")
 _PLAIN_CSS = ("body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f131a;color:#e6e9ef;"
               "font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}"
               ".c{text-align:center;padding:24px;max-width:420px}h1{font-size:28px;margin:0 0 8px}p{color:#9aa3b2;margin:0}")
@@ -718,7 +718,8 @@ class AdminPath:
             scope = dict(scope, path=inner, raw_path=inner.encode())
             return await self.app(scope, receive, self._rewriter(send, pre.encode()))
         if path == "/":
-            return await self._send(send, 200, _plain_page(SITE_NAME, "Member verification. Open the link the bot sent you in your Discord DMs."))
+            html = await _render_landing()
+            return await self._send(send, 200, html.encode())
         return await self._send(send, 404, _plain_page("Not found", "This page doesn't exist."))
 
     @staticmethod
@@ -1167,6 +1168,55 @@ async def overview_live(request):
     }, headers={"Cache-Control": "no-store"})
 
 
+SITE_KEYS = ["site_title", "site_desc", "link_discord", "link_tiktok", "link_youtube", "link_facebook"]
+
+
+async def _site_ctx() -> dict:
+    g = {k: await run(db.get_setting, k, "") for k in SITE_KEYS}
+    stats = await run(db.public_stats)
+    return {
+        "title": g["site_title"] or SITE_NAME,
+        "desc": g["site_desc"] or "A free creator community. Join us and start creating.",
+        "links": [("Discord", g["link_discord"], "#5865F2"), ("TikTok", g["link_tiktok"], "#000000"),
+                  ("YouTube", g["link_youtube"], "#FF0000"), ("Facebook", g["link_facebook"], "#1877F2")],
+        "stats": stats,
+    }
+
+
+async def _render_landing() -> str:
+    ctx = await _site_ctx()
+    return templates.env.get_template("landing.html").render(**ctx)
+
+
+async def landing_root(request):
+    # Used when ADMIN_PATH is not set (dev). In production AdminPath serves this.
+    return HTMLResponse(await _render_landing())
+
+
+async def public_stats_api(request):
+    return JSONResponse(await run(db.public_stats), headers={"Cache-Control": "no-store"})
+
+
+async def site_page(request):
+    if not authed(request):
+        return redirect("/login")
+    g = {k: await run(db.get_setting, k, "") for k in SITE_KEYS}
+    return templates.TemplateResponse(request=request, name="site.html", context={
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+        "g": g, "default_title": SITE_NAME,
+    })
+
+
+async def site_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    for k in SITE_KEYS:
+        await run(db.set_setting, k, str(form.get(k, "")).strip()[:500])
+    flash(request, "Landing page saved.")
+    return redirect("/site")
+
+
 async def health(request):
     return PlainTextResponse("ok")
 
@@ -1237,6 +1287,9 @@ app = Starlette(
         Route("/uploads/settings", uploads_settings, methods=["POST"]),
         Route("/uploads/send", uploads_send, methods=["POST"]),
         Route("/health", health),
+        Route("/api/public/stats", public_stats_api),
+        Route("/site", site_page),
+        Route("/site/save", site_save, methods=["POST"]),
         Route("/v/{token}", verify_page),
         Route("/v/{token}", verify_submit, methods=["POST"]),
         Route("/security/phone", security_phone, methods=["POST"]),

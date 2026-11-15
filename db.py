@@ -724,6 +724,22 @@ def set_setting(key: str, value) -> None:
 
 
 # ---------- dashboard ----------
+def public_stats() -> dict:
+    """Safe aggregate numbers for the public landing page (no names or IDs)."""
+    with Session() as s:
+        servers = s.scalar(select(func.count()).select_from(Server)) or 0
+        members = s.scalar(select(func.count(func.distinct(JoinRequest.user_id)))) or 0
+        banned = s.scalar(select(func.count(func.distinct(JoinRequest.user_id)))
+                          .where(JoinRequest.status == "banned")) or 0
+        approved = s.scalar(select(func.count()).select_from(Registration)
+                            .where(Registration.status == "approved")) or 0
+        prompts_available = s.scalar(select(func.count()).select_from(Prompt)
+                                     .where(Prompt.active.is_(True))) or 0
+        prompts_sent = s.scalar(select(func.count()).select_from(PromptUse)) or 0
+    return {"servers": servers, "members": members, "banned": banned, "approved": approved,
+            "prompts_available": prompts_available, "prompts_sent": prompts_sent}
+
+
 def overview() -> dict:
     since = utcnow() - dt.timedelta(hours=24)
     with Session() as s:

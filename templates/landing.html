@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<meta name="description" content="{{ desc }}">
+<meta property="og:title" content="{{ title }}">
+<meta property="og:description" content="{{ desc }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b0e14;--card:#141925;--line:#222a3a;--ink:#eef1f6;--muted:#9aa4b6;--accent:#5865F2}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,rgba(88,101,242,.12) 0,transparent 60%),var(--bg);
+  background-color:var(--bg);color:var(--ink);
+  font-family:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-variant-numeric:tabular-nums;line-height:1.55;min-height:100vh}
+.wrap{max-width:860px;margin:0 auto;padding:72px 20px 60px;text-align:center}
+.badge{display:inline-block;background:rgba(88,101,242,.15);color:#aab4ff;border:1px solid rgba(88,101,242,.4);
+  padding:6px 14px;border-radius:999px;font-size:13px;font-weight:600;letter-spacing:.02em;margin-bottom:22px}
+h1{font-size:clamp(34px,6vw,60px);line-height:1.05;margin:0 0 16px;font-weight:800;letter-spacing:-.02em}
+.sub{font-size:clamp(16px,2.4vw,20px);color:var(--muted);max-width:620px;margin:0 auto 34px}
+.btns{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:56px}
+.btn{display:inline-flex;align-items:center;gap:9px;padding:13px 22px;border-radius:12px;font-weight:700;
+  font-size:15px;text-decoration:none;color:#fff;transition:transform .12s,filter .12s;border:1px solid rgba(255,255,255,.08)}
+.btn:hover{transform:translateY(-2px);filter:brightness(1.1)}
+.btn svg{width:18px;height:18px;fill:currentColor}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:720px;margin:0 auto}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 16px}
+.stat .v{font-size:clamp(26px,5vw,40px);font-weight:800;line-height:1}
+.stat .k{color:var(--muted);font-size:13px;margin-top:6px;font-weight:500}
+.live{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;margin-top:30px}
+.live .dot{width:8px;height:8px;border-radius:50%;background:#3ccf7a;box-shadow:0 0 0 3px rgba(60,207,122,.25);animation:p 2s infinite}
+@keyframes p{50%{opacity:.4}}
+.foot{color:#5b6475;font-size:12px;margin-top:40px}
+@media (max-width:560px){.grid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="badge">This community is FREE</div>
+  <h1>{{ title }}</h1>
+  <p class="sub">{{ desc }}</p>
+
+  <div class="btns">
+    {% for name, url, color in links if url %}
+    <a class="btn" style="background:{{ color }}" href="{{ url }}" target="_blank" rel="noopener">
+      {% if name == 'Discord' %}<svg viewBox="0 0 24 24"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.2.5c1.7.4 2.5.9 3.4 1.5A13 13 0 0 0 4 4.9c.9-.6 1.9-1.1 3.4-1.4L7.2 3A19.8 19.8 0 0 0 2.3 4.4C.4 8 .1 11.6.3 15.1A20 20 0 0 0 6.3 18l.5-.8c-.8-.3-1.5-.7-2.2-1.2l.5-.3a14 14 0 0 0 12 0l.5.3c-.7.5-1.4.9-2.2 1.2l.5.8a20 20 0 0 0 6-2.9c.3-4.2-.5-7.8-1.6-10.7zM8.3 13c-.9 0-1.6-.8-1.6-1.8s.7-1.8 1.6-1.8 1.6.8 1.6 1.8-.7 1.8-1.6 1.8zm7.4 0c-.9 0-1.6-.8-1.6-1.8s.7-1.8 1.6-1.8 1.6.8 1.6 1.8-.7 1.8-1.6 1.8z"/></svg>{% endif %}
+      {% if name == 'TikTok' %}<svg viewBox="0 0 24 24"><path d="M16.5 3c.3 2.1 1.5 3.6 3.5 3.8v2.4c-1.2.1-2.4-.3-3.5-1v6.6c0 3.3-2.6 5.7-5.7 5.2-2.6-.4-4.3-2.7-4-5.3.3-2.4 2.4-4.2 4.9-4v2.5c-.4-.1-.8-.1-1.2 0-1 .3-1.6 1.2-1.4 2.2.2 1 1.1 1.7 2.2 1.5 1-.2 1.6-1 1.6-2V3h3.1z"/></svg>{% endif %}
+      {{ name }}
+    </a>
+    {% endfor %}
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="v" id="s-members">{{ stats.members }}</div><div class="k">Members joined</div></div>
+    <div class="stat"><div class="v" id="s-approved">{{ stats.approved }}</div><div class="k">Approved members</div></div>
+    <div class="stat"><div class="v" id="s-banned">{{ stats.banned }}</div><div class="k">Banned</div></div>
+    <div class="stat"><div class="v" id="s-pa">{{ stats.prompts_available }}</div><div class="k">Prompts available</div></div>
+    <div class="stat"><div class="v" id="s-ps">{{ stats.prompts_sent }}</div><div class="k">Prompts sent</div></div>
+    <div class="stat"><div class="v" id="s-servers">{{ stats.servers }}</div><div class="k">Servers</div></div>
+  </div>
+
+  <div class="live"><span class="dot"></span>Live stats, updating automatically</div>
+  <div class="foot">&copy; {{ title }}</div>
+</div>
+<script>
+(function(){
+  function set(id,v){var e=document.getElementById(id); if(e)e.textContent=v;}
+  function refresh(){
+    fetch('/api/public/stats',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
+      set('s-members',j.members); set('s-approved',j.approved); set('s-banned',j.banned);
+      set('s-pa',j.prompts_available); set('s-ps',j.prompts_sent); set('s-servers',j.servers);
+    }).catch(function(){});
+  }
+  setInterval(function(){if(!document.hidden)refresh();},20000);
+})();
+</script>
+</body>
+</html>
