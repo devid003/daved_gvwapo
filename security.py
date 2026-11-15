@@ -27,7 +27,6 @@ import discord
 from zoneinfo import ZoneInfo
 
 import db
-import discord
 import discord_bot
 from discord_bot import bot
 
@@ -352,7 +351,7 @@ async def set_phone_required(guild: discord.Guild, on: bool) -> str:
 
 async def _send_code_dm_only(guild: discord.Guild, member, join_id: int) -> bool:
     code = new_code()
-    await run(db.set_setting, f"code:{join_id}", code)
+    await run(db.set_setting, f"code:{join_id}", _hash_code(code))
     e = discord.Embed(
         title=f"Verification code for {guild.name}",
         description=(f"Your code is **`{code}`**\n\n"

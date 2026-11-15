@@ -141,8 +141,6 @@ class ImageBot(discord.Client):
     async def setup_hook(self):
         if not reconcile.is_running():
             reconcile.start()
-        if not scheduler.is_running():
-            scheduler.start()
         for fn in EXTRA_SETUP:
             fn()
 
@@ -431,6 +429,13 @@ async def auto_list(interaction: discord.Interaction):
 
 
 bot.tree.add_command(auto)
+
+# ---- image generator removed from the bot (kept in code, just not exposed) ----
+try:
+    bot.tree.remove_command("imagine")
+    bot.tree.remove_command("autoimage")
+except Exception:
+    pass
 
 
 @bot.tree.error

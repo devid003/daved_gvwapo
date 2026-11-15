@@ -48,34 +48,14 @@ async def _can_use_prompts(interaction: discord.Interaction) -> bool:
     return True
 
 
-@bot.tree.command(name="register", description="Register to use the bot")
+@bot.tree.command(name="register", description="Register to use the prompt commands")
 @app_commands.guild_only()
-@app_commands.describe(access="What do you want to use?")
-@app_commands.choices(access=[
-    app_commands.Choice(name="Image generation (/imagine)", value="image"),
-    app_commands.Choice(name="Prompts (/prompt)", value="prompt"),
-])
-async def register_cmd(interaction: discord.Interaction, access: app_commands.Choice[str]):
+async def register_cmd(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     gid, user = interaction.guild_id, interaction.user
     if not await _is_cleared(gid, user.id):
         await interaction.followup.send(
             "You need to be a verified member first. Finish the server verification, then run /register.",
-            ephemeral=True)
-        return
-
-    if access.value == "image":
-        status = await run(db.member_status, user.id)
-        if user.id in OWNER_IDS or status == "approved":
-            await run(db.set_member, user.id, "approved", str(user))
-            await interaction.followup.send("You're approved for **image generation**. Use /imagine.", ephemeral=True)
-            return
-        if status == "denied":
-            await interaction.followup.send("Your image access was declined. Contact the server owner.", ephemeral=True)
-            return
-        await run(db.request_access, user.id, str(user), gid)
-        await interaction.followup.send(
-            "Registered for **image generation**. The owner will approve you, then you can use /imagine.",
             ephemeral=True)
         return
 
