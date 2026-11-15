@@ -25,6 +25,8 @@ PROMPT_NICHES = {
 }
 
 BRAND = os.getenv("PROMPT_BRAND", os.getenv("SITE_NAME", "Syndicate"))
+OWNER = os.getenv("PROMPT_OWNER", "$SYNDICATE")
+CREATOR = os.getenv("PROMPT_CREATOR", "david_5522")
 WIDTH = 1200
 MARGIN = 70
 
@@ -126,3 +128,17 @@ def _tile_watermark(img: Image.Image, text: str):
     bd.text(((w - tw) / 2, h / 2 - 40), text.upper(), font=big, fill=(255, 255, 255, 22))
     bl = bl.rotate(30, expand=False, resample=Image.BICUBIC)
     img.paste(Image.alpha_composite(img.convert("RGBA"), bl).convert("RGB"), (0, 0))
+
+
+def render_txt(niche_key: str, prompt: str, index: int = 0, total: int = 0) -> bytes:
+    """Prompt as a .txt file: owner header, the prompt with a watermark tag on every line, creator footer."""
+    label = PROMPT_NICHES.get(niche_key, (niche_key.title(),))[0]
+    mark = f"[{BRAND}]"
+    bar = "=" * 60
+    lines = [bar, f"  COMMUNITY OWNER  {OWNER}", f"  {label} PROMPT" + (f"   (#{index} of {total})" if total else ""), bar, ""]
+    for raw in prompt.split(chr(10)):
+        wrapped = textwrap.wrap(raw, width=76) or [""]
+        for seg in wrapped:
+            lines.append(f"{seg}  {mark}")
+    lines += ["", bar, f"  Creator by {CREATOR}", f"  (c) {OWNER} - do not remove credit", bar, ""]
+    return (chr(10).join(lines)).encode("utf-8")

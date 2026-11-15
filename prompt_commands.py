@@ -10,7 +10,7 @@ import discord
 
 import db
 from discord_bot import bot
-from prompts import PROMPT_NICHES, render_card
+from prompts import PROMPT_NICHES, render_txt
 
 log = logging.getLogger("prompts")
 run = asyncio.to_thread
@@ -28,13 +28,8 @@ def _make_command(key: str, label: str):
         rows = await run(db.list_prompts, key, True)
         total = len(rows)
         index = next((i + 1 for i, r in enumerate(rows) if r.id == p.id), 0)
-        try:
-            data = await run(render_card, key, p.text, index, total)
-        except Exception:
-            log.exception("Card render failed for %s", key)
-            await interaction.followup.send("Could not make the prompt image. Try again.", ephemeral=True)
-            return
-        file = discord.File(io.BytesIO(data), filename=f"{key}-prompt.png")
+        data = await run(render_txt, key, p.text, index, total)
+        file = discord.File(io.BytesIO(data), filename=f"{key}-prompt.txt")
         await interaction.followup.send(content=f"Here's a **{label}** prompt:", file=file)
     return cmd
 
