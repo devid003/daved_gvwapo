@@ -17,6 +17,8 @@ from prompts import render_txt
 
 log = logging.getLogger("prompts")
 run = asyncio.to_thread
+import os as _os
+PROMPT_DELETE_AFTER = int(_os.getenv("PROMPT_DELETE_SECONDS", "600") or 0)  # 0 = keep forever
 
 
 async def _is_cleared(guild_id: int, user_id: int) -> bool:
@@ -95,7 +97,11 @@ async def prompt_cmd(interaction: discord.Interaction, niche: str):
     data = await run(render_txt, niche, p.text, index, total, n.label)
     await run(db.log_prompt_use, interaction.guild_id, interaction.user.id, niche)
     file = discord.File(io.BytesIO(data), filename=f"{niche}-prompt.txt")
-    await interaction.followup.send(content=f"Here's a **{n.label}** prompt:", file=file)
+    note = f"\n-# This message will be removed in {PROMPT_DELETE_AFTER // 60} min." if PROMPT_DELETE_AFTER else ""
+    kwargs = {"content": f"Here's a **{n.label}** prompt:{note}", "file": file}
+    if PROMPT_DELETE_AFTER:
+        kwargs["delete_after"] = PROMPT_DELETE_AFTER
+    await interaction.followup.send(**kwargs)
 
 
 @prompt_cmd.autocomplete("niche")
