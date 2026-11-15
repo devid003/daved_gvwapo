@@ -74,15 +74,15 @@ async def log_use(interaction, command, prompt, status, ms, error=""):
 class LockedTree(app_commands.CommandTree):
     """Runs before every command: server must be allowed AND member approved."""
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+async def interaction_check(self, interaction: discord.Interaction) -> bool:
         allowed = await run(db.allowed_guild_ids)
-
         if interaction.guild_id is None or interaction.guild_id not in allowed:
-            await deny(
-                interaction,
-                "This bot is private and isn't available in this server.",
-            )
+            try:
+                await deny(interaction, "This bot is private and isn't available in this server.")
+            except Exception:
+                pass
             return False
+        return True
 
         uid = interaction.user.id
 
