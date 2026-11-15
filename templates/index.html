@@ -21,6 +21,8 @@
   <div><div class="v">{{ servers|length }}</div><div class="k">Approved servers</div></div>
   <div><div class="v">{{ approved_count }}</div><div class="k">Approved members</div></div>
   <div><div class="v" style="{{ 'color:var(--warn)' if pending }}">{{ pending|length }}</div><div class="k">Waiting for approval</div></div>
+  <div><div class="v">{{ regs_total }}{% if regs_pending %} <span style="font-size:14px;color:var(--warn)">+{{ regs_pending }}</span>{% endif %}</div><div class="k">Registered users{% if regs_pending %} ({{ regs_pending }} waiting){% endif %}</div></div>
+  <div><div class="v">{{ prompts_total }}</div><div class="k">Prompts sent</div></div>
   <div><div class="v">{{ gen24 }}</div><div class="k">Images in 24h</div></div>
   <div><div class="v">{{ jobs }}</div><div class="k">Automations</div></div>
 </div>

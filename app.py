@@ -195,6 +195,9 @@ async def index(request):
         "jobs": data["jobs"],
         "tz": TZ_LABEL,
         "image_enabled": discord_bot.IMAGE_STATE["enabled"],
+        "regs_total": data.get("regs_total", 0),
+        "regs_pending": data.get("regs_pending", 0),
+        "prompts_total": await run(db.prompt_use_total),
     }
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
 
@@ -988,9 +991,14 @@ async def prompts_page(request):
     niches = [{"key": k, "label": v[0], "total": counts.get(k, {}).get("total", 0),
                "active": counts.get(k, {}).get("active", 0)} for k, v in promptlib.PROMPT_NICHES.items()]
     rows = await run(db.list_prompts, sel)
+    uses = await run(db.prompt_use_counts)
+    for nn in niches:
+        nn["uses"] = uses.get(nn["key"], 0)
+    regs = await run(db.list_registrations, _one_guild_id())
     return templates.TemplateResponse(request=request, name="prompts.html", context={
         "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
         "niches": niches, "sel": sel, "sel_label": promptlib.PROMPT_NICHES[sel][0], "rows": rows,
+        "regs": regs, "uses_total": sum(uses.values()),
     })
 
 
@@ -1045,6 +1053,18 @@ async def prompt_delete(request):
         await run(db.delete_prompt, pid)
         flash(request, "Prompt deleted.")
     return redirect(f"/prompts?n={niche}")
+
+
+async def reg_decide(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    rid = parse_int(form.get("id"))
+    action = str(form.get("action", ""))
+    if rid and action in ("approve", "deny"):
+        await run(db.set_registration_status, rid, "approved" if action == "approve" else "denied")
+        flash(request, "Registration approved." if action == "approve" else "Registration declined.")
+    return redirect("/prompts")
 
 
 async def health(request):
@@ -1103,6 +1123,7 @@ app = Starlette(
         Route("/prompts/edit", prompt_edit, methods=["POST"]),
         Route("/prompts/toggle", prompt_toggle, methods=["POST"]),
         Route("/prompts/delete", prompt_delete, methods=["POST"]),
+        Route("/prompts/register", reg_decide, methods=["POST"]),
         Route("/api/security/live", security_live),
         Route("/api/uploads/live", uploads_live),
         Route("/uploads/channels", uploads_channels, methods=["POST"]),

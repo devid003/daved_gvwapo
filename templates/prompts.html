@@ -22,7 +22,7 @@
 <section class="panel">
   <div class="ntabs">
     {% for n in niches %}
-    <a class="ntab {{ 'on' if n.key == sel }}" href="/prompts?n={{ n.key }}">/{{ n.key }} <span class="c">{{ n.active }}/{{ n.total }}</span></a>
+    <a class="ntab {{ 'on' if n.key == sel }}" href="/prompts?n={{ n.key }}">/{{ n.key }} <span class="c">{{ n.active }}/{{ n.total }} &middot; {{ n.uses }} sent</span></a>
     {% endfor %}
   </div>
   <div class="panel-body">
@@ -63,6 +63,32 @@
   {% endfor %}
   {% else %}
   <div class="empty">No {{ sel_label }} prompts yet. Add one above.</div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Registered users</h2><p>Members who ran /register. Approve them before they can use prompt commands. {{ uses_total }} prompts sent in total.</p></div></div>
+  {% if regs %}
+  <div class="scroll"><table>
+    <tr><th>ID</th><th>Member</th><th>Status</th><th></th></tr>
+    {% for r in regs %}
+    <tr>
+      <td><b>ID {{ "%02d"|format(r.number) }}</b></td>
+      <td>{{ r.username or r.user_id }}<div class="mono small">{{ r.user_id }}</div></td>
+      <td><span class="badge {{ {'approved':'live','denied':'off','pending':'pending'}.get(r.status,'') }}">{{ r.status|capitalize }}</span></td>
+      <td class="actions">
+        {% if r.status != 'approved' %}
+        <form method="post" action="/prompts/register" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="action" value="approve"><button class="btn sm ok">Approve</button></form>
+        {% endif %}
+        {% if r.status != 'denied' %}
+        <form method="post" action="/prompts/register" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="action" value="deny"><button class="btn sm bad">Deny</button></form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <div class="empty">No one has registered yet. Members use /register in Discord.</div>
   {% endif %}
 </section>
 {% endblock %}

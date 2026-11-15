@@ -96,6 +96,29 @@ class JoinRequest(Base):
     decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class Registration(Base):
+    """A member who registered to use prompt commands. Gets a sequential number."""
+    __tablename__ = "registrations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    username: Mapped[str] = mapped_column(String(200), default="")
+    number: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|approved|denied
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PromptUse(Base):
+    """One prompt command use, for counting per niche."""
+    __tablename__ = "prompt_uses"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    niche: Mapped[str] = mapped_column(String(40), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Prompt(Base):
     """A prompt for a niche slash command (e.g. /ghibli). Edited on the dashboard."""
     __tablename__ = "prompts"
@@ -346,6 +369,73 @@ def set_join_flags(join_id: int, flags: str) -> None:
             row.flags = (flags or "")[:300]
 
 
+# ---------- registrations ----------
+def get_registration(guild_id: int, user_id: int):
+    with Session() as s:
+        return s.scalars(select(Registration).where(
+            Registration.guild_id == guild_id, Registration.user_id == user_id)).first()
+
+
+def register_user(guild_id: int, user_id: int, username: str) -> tuple:
+    """Return (registration, created). Assigns the next number on first register."""
+    with Session.begin() as s:
+        row = s.scalars(select(Registration).where(
+            Registration.guild_id == guild_id, Registration.user_id == user_id)).first()
+        if row is not None:
+            if username:
+                row.username = username[:200]
+            s.expunge(row)
+            return row, False
+        nxt = (s.scalar(select(func.max(Registration.number)).where(Registration.guild_id == guild_id)) or 0) + 1
+        row = Registration(guild_id=guild_id, user_id=user_id, username=(username or "")[:200], number=nxt)
+        s.add(row)
+        s.flush()
+        s.expunge(row)
+        return row, True
+
+
+def set_registration_status(reg_id: int, status: str) -> None:
+    with Session.begin() as s:
+        row = s.get(Registration, reg_id)
+        if row:
+            row.status = status
+            row.decided_at = utcnow()
+
+
+def list_registrations(guild_id: int | None = None, status: str | None = None, limit: int = 500) -> list:
+    with Session() as s:
+        q = select(Registration)
+        if guild_id is not None:
+            q = q.where(Registration.guild_id == guild_id)
+        if status is not None:
+            q = q.where(Registration.status == status)
+        return list(s.scalars(q.order_by(Registration.number)))
+
+
+def is_registered_approved(guild_id: int, user_id: int) -> bool:
+    with Session() as s:
+        return s.scalar(select(func.count()).select_from(Registration).where(
+            Registration.guild_id == guild_id, Registration.user_id == user_id,
+            Registration.status == "approved")) > 0
+
+
+# ---------- prompt usage ----------
+def log_prompt_use(guild_id: int, user_id: int, niche: str) -> None:
+    with Session.begin() as s:
+        s.add(PromptUse(guild_id=guild_id, user_id=user_id, niche=niche))
+
+
+def prompt_use_counts() -> dict:
+    with Session() as s:
+        rows = s.execute(select(PromptUse.niche, func.count()).group_by(PromptUse.niche)).all()
+    return {n: c for n, c in rows}
+
+
+def prompt_use_total() -> int:
+    with Session() as s:
+        return s.scalar(select(func.count()).select_from(PromptUse)) or 0
+
+
 # ---------- prompts ----------
 def list_prompts(niche: str, active_only: bool = False) -> list:
     with Session() as s:
@@ -558,4 +648,7 @@ def overview() -> dict:
             select(func.count()).select_from(UsageLog).where(UsageLog.ts >= since, UsageLog.status == "ok")
         ) or 0
         jobs = s.scalar(select(func.count()).select_from(Job)) or 0
-    return {"servers": servers, "members": members, "gen24": gen24, "jobs": jobs}
+        regs_total = s.scalar(select(func.count()).select_from(Registration).where(Registration.status == "approved")) or 0
+        regs_pending = s.scalar(select(func.count()).select_from(Registration).where(Registration.status == "pending")) or 0
+    return {"servers": servers, "members": members, "gen24": gen24, "jobs": jobs,
+            "regs_total": regs_total, "regs_pending": regs_pending}
