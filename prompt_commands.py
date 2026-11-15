@@ -18,7 +18,11 @@ from prompts import render_txt
 log = logging.getLogger("prompts")
 run = asyncio.to_thread
 import os as _os
-PROMPT_DELETE_AFTER = int(_os.getenv("PROMPT_DELETE_SECONDS", "600") or 0)  # 0 = keep forever
+def _int_env(name, default):
+    import re
+    m = re.match(r"\s*(\d+)", _os.getenv(name, "") or "")
+    return int(m.group(1)) if m else default
+PROMPT_DELETE_AFTER = _int_env("PROMPT_DELETE_SECONDS", 600)
 
 
 async def _is_cleared(guild_id: int, user_id: int) -> bool:
