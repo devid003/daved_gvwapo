@@ -1,14 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Overview{% endblock %}
 {% block content %}
-{% macro act(csrf, uid, status, label, cls="") -%}
-<form method="post" action="/members/set" class="inline">
-  <input type="hidden" name="csrf" value="{{ csrf }}">
-  <input type="hidden" name="user_id" value="{{ uid }}">
-  <input type="hidden" name="status" value="{{ status }}">
-  <button class="btn sm {{ cls }}">{{ label }}</button>
-</form>
-{%- endmacro %}
 
 <div class="head">
   <div><h1>Overview</h1><p>Who can use the bot, and what it has been doing.</p></div>
@@ -16,53 +8,14 @@
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
 
 <div class="strip">
-  <div><div class="v row" style="gap:8px"><span class="dot {{ 'on' if bot.online }}"></span>{{ 'Online' if bot.online else 'Offline' }}</div>
+  <div><div class="v row" style="gap:8px"><span class="dot {{ 'on' if bot.online }}" id="ov-dot"></span><span id="ov-online">{{ 'Online' if bot.online else 'Offline' }}</span></div>
        <div class="k">{% if bot.online %}{{ bot.guilds }} server{{ '' if bot.guilds == 1 else 's' }}{% if bot.ping is not none %}, {{ bot.ping }} ms{% endif %}{% else %}Waiting to connect{% endif %}</div></div>
-  <div><div class="v">{{ servers|length }}</div><div class="k">Approved servers</div></div>
-  <div><div class="v">{{ approved_count }}</div><div class="k">Approved members</div></div>
-  <div><div class="v" style="{{ 'color:var(--warn)' if pending }}">{{ pending|length }}</div><div class="k">Waiting for approval</div></div>
-  <div><div class="v">{{ regs_total }}{% if regs_pending %} <span style="font-size:14px;color:var(--warn)">+{{ regs_pending }}</span>{% endif %}</div><div class="k">Registered users{% if regs_pending %} ({{ regs_pending }} waiting){% endif %}</div></div>
-  <div><div class="v">{{ prompts_total }}</div><div class="k">Prompts sent</div></div>
-  <div><div class="v">{{ gen24 }}</div><div class="k">Images in 24h</div></div>
-  <div><div class="v">{{ jobs }}</div><div class="k">Automations</div></div>
+  <div><div class="v" id="ov-servers">{{ servers|length }}</div><div class="k">Approved servers</div></div>
+  <div><div class="v" id="ov-regs">{{ regs_total }}{% if regs_pending %} <span style="font-size:14px;color:var(--warn)">+{{ regs_pending }}</span>{% endif %}</div><div class="k">Registered users</div></div>
+  <div><div class="v" id="ov-prompts">{{ prompts_total }}</div><div class="k">Prompts sent</div></div>
 </div>
 
-<section class="panel">
-  <div class="panel-head">
-    <div>
-      <h2>Image generation <span class="badge {{ 'live' if image_enabled else 'off' }}" style="margin-left:6px">{{ 'On' if image_enabled else 'Off' }}</span></h2>
-      <p>When off, /imagine and /autoimage reply that it's paused and automations are skipped. Upload-time reports keep running.</p>
-    </div>
-    <form method="post" action="/image/toggle" class="inline">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      {% if image_enabled %}
-      <input type="hidden" name="enabled" value="0"><button class="btn bad">Turn off</button>
-      {% else %}
-      <input type="hidden" name="enabled" value="1"><button class="btn ok">Turn on</button>
-      {% endif %}
-    </form>
-  </div>
-</section>
 
-<section class="panel">
-  <div class="panel-head"><div><h2>Waiting for approval</h2><p>People who tried a command in an approved server.</p></div></div>
-  {% if pending %}
-  <div class="scroll"><table>
-    <tr><th>Member</th><th>User ID</th><th>Requested ({{ tz }})</th><th>Server</th><th></th></tr>
-    {% for m in pending %}
-    <tr>
-      <td><b>{{ m.username or 'Unknown' }}</b></td>
-      <td class="mono">{{ m.user_id }}</td>
-      <td class="nowrap">{{ m.requested_at|local }}</td>
-      <td class="mono">{{ m.guild_id or '' }}</td>
-      <td class="actions">{{ act(csrf, m.user_id, 'approved', 'Approve', 'ok') }}{{ act(csrf, m.user_id, 'denied', 'Deny', 'bad') }}</td>
-    </tr>
-    {% endfor %}
-  </table></div>
-  {% else %}
-  <div class="empty">Nobody is waiting. New requests appear here when someone uses a command.</div>
-  {% endif %}
-</section>
 
 <section class="panel">
   <div class="panel-head"><div><h2>Approved servers</h2><p>The bot works only here and leaves any other server.</p></div></div>
@@ -96,36 +49,21 @@
   </div>
 </section>
 
-<section class="panel">
-  <div class="panel-head"><div><h2>Members</h2><p>Approved members can use /imagine and the upload-time commands.</p></div></div>
-  <div class="scroll"><table>
-    <tr><th>Member</th><th>User ID</th><th>Status</th><th>Requested</th><th>Decided</th><th></th></tr>
-    {% for m in members %}
-    <tr>
-      <td><b>{{ m.username or 'Not seen yet' }}</b></td>
-      <td class="mono">{{ m.user_id }}</td>
-      <td><span class="badge {{ m.status }}">{{ m.status|capitalize }}</span></td>
-      <td class="nowrap">{{ m.requested_at|local }}</td>
-      <td class="nowrap">{{ m.decided_at|local }}</td>
-      <td class="actions">
-        {% if m.status != 'approved' %}{{ act(csrf, m.user_id, 'approved', 'Approve', 'ok') }}{% endif %}
-        {% if m.status == 'approved' %}{{ act(csrf, m.user_id, 'denied', 'Revoke', 'bad') }}{% endif %}
-        {{ act(csrf, m.user_id, 'remove', 'Delete') }}
-        <a class="btn sm" href="/usage?period=all&user={{ m.user_id }}">Logs</a>
-      </td>
-    </tr>
-    {% else %}
-    <tr><td colspan="6" class="muted">No members yet.</td></tr>
-    {% endfor %}
-  </table></div>
-  <div class="panel-foot">
-    <form method="post" action="/members/set" class="row">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input type="hidden" name="status" value="approved">
-      <input type="text" name="user_id" placeholder="User ID" required inputmode="numeric" aria-label="User ID">
-      <input type="text" name="username" placeholder="Label (optional)" aria-label="Label">
-      <button class="btn primary">Approve member</button>
-    </form>
-  </div>
-</section>
+<script>
+(function(){
+  function refresh(){
+    fetch('/api/overview/live',{credentials:'same-origin',cache:'no-store'})
+      .then(function(r){if(r.status===401){location.href='/login';throw 0;}if(!r.ok)throw 0;return r.json();})
+      .then(function(j){
+        var dot=document.getElementById('ov-dot'); if(dot)dot.className='dot'+(j.online?' on':'');
+        var on=document.getElementById('ov-online'); if(on)on.textContent=j.online?'Online':'Offline';
+        var sv=document.getElementById('ov-servers'); if(sv)sv.textContent=j.servers;
+        var rg=document.getElementById('ov-regs'); if(rg)rg.innerHTML=j.regs_total+(j.regs_pending?' <span style="font-size:14px;color:var(--warn)">+'+j.regs_pending+'</span>':'');
+        var pr=document.getElementById('ov-prompts'); if(pr)pr.textContent=j.prompts_total;
+      }).catch(function(){});
+  }
+  setInterval(function(){if(!document.hidden)refresh();},15000);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)refresh();});
+})();
+</script>
 {% endblock %}

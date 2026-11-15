@@ -1,0 +1,20 @@
+<div class="kpis">
+  <div class="kpi"><div class="v" style="color:var(--live)">{{ available }}</div><div class="k">Available prompts</div></div>
+  <div class="kpi"><div class="v" style="color:var(--bad)">{{ unavailable }}</div><div class="k">Unavailable prompts</div></div>
+  <div class="kpi"><div class="v">{{ uses_total }}</div><div class="k">Prompts sent</div></div>
+  <div class="kpi"><div class="v">{{ approved_users }}</div><div class="k">Approved users</div></div>
+</div>
+<div class="chartbox">
+  <div class="muted small" style="margin-bottom:10px">Prompts sent per niche</div>
+  {% if chart and uses_total %}
+  {% for c in chart %}
+  <div class="barrow">
+    <div class="barlabel">{{ c.emoji }} {{ c.label }}</div>
+    <div class="bartrack"><div class="bar" style="width:{{ c.pct if c.pct > 2 else 2 }}%"></div></div>
+    <div class="barval">{{ c.uses }}</div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="muted small">No prompts sent yet. The chart fills in as members use /prompt.</div>
+  {% endif %}
+</div>

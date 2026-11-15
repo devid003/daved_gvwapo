@@ -194,7 +194,6 @@ async def index(request):
         "gen24": data["gen24"],
         "jobs": data["jobs"],
         "tz": TZ_LABEL,
-        "image_enabled": discord_bot.IMAGE_STATE["enabled"],
         "regs_total": data.get("regs_total", 0),
         "regs_pending": data.get("regs_pending", 0),
         "prompts_total": await run(db.prompt_use_total),
@@ -984,6 +983,21 @@ async def member_export(request):
 async def prompts_page(request):
     if not authed(request):
         return redirect("/login")
+    stats = await _prompt_stats()
+    sel = request.query_params.get("n", "")
+    keys = [x["key"] for x in stats["niches"]]
+    if sel not in keys:
+        sel = keys[0] if keys else ""
+    sel_obj = next((x for x in stats["niches"] if x["key"] == sel), None)
+    rows = await run(db.list_prompts, sel) if sel else []
+    ctx = {"csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+           "sel": sel, "sel_label": (sel_obj["label"] if sel_obj else ""),
+           "sel_emoji": (sel_obj["emoji"] if sel_obj else ""), "rows": rows}
+    ctx.update(stats)
+    return templates.TemplateResponse(request=request, name="prompts.html", context=ctx)
+
+
+async def _prompt_stats() -> dict:
     counts = await run(db.prompt_counts)
     uses = await run(db.prompt_use_counts)
     db_niches = await run(db.list_niches)
@@ -991,19 +1005,17 @@ async def prompts_page(request):
                "total": counts.get(x.key, {}).get("total", 0),
                "active": counts.get(x.key, {}).get("active", 0),
                "uses": uses.get(x.key, 0)} for x in db_niches]
-    keys = [x["key"] for x in niches]
-    sel = request.query_params.get("n", "")
-    if sel not in keys:
-        sel = keys[0] if keys else ""
-    sel_obj = next((x for x in niches if x["key"] == sel), None)
-    rows = await run(db.list_prompts, sel) if sel else []
+    available = sum(x["active"] for x in niches)
+    unavailable = sum(x["total"] - x["active"] for x in niches)
     regs = await run(db.list_registrations, _one_guild_id())
-    return templates.TemplateResponse(request=request, name="prompts.html", context={
-        "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
-        "niches": niches, "sel": sel, "sel_label": (sel_obj["label"] if sel_obj else ""),
-        "sel_emoji": (sel_obj["emoji"] if sel_obj else ""), "rows": rows,
-        "regs": regs, "uses_total": sum(uses.values()),
-    })
+    approved_users = sum(1 for r in regs if r.status == "approved")
+    cmax = max([x["uses"] for x in niches] + [1])
+    chart = [{"label": x["label"], "emoji": x["emoji"], "uses": x["uses"],
+              "pct": round(x["uses"] / cmax * 100)} for x in niches]
+    chart.sort(key=lambda c: -c["uses"])
+    return {"niches": niches, "regs": regs, "uses_total": sum(uses.values()),
+            "available": available, "unavailable": unavailable, "approved_users": approved_users,
+            "chart": chart}
 
 
 async def prompt_add(request):
@@ -1126,6 +1138,35 @@ async def niche_delete(request):
     return redirect("/prompts")
 
 
+async def prompts_live(request):
+    if not authed(request):
+        return JSONResponse({"error": "login"}, status_code=401)
+    stats = await _prompt_stats()
+    stats["csrf"] = csrf_token(request)
+    env = templates.env
+    return JSONResponse({
+        "stats_html": env.get_template("_prompts_stats.html").render(**stats),
+        "regs_html": env.get_template("_prompts_regs.html").render(**stats),
+    }, headers={"Cache-Control": "no-store"})
+
+
+async def overview_live(request):
+    if not authed(request):
+        return JSONResponse({"error": "login"}, status_code=401)
+    data = await run(db.overview)
+    b = discord_bot.bot
+    ready = b.is_ready()
+    return JSONResponse({
+        "online": ready,
+        "guilds": len(b.guilds) if ready else 0,
+        "ping": round(b.latency * 1000) if ready and b.latency == b.latency else None,
+        "servers": len(data["servers"]),
+        "regs_total": data.get("regs_total", 0),
+        "regs_pending": data.get("regs_pending", 0),
+        "prompts_total": await run(db.prompt_use_total),
+    }, headers={"Cache-Control": "no-store"})
+
+
 async def health(request):
     return PlainTextResponse("ok")
 
@@ -1188,6 +1229,8 @@ app = Starlette(
         Route("/prompts/niche/edit", niche_edit, methods=["POST"]),
         Route("/prompts/niche/toggle", niche_toggle, methods=["POST"]),
         Route("/prompts/niche/delete", niche_delete, methods=["POST"]),
+        Route("/api/prompts/live", prompts_live),
+        Route("/api/overview/live", overview_live),
         Route("/api/security/live", security_live),
         Route("/api/uploads/live", uploads_live),
         Route("/uploads/channels", uploads_channels, methods=["POST"]),

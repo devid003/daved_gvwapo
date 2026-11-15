@@ -1,0 +1,22 @@
+{% if regs %}
+<div class="scroll"><table>
+  <tr><th>ID</th><th>Member</th><th>Status</th><th></th></tr>
+  {% for r in regs %}
+  <tr>
+    <td><b>ID{{ "%04d"|format(r.number) }}</b></td>
+    <td>{{ r.username or r.user_id }}<div class="mono small">{{ r.user_id }}</div></td>
+    <td><span class="badge {{ {'approved':'live','denied':'off','pending':'pending'}.get(r.status,'') }}">{{ r.status|capitalize }}</span></td>
+    <td class="actions">
+      {% if r.status != 'approved' %}
+      <form method="post" action="/prompts/register" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="action" value="approve"><button class="btn sm ok">Approve</button></form>
+      {% endif %}
+      {% if r.status != 'denied' %}
+      <form method="post" action="/prompts/register" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="action" value="deny"><button class="btn sm bad">Deny</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}
+<div class="empty">No one has registered yet. Members use /register in Discord.</div>
+{% endif %}
