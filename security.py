@@ -436,8 +436,8 @@ async def set_member_number_nick(guild_id: int, user_id: int, base_name: str, nu
             member = await guild.fetch_member(user_id)
         except (discord.NotFound, discord.HTTPException):
             return ""
-    clean = (base_name or member.name).split(" ID ")[0].strip()
-    nick = f"{clean} ID {number:02d}"[:32]
+    clean = (base_name or member.name).split(" ID")[0].strip()
+    nick = f"{clean} ID{number:04d}"[:32]
     try:
         await member.edit(nick=nick, reason="Registered member number")
         return f" Renamed to {nick}."

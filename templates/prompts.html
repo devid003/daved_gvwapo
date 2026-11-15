@@ -73,7 +73,7 @@
     <tr><th>ID</th><th>Member</th><th>Status</th><th></th></tr>
     {% for r in regs %}
     <tr>
-      <td><b>ID {{ "%02d"|format(r.number) }}</b></td>
+      <td><b>ID{{ "%04d"|format(r.number) }}</b></td>
       <td>{{ r.username or r.user_id }}<div class="mono small">{{ r.user_id }}</div></td>
       <td><span class="badge {{ {'approved':'live','denied':'off','pending':'pending'}.get(r.status,'') }}">{{ r.status|capitalize }}</span></td>
       <td class="actions">

@@ -39,7 +39,7 @@ async def _can_use_prompts(interaction: discord.Interaction) -> bool:
         return False
     if reg.status == "pending":
         await interaction.followup.send(
-            f"Your registration (ID {reg.number:02d}) is still waiting for the owner's approval.", ephemeral=True)
+            f"Your registration (ID{reg.number:04d}) is still waiting for the owner's approval.", ephemeral=True)
         return False
     if reg.status != "approved":
         await interaction.followup.send("Your access was declined. Contact the server owner.", ephemeral=True)
@@ -58,7 +58,7 @@ async def register_cmd(interaction: discord.Interaction):
             ephemeral=True)
         return
     reg, created = await run(db.register_user, gid, user.id, str(user))
-    num = f"ID {reg.number:02d}"
+    num = f"ID{reg.number:04d}"
     if not created:
         state = {"pending": "still waiting for approval", "approved": "already approved",
                  "denied": "was declined"}.get(reg.status, reg.status)
