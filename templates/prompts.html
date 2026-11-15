@@ -15,15 +15,42 @@
 {% endblock %}
 {% block content %}
 <div class="head">
-  <div><h1>Prompts</h1><p>These feed the slash commands. Members run <b>/{{ sel }}</b> and get a random active prompt as a watermarked image.</p></div>
+  <div><h1>Prompts</h1><p>These feed the slash commands. Members run <b>/prompt</b>, pick a niche, and get a random active prompt. Add your own niches below.</p></div>
 </div>
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
 
 <section class="panel">
   <div class="ntabs">
     {% for n in niches %}
-    <a class="ntab {{ 'on' if n.key == sel }}" href="/prompts?n={{ n.key }}">/{{ n.key }} <span class="c">{{ n.active }}/{{ n.total }} &middot; {{ n.uses }} sent</span></a>
+    <a class="ntab {{ 'on' if n.key == sel }}" href="/prompts?n={{ n.key }}">{{ n.emoji }} {{ n.label }} <span class="c">{{ n.active }}/{{ n.total }} &middot; {{ n.uses }} sent{% if not n.active_niche %} &middot; hidden{% endif %}</span></a>
     {% endfor %}
+  </div>
+  <div class="panel-body" style="border-bottom:1px solid var(--line)">
+    <form method="post" action="/prompts/niche/add" class="row" style="align-items:flex-end">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field">New niche name
+        <input type="text" name="label" placeholder="e.g. Horror" required></label>
+      <label class="field">Emoji (optional)
+        <input type="text" name="emoji" placeholder="(optional)" style="width:90px"></label>
+      <button class="btn primary">Add niche</button>
+    </form>
+  </div>
+  {% if sel %}
+  <div class="panel-body" style="border-bottom:1px solid var(--line)">
+    <div class="row" style="justify-content:space-between">
+      <form method="post" action="/prompts/niche/edit" class="row" style="align-items:flex-end">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ sel }}">
+        <label class="field">Rename this niche
+          <input type="text" name="label" value="{{ sel_label }}" required></label>
+        <label class="field">Emoji
+          <input type="text" name="emoji" value="{{ sel_emoji }}" style="width:90px"></label>
+        <button class="btn">Save niche</button>
+      </form>
+      <form method="post" action="/prompts/niche/delete" class="inline" style="align-self:flex-end" onsubmit="return confirm('Delete this niche AND all its prompts?')">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ sel }}">
+        <button class="btn bad">Delete niche</button>
+      </form>
+    </div>
   </div>
   <div class="panel-body">
     <form method="post" action="/prompts/add">
@@ -33,10 +60,13 @@
       <button class="btn primary" style="margin-top:10px">Add prompt</button>
     </form>
   </div>
+  {% else %}
+  <div class="panel-body"><div class="muted">No niches yet. Add one above to create your first /prompt option.</div></div>
+  {% endif %}
 </section>
 
 <section class="panel">
-  <div class="panel-head"><div><h2>{{ sel_label }} prompts</h2><p>{{ rows|length }} total. Only active ones are sent by /{{ sel }}.</p></div></div>
+  <div class="panel-head"><div><h2>{{ sel_label }} prompts</h2><p>{{ rows|length }} total. Only active ones are sent by /prompt ({{ sel_label }}).</p></div></div>
   {% if rows %}
   {% for p in rows %}
   <div class="prow">

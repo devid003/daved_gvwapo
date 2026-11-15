@@ -985,19 +985,23 @@ async def prompts_page(request):
     if not authed(request):
         return redirect("/login")
     counts = await run(db.prompt_counts)
-    sel = request.query_params.get("n", "")
-    if sel not in promptlib.PROMPT_NICHES:
-        sel = next(iter(promptlib.PROMPT_NICHES))
-    niches = [{"key": k, "label": v[0], "total": counts.get(k, {}).get("total", 0),
-               "active": counts.get(k, {}).get("active", 0)} for k, v in promptlib.PROMPT_NICHES.items()]
-    rows = await run(db.list_prompts, sel)
     uses = await run(db.prompt_use_counts)
-    for nn in niches:
-        nn["uses"] = uses.get(nn["key"], 0)
+    db_niches = await run(db.list_niches)
+    niches = [{"key": x.key, "label": x.label, "emoji": x.emoji, "active_niche": x.active,
+               "total": counts.get(x.key, {}).get("total", 0),
+               "active": counts.get(x.key, {}).get("active", 0),
+               "uses": uses.get(x.key, 0)} for x in db_niches]
+    keys = [x["key"] for x in niches]
+    sel = request.query_params.get("n", "")
+    if sel not in keys:
+        sel = keys[0] if keys else ""
+    sel_obj = next((x for x in niches if x["key"] == sel), None)
+    rows = await run(db.list_prompts, sel) if sel else []
     regs = await run(db.list_registrations, _one_guild_id())
     return templates.TemplateResponse(request=request, name="prompts.html", context={
         "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
-        "niches": niches, "sel": sel, "sel_label": promptlib.PROMPT_NICHES[sel][0], "rows": rows,
+        "niches": niches, "sel": sel, "sel_label": (sel_obj["label"] if sel_obj else ""),
+        "sel_emoji": (sel_obj["emoji"] if sel_obj else ""), "rows": rows,
         "regs": regs, "uses_total": sum(uses.values()),
     })
 
@@ -1008,7 +1012,7 @@ async def prompt_add(request):
         return resp
     niche = str(form.get("niche", ""))
     text = str(form.get("text", "")).strip()
-    if niche not in promptlib.PROMPT_NICHES:
+    if await run(db.get_niche, niche) is None:
         flash(request, "Unknown niche.")
         return redirect("/prompts")
     if not text:
@@ -1073,6 +1077,55 @@ async def reg_decide(request):
     return redirect("/prompts")
 
 
+async def niche_add(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    label = str(form.get("label", "")).strip()
+    emoji = str(form.get("emoji", "")).strip()
+    if not label:
+        flash(request, "Type a niche name.")
+        return redirect("/prompts")
+    key = await run(db.add_niche, label, emoji)
+    flash(request, f"Niche '{label}' added. It now shows in /prompt.")
+    return redirect(f"/prompts?n={key}")
+
+
+async def niche_edit(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    key = str(form.get("key", ""))
+    label = str(form.get("label", "")).strip()
+    emoji = str(form.get("emoji", "")).strip()
+    if await run(db.get_niche, key) is not None and label:
+        await run(db.update_niche, key, label, emoji, None)
+        flash(request, "Niche updated.")
+    return redirect(f"/prompts?n={key}")
+
+
+async def niche_toggle(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    key = str(form.get("key", ""))
+    n = await run(db.get_niche, key)
+    if n is not None:
+        await run(db.update_niche, key, None, None, not n.active)
+    return redirect(f"/prompts?n={key}")
+
+
+async def niche_delete(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    key = str(form.get("key", ""))
+    if await run(db.get_niche, key) is not None:
+        await run(db.delete_niche, key)
+        flash(request, "Niche and its prompts deleted.")
+    return redirect("/prompts")
+
+
 async def health(request):
     return PlainTextResponse("ok")
 
@@ -1085,6 +1138,7 @@ def _env_server_ids() -> set[int]:
 @asynccontextmanager
 async def lifespan(app):
     await run(db.init)
+    await run(db.seed_niches, promptlib.PROMPT_NICHES)
     for gid in _env_server_ids():          # servers listed in .env are always approved
         await run(db.add_server, gid, "")
     await run(upload_reports.load_settings_sync)
@@ -1130,6 +1184,10 @@ app = Starlette(
         Route("/prompts/toggle", prompt_toggle, methods=["POST"]),
         Route("/prompts/delete", prompt_delete, methods=["POST"]),
         Route("/prompts/register", reg_decide, methods=["POST"]),
+        Route("/prompts/niche/add", niche_add, methods=["POST"]),
+        Route("/prompts/niche/edit", niche_edit, methods=["POST"]),
+        Route("/prompts/niche/toggle", niche_toggle, methods=["POST"]),
+        Route("/prompts/niche/delete", niche_delete, methods=["POST"]),
         Route("/api/security/live", security_live),
         Route("/api/uploads/live", uploads_live),
         Route("/uploads/channels", uploads_channels, methods=["POST"]),

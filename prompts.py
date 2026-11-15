@@ -130,9 +130,9 @@ def _tile_watermark(img: Image.Image, text: str):
     img.paste(Image.alpha_composite(img.convert("RGBA"), bl).convert("RGB"), (0, 0))
 
 
-def render_txt(niche_key: str, prompt: str, index: int = 0, total: int = 0) -> bytes:
+def render_txt(niche_key: str, prompt: str, index: int = 0, total: int = 0, label: str = "") -> bytes:
     """Prompt as a .txt file: owner header, the prompt with a watermark tag on every line, creator footer."""
-    label = PROMPT_NICHES.get(niche_key, (niche_key.title(),))[0]
+    label = label or PROMPT_NICHES.get(niche_key, (niche_key.title(),))[0]
     mark = f"[{BRAND}]"
     bar = "=" * 60
     lines = [bar, f"  COMMUNITY OWNER  {OWNER}", f"  {label} PROMPT" + (f"   (#{index} of {total})" if total else ""), bar, ""]

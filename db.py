@@ -119,6 +119,16 @@ class PromptUse(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class Niche(Base):
+    """A prompt niche (slash dropdown option). Created/edited on the dashboard, no restart."""
+    __tablename__ = "niches"
+    key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    label: Mapped[str] = mapped_column(String(60), default="")
+    emoji: Mapped[str] = mapped_column(String(16), default="")
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Prompt(Base):
     """A prompt for a niche slash command (e.g. /ghibli). Edited on the dashboard."""
     __tablename__ = "prompts"
@@ -442,6 +452,73 @@ def prompt_use_counts() -> dict:
 def prompt_use_total() -> int:
     with Session() as s:
         return s.scalar(select(func.count()).select_from(PromptUse)) or 0
+
+
+# ---------- niches (dynamic, dashboard-managed) ----------
+import re as _re
+
+
+def _slug(label: str) -> str:
+    s = _re.sub(r"[^a-z0-9]+", "-", (label or "").lower()).strip("-")
+    return (s or "niche")[:40]
+
+
+def seed_niches(defaults: dict) -> None:
+    """On first run, fill the niches table from the built-in defaults."""
+    with Session.begin() as s:
+        if s.scalar(select(func.count()).select_from(Niche)):
+            return
+        for key, (label, emoji, *_rest) in defaults.items():
+            s.add(Niche(key=key, label=label, emoji=emoji or ""))
+
+
+def list_niches(active_only: bool = False) -> list:
+    with Session() as s:
+        q = select(Niche)
+        if active_only:
+            q = q.where(Niche.active.is_(True))
+        return list(s.scalars(q.order_by(Niche.created_at)))
+
+
+def get_niche(key: str):
+    with Session() as s:
+        n = s.get(Niche, key)
+        if n is not None:
+            s.expunge(n)
+        return n
+
+
+def add_niche(label: str, emoji: str = "") -> str:
+    base = _slug(label)
+    with Session.begin() as s:
+        key, i = base, 2
+        while s.get(Niche, key) is not None:
+            key = f"{base}-{i}"[:40]
+            i += 1
+        s.add(Niche(key=key, label=(label or key)[:60], emoji=(emoji or "")[:16]))
+        return key
+
+
+def update_niche(key: str, label: str = None, emoji: str = None, active: bool = None) -> None:
+    with Session.begin() as s:
+        n = s.get(Niche, key)
+        if not n:
+            return
+        if label is not None:
+            n.label = label[:60]
+        if emoji is not None:
+            n.emoji = emoji[:16]
+        if active is not None:
+            n.active = active
+
+
+def delete_niche(key: str) -> None:
+    with Session.begin() as s:
+        n = s.get(Niche, key)
+        if n:
+            s.delete(n)
+        for p in s.scalars(select(Prompt).where(Prompt.niche == key)):
+            s.delete(p)
 
 
 # ---------- prompts ----------
