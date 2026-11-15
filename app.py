@@ -1063,7 +1063,13 @@ async def reg_decide(request):
     action = str(form.get("action", ""))
     if rid and action in ("approve", "deny"):
         await run(db.set_registration_status, rid, "approved" if action == "approve" else "denied")
-        flash(request, "Registration approved." if action == "approve" else "Registration declined.")
+        extra = ""
+        if action == "approve" and discord_bot.bot.is_ready():
+            reg = await run(db.get_registration_by_id, rid)
+            if reg is not None:
+                base = (reg.username or "").split("#")[0].split(" ID ")[0] or str(reg.user_id)
+                extra = await security.set_member_number_nick(reg.guild_id, reg.user_id, base, reg.number)
+        flash(request, ("Registration approved." + extra) if action == "approve" else "Registration declined.")
     return redirect("/prompts")
 
 

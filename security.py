@@ -424,6 +424,29 @@ async def disable_gate(guild_id: int):
     await run(db.set_setting, _key("gate", guild_id), "0")
 
 
+# ------------------------- member nickname -------------------------
+async def set_member_number_nick(guild_id: int, user_id: int, base_name: str, number: int) -> str:
+    """Rename the member to 'Name ID 01'. Returns a short status for the panel."""
+    guild = bot.get_guild(guild_id)
+    if guild is None:
+        return ""
+    member = guild.get_member(user_id)
+    if member is None:
+        try:
+            member = await guild.fetch_member(user_id)
+        except (discord.NotFound, discord.HTTPException):
+            return ""
+    clean = (base_name or member.name).split(" ID ")[0].strip()
+    nick = f"{clean} ID {number:02d}"[:32]
+    try:
+        await member.edit(nick=nick, reason="Registered member number")
+        return f" Renamed to {nick}."
+    except discord.Forbidden:
+        return " (Could not rename: give the bot Manage Nicknames and put its role above theirs.)"
+    except discord.HTTPException:
+        return ""
+
+
 # ------------------------- warning message -------------------------
 MOD_NAME = os.getenv("MOD_NAME", "Syndicate Moderation")
 MOD_AVATAR = os.getenv("MOD_AVATAR", "").strip()

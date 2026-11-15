@@ -394,6 +394,14 @@ def register_user(guild_id: int, user_id: int, username: str) -> tuple:
         return row, True
 
 
+def get_registration_by_id(reg_id: int):
+    with Session() as s:
+        r = s.get(Registration, reg_id)
+        if r is not None:
+            s.expunge(r)
+        return r
+
+
 def set_registration_status(reg_id: int, status: str) -> None:
     with Session.begin() as s:
         row = s.get(Registration, reg_id)
