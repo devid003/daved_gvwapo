@@ -30,6 +30,8 @@ import db  # noqa: E402
 import discord_bot  # noqa: E402
 import upload_reports  # noqa: E402  (adds upload-time reports + commands to the bot)
 import security  # noqa: E402  (join gate: new members need approval)
+import prompt_commands  # noqa: E402,F401  (adds /ghibli, /cooking, ... commands)
+import prompts as promptlib  # noqa: E402
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 if not ADMIN_PASSWORD:
@@ -106,6 +108,14 @@ async def guarded_post(request):
     if not hmac.compare_digest(str(form.get("csrf", "")), request.session.get("csrf", "")):
         return None, PlainTextResponse("Bad CSRF token. Go back and reload the page.", status_code=400)
     return form, None
+
+
+def parse_int(value) -> int | None:
+    try:
+        v = int(str(value))
+        return v if v > 0 else None
+    except (TypeError, ValueError):
+        return None
 
 
 def parse_id(value) -> int | None:
@@ -506,6 +516,7 @@ async def security_decide(request):
     flash(request, await security.decide(jid, action))
     return redirect("/security")
 
+
 # ---------- security v2: codes + live ----------
 def _join_stats(days: int = 14) -> dict:
     """Numbers and a day-by-day chart for the Security insights panel (local dates)."""
@@ -667,6 +678,7 @@ async def security_resend(request):
     flash(request, await security.resend_code(int(raw)))
     return redirect("/security")
 
+
 # ---------- hide the admin panel behind a secret path ----------
 ADMIN_PATH = os.getenv("ADMIN_PATH", "").strip().strip("/")
 ADMIN_HOSTS = {h.strip().lower() for h in os.getenv("ADMIN_HOSTS", "").split(",") if h.strip()}
@@ -788,6 +800,7 @@ class SecurityHeaders:
             await send(message)
 
         await self.app(scope, receive, send_wrapper)
+
 
 # ---------- device verification page (public link from the DM) ----------
 async def verify_page(request):
@@ -964,6 +977,76 @@ async def member_export(request):
                     headers={"Content-Disposition": f'attachment; filename="history-{safe}-{uid}.txt"'})
 
 
+# ---------- prompts (niche slash commands) ----------
+async def prompts_page(request):
+    if not authed(request):
+        return redirect("/login")
+    counts = await run(db.prompt_counts)
+    sel = request.query_params.get("n", "")
+    if sel not in promptlib.PROMPT_NICHES:
+        sel = next(iter(promptlib.PROMPT_NICHES))
+    niches = [{"key": k, "label": v[0], "total": counts.get(k, {}).get("total", 0),
+               "active": counts.get(k, {}).get("active", 0)} for k, v in promptlib.PROMPT_NICHES.items()]
+    rows = await run(db.list_prompts, sel)
+    return templates.TemplateResponse(request=request, name="prompts.html", context={
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+        "niches": niches, "sel": sel, "sel_label": promptlib.PROMPT_NICHES[sel][0], "rows": rows,
+    })
+
+
+async def prompt_add(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    niche = str(form.get("niche", ""))
+    text = str(form.get("text", "")).strip()
+    if niche not in promptlib.PROMPT_NICHES:
+        flash(request, "Unknown niche.")
+        return redirect("/prompts")
+    if not text:
+        flash(request, "Please type the prompt.")
+        return redirect(f"/prompts?n={niche}")
+    await run(db.add_prompt, niche, text)
+    flash(request, "Prompt added.")
+    return redirect(f"/prompts?n={niche}")
+
+
+async def prompt_edit(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    pid = parse_int(form.get("id"))
+    niche = str(form.get("niche", ""))
+    text = str(form.get("text", "")).strip()
+    if pid and text:
+        await run(db.update_prompt, pid, text)
+        flash(request, "Prompt updated.")
+    return redirect(f"/prompts?n={niche}")
+
+
+async def prompt_toggle(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    pid = parse_int(form.get("id"))
+    niche = str(form.get("niche", ""))
+    if pid:
+        await run(db.toggle_prompt, pid)
+    return redirect(f"/prompts?n={niche}")
+
+
+async def prompt_delete(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    pid = parse_int(form.get("id"))
+    niche = str(form.get("niche", ""))
+    if pid:
+        await run(db.delete_prompt, pid)
+        flash(request, "Prompt deleted.")
+    return redirect(f"/prompts?n={niche}")
+
+
 async def health(request):
     return PlainTextResponse("ok")
 
@@ -1015,6 +1098,11 @@ app = Starlette(
         Route("/member/warn", member_warn, methods=["POST"]),
         Route("/member/unwarn", member_unwarn, methods=["POST"]),
         Route("/member/export", member_export),
+        Route("/prompts", prompts_page),
+        Route("/prompts/add", prompt_add, methods=["POST"]),
+        Route("/prompts/edit", prompt_edit, methods=["POST"]),
+        Route("/prompts/toggle", prompt_toggle, methods=["POST"]),
+        Route("/prompts/delete", prompt_delete, methods=["POST"]),
         Route("/api/security/live", security_live),
         Route("/api/uploads/live", uploads_live),
         Route("/uploads/channels", uploads_channels, methods=["POST"]),

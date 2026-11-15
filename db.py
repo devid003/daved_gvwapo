@@ -96,6 +96,16 @@ class JoinRequest(Base):
     decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class Prompt(Base):
+    """A prompt for a niche slash command (e.g. /ghibli). Edited on the dashboard."""
+    __tablename__ = "prompts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    niche: Mapped[str] = mapped_column(String(40), index=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Warning(Base):
     """A warning an admin gave a member, with a timestamp and reason."""
     __tablename__ = "warnings"
@@ -334,6 +344,57 @@ def set_join_flags(join_id: int, flags: str) -> None:
         row = s.get(JoinRequest, join_id)
         if row:
             row.flags = (flags or "")[:300]
+
+
+# ---------- prompts ----------
+def list_prompts(niche: str, active_only: bool = False) -> list:
+    with Session() as s:
+        q = select(Prompt).where(Prompt.niche == niche)
+        if active_only:
+            q = q.where(Prompt.active.is_(True))
+        return list(s.scalars(q.order_by(Prompt.id.desc())))
+
+
+def prompt_counts() -> dict:
+    with Session() as s:
+        rows = s.execute(select(Prompt.niche, func.count(), func.sum(func.cast(Prompt.active, Integer)))
+                         .group_by(Prompt.niche)).all()
+    return {n: {"total": t, "active": int(a or 0)} for n, t, a in rows}
+
+
+def add_prompt(niche: str, text: str) -> int:
+    with Session.begin() as s:
+        p = Prompt(niche=niche, text=text.strip()[:4000])
+        s.add(p)
+        s.flush()
+        return p.id
+
+
+def update_prompt(prompt_id: int, text: str) -> None:
+    with Session.begin() as s:
+        p = s.get(Prompt, prompt_id)
+        if p:
+            p.text = text.strip()[:4000]
+
+
+def toggle_prompt(prompt_id: int) -> None:
+    with Session.begin() as s:
+        p = s.get(Prompt, prompt_id)
+        if p:
+            p.active = not p.active
+
+
+def delete_prompt(prompt_id: int) -> None:
+    with Session.begin() as s:
+        p = s.get(Prompt, prompt_id)
+        if p:
+            s.delete(p)
+
+
+def random_prompt(niche: str):
+    import random
+    rows = list_prompts(niche, active_only=True)
+    return random.choice(rows) if rows else None
 
 
 # ---------- warnings & member history ----------
