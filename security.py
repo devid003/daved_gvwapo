@@ -213,13 +213,13 @@ def _clear_code_sync(join_id: int) -> None:
 # ------------------------- website signup code (for members videos) -------------------------
 def new_web_signup_code_sync(user_id: int, username: str) -> str:
     code = new_code()
-    db.set_setting(f"websignup:{_hash_code(code)}", f"{user_id}|{username}")
+    db.set_setting(f"ws:{_hash_code(code)[:40]}", f"{user_id}|{username}"[:480])
     return code
 
 
 def consume_web_signup_code_sync(code: str):
     """Return (user_id, discord_name) if the code is valid, then delete it. Else None."""
-    key = f"websignup:{_hash_code(code)}"
+    key = f"ws:{_hash_code(code)[:40]}"
     val = db.get_setting(key, "")
     if not val:
         return None
