@@ -119,6 +119,29 @@ class PromptUse(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class WebUser(Base):
+    """A member's website account (self-registered with a Discord code). For the videos page."""
+    __tablename__ = "web_users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(200), default="")
+    discord_user_id: Mapped[int] = mapped_column(BigInteger, index=True, default=0)
+    discord_name: Mapped[str] = mapped_column(String(200), default="")
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Video(Base):
+    """A tutorial video (Google Drive). Managed on the dashboard, no redeploy."""
+    __tablename__ = "videos"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    drive_id: Mapped[str] = mapped_column(String(100), default="")
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Niche(Base):
     """A prompt niche (slash dropdown option). Created/edited on the dashboard, no restart."""
     __tablename__ = "niches"
@@ -452,6 +475,82 @@ def prompt_use_counts() -> dict:
 def prompt_use_total() -> int:
     with Session() as s:
         return s.scalar(select(func.count()).select_from(PromptUse)) or 0
+
+
+# ---------- web users (members) + videos ----------
+def create_web_user(username: str, password_hash: str, discord_user_id: int, discord_name: str) -> bool:
+    with Session.begin() as s:
+        exists = s.scalar(select(func.count()).select_from(WebUser).where(WebUser.username == username))
+        if exists:
+            return False
+        s.add(WebUser(username=username[:40], password_hash=password_hash,
+                      discord_user_id=discord_user_id, discord_name=(discord_name or "")[:200]))
+        return True
+
+
+def get_web_user(username: str):
+    with Session() as s:
+        u = s.scalars(select(WebUser).where(WebUser.username == username)).first()
+        if u is not None:
+            s.expunge(u)
+        return u
+
+
+def web_user_exists_for_discord(discord_user_id: int) -> bool:
+    with Session() as s:
+        return (s.scalar(select(func.count()).select_from(WebUser)
+                .where(WebUser.discord_user_id == discord_user_id)) or 0) > 0
+
+
+def list_web_users(limit: int = 500) -> list:
+    with Session() as s:
+        return list(s.scalars(select(WebUser).order_by(WebUser.created_at.desc()).limit(limit)))
+
+
+def delete_web_user(uid: int) -> None:
+    with Session.begin() as s:
+        u = s.get(WebUser, uid)
+        if u:
+            s.delete(u)
+
+
+def list_videos(active_only: bool = False) -> list:
+    with Session() as s:
+        q = select(Video)
+        if active_only:
+            q = q.where(Video.active.is_(True))
+        return list(s.scalars(q.order_by(Video.created_at.desc())))
+
+
+def add_video(title: str, description: str, drive_id: str) -> int:
+    with Session.begin() as s:
+        v = Video(title=title[:200], description=(description or "")[:2000], drive_id=drive_id[:100])
+        s.add(v)
+        s.flush()
+        return v.id
+
+
+def update_video(vid: int, title: str, description: str, drive_id: str) -> None:
+    with Session.begin() as s:
+        v = s.get(Video, vid)
+        if v:
+            v.title = title[:200]
+            v.description = (description or "")[:2000]
+            v.drive_id = drive_id[:100]
+
+
+def toggle_video(vid: int) -> None:
+    with Session.begin() as s:
+        v = s.get(Video, vid)
+        if v:
+            v.active = not v.active
+
+
+def delete_video(vid: int) -> None:
+    with Session.begin() as s:
+        v = s.get(Video, vid)
+        if v:
+            s.delete(v)
 
 
 # ---------- niches (dynamic, dashboard-managed) ----------

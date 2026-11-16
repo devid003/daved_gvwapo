@@ -18,11 +18,7 @@ from prompts import render_txt
 log = logging.getLogger("prompts")
 run = asyncio.to_thread
 import os as _os
-def _int_env(name, default):
-    import re
-    m = re.match(r"\s*(\d+)", _os.getenv(name, "") or "")
-    return int(m.group(1)) if m else default
-PROMPT_DELETE_AFTER = _int_env("PROMPT_DELETE_SECONDS", 600)
+PROMPT_DELETE_AFTER = int(_os.getenv("PROMPT_DELETE_SECONDS", "600") or 0)  # 0 = keep forever
 
 
 async def _is_cleared(guild_id: int, user_id: int) -> bool:
@@ -79,6 +75,40 @@ async def register_cmd(interaction: discord.Interaction):
         ephemeral=True)
 
 
+@bot.tree.command(name="weblogin", description="Get a code to create your website account for tutorials")
+@app_commands.guild_only()
+async def weblogin_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    gid, user = interaction.guild_id, interaction.user
+    if user.id not in OWNER_IDS and not await run(db.is_registered_approved, gid, user.id):
+        await interaction.followup.send(
+            "Only approved prompt members can get tutorial access. Run /register (Prompts) and wait for approval first.",
+            ephemeral=True)
+        return
+    if await run(db.web_user_exists_for_discord, user.id):
+        await interaction.followup.send(
+            "You already have a website account. Just log in at the tutorials page.", ephemeral=True)
+        return
+    code = await run(security.new_web_signup_code_sync, user.id, str(user))
+    base = security.PUBLIC_URL or "the website"
+    join_url = f"{security.PUBLIC_URL}/join" if security.PUBLIC_URL else "the website /join page"
+    e = discord.Embed(
+        title="Your tutorials signup code",
+        description=(f"Use this code to create your account and watch the tutorials.\n\n"
+                     f"**Code:** `{code}`\n\n"
+                     f"**1.** Go to {join_url}\n"
+                     f"**2.** Pick a username and password.\n"
+                     f"**3.** Enter this code to finish.\n\n"
+                     "This code works once and only for you. Don't share it."),
+        color=0x2747C7,
+    )
+    try:
+        await user.send(embed=e)
+        await interaction.followup.send("I sent your signup code to your DMs.", ephemeral=True)
+    except (discord.Forbidden, discord.HTTPException):
+        await interaction.followup.send(f"Your signup code: **{code}** (open DMs next time). Go to {join_url} to use it.", ephemeral=True)
+
+
 @bot.tree.command(name="prompt", description="Get a random prompt for a niche")
 @app_commands.guild_only()
 @app_commands.describe(niche="Pick a niche")
@@ -102,15 +132,10 @@ async def prompt_cmd(interaction: discord.Interaction, niche: str):
     await run(db.log_prompt_use, interaction.guild_id, interaction.user.id, niche)
     file = discord.File(io.BytesIO(data), filename=f"{niche}-prompt.txt")
     note = f"\n-# This message will be removed in {PROMPT_DELETE_AFTER // 60} min." if PROMPT_DELETE_AFTER else ""
-    msg = await interaction.followup.send(content=f"Here's a **{n.label}** prompt:{note}", file=file, wait=True)
-    if PROMPT_DELETE_AFTER and msg is not None:
-        async def _later(m=msg):
-            await asyncio.sleep(PROMPT_DELETE_AFTER)
-            try:
-                await m.delete()
-            except Exception:
-                pass
-        asyncio.create_task(_later())
+    kwargs = {"content": f"Here's a **{n.label}** prompt:{note}", "file": file}
+    if PROMPT_DELETE_AFTER:
+        kwargs["delete_after"] = PROMPT_DELETE_AFTER
+    await interaction.followup.send(**kwargs)
 
 
 @prompt_cmd.autocomplete("niche")

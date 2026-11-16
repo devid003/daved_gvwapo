@@ -210,6 +210,24 @@ def _clear_code_sync(join_id: int) -> None:
         db.set_setting(f"vtok:{tok}", "")
 
 
+# ------------------------- website signup code (for members videos) -------------------------
+def new_web_signup_code_sync(user_id: int, username: str) -> str:
+    code = new_code()
+    db.set_setting(f"websignup:{_hash_code(code)}", f"{user_id}|{username}")
+    return code
+
+
+def consume_web_signup_code_sync(code: str):
+    """Return (user_id, discord_name) if the code is valid, then delete it. Else None."""
+    key = f"websignup:{_hash_code(code)}"
+    val = db.get_setting(key, "")
+    if not val:
+        return None
+    db.set_setting(key, "")
+    uid, _, name = val.partition("|")
+    return (int(uid), name) if uid.isdigit() else None
+
+
 # ------------------------- device check (web link) -------------------------
 PUBLIC_URL = (os.getenv("PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").rstrip("/")
 _TOKEN_TRIES: dict[str, int] = {}

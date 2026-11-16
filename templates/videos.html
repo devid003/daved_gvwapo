@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Videos{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Tutorials</h1><p>Add Google Drive videos for your approved members. They watch at the members page after logging in.</p></div>
+  <a class="btn ghost" href='/members/login' target="_blank" rel="noopener">Open members page</a>
+</div>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Add a video</h2><p>Share the Drive file as "Anyone with the link", then paste the link here.</p></div></div>
+  <div class="panel-body">
+    <form method="post" action="/videos/add">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field" style="margin-bottom:12px">Title
+        <input type="text" name="title" placeholder="How to use the Ghibli prompt" required></label>
+      <label class="field" style="margin-bottom:12px">Google Drive link
+        <input type="text" name="link" placeholder="https://drive.google.com/file/d/.../view" required></label>
+      <label class="field" style="margin-bottom:12px">Description (optional)
+        <input type="text" name="description" placeholder="Short note about this tutorial"></label>
+      <button class="btn primary">Add video</button>
+    </form>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Watermark</h2><p>Shown on top of every video.</p></div></div>
+  <div class="panel-body">
+    <form method="post" action="/videos/watermark" class="row" style="align-items:flex-end">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field">Watermark text<input type="text" name="watermark" value="{{ watermark }}"></label>
+      <button class="btn">Save</button>
+    </form>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Videos</h2><p>{{ videos|length }} total. Only active ones show to members.</p></div></div>
+  {% if videos %}
+  {% for v in videos %}
+  <div class="panel-body" style="border-top:1px solid var(--line)">
+    <div class="pmeta" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span class="badge {{ 'live' if v.active else 'off' }}">{{ 'Active' if v.active else 'Off' }}</span>
+      <span class="mono small">{{ v.drive_id[:12] }}...</span>
+      <div style="margin-left:auto" class="row">
+        <form method="post" action="/videos/toggle" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ v.id }}"><button class="btn sm">{{ 'Turn off' if v.active else 'Turn on' }}</button></form>
+        <form method="post" action="/videos/delete" class="inline" onsubmit="return confirm('Delete this video?')"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ v.id }}"><button class="btn sm bad">Delete</button></form>
+      </div>
+    </div>
+    <form method="post" action="/videos/edit">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ v.id }}">
+      <div class="row">
+        <label class="field" style="flex:1;min-width:200px">Title<input type="text" name="title" value="{{ v.title }}"></label>
+        <label class="field" style="flex:1;min-width:200px">Drive link or ID<input type="text" name="link" value="{{ v.drive_id }}"></label>
+      </div>
+      <label class="field" style="margin-top:8px">Description<input type="text" name="description" value="{{ v.description }}"></label>
+      <button class="btn" style="margin-top:8px">Save changes</button>
+    </form>
+  </div>
+  {% endfor %}
+  {% else %}<div class="empty">No videos yet. Add one above.</div>{% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Member accounts</h2><p>People who created a website account with /weblogin. {{ members|length }} total.</p></div></div>
+  {% if members %}
+  <div class="scroll"><table>
+    <tr><th>Username</th><th>Discord</th><th>Created</th><th></th></tr>
+    {% for m in members %}
+    <tr>
+      <td><b>{{ m.username }}</b></td>
+      <td>{{ m.discord_name or m.discord_user_id }}</td>
+      <td class="nowrap">{{ (m.created_at|local)[:16] }}</td>
+      <td class="actions"><form method="post" action="/videos/member-delete" class="inline" onsubmit="return confirm('Remove this account?')"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ m.id }}"><button class="btn sm bad">Remove</button></form></td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">No member accounts yet.</div>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "_auth_base.html" %}
+{% block body %}
+<h1>Create your account</h1>
+<p class="muted">For {{ public_name }} members. Get your code by typing <b>/weblogin</b> in Discord.</p>
+<form method="post" action="/join">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Username</label>
+  <input type="text" name="username" placeholder="3-40 chars" required>
+  <label>Password</label>
+  <input type="password" name="password" placeholder="at least 6 characters" required>
+  <label>Signup code (from /weblogin)</label>
+  <input type="text" name="code" placeholder="6-character code" required>
+  <button class="btn">Create account</button>
+</form>
+<p class="alt">Already have an account? <a href="/members/login">Log in</a></p>
+{% endblock %}

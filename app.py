@@ -111,6 +111,30 @@ async def guarded_post(request):
     return form, None
 
 
+async def public_post(request):
+    """For member-facing forms: CSRF check only (no admin login needed)."""
+    form = await request.form()
+    if not hmac.compare_digest(str(form.get("csrf", "")), request.session.get("csrf", "")):
+        return None, PlainTextResponse("Bad CSRF token. Go back and reload the page.", status_code=400)
+    return form, None
+
+
+_MEMBER_TRIES: dict[str, list] = {}
+
+
+def _too_many(key: str, limit: int = 10, window: int = 300) -> bool:
+    """True when this key (IP) made too many attempts in the last few minutes."""
+    now = dt.datetime.now(dt.timezone.utc).timestamp()
+    hits = [t for t in _MEMBER_TRIES.get(key, []) if now - t < window]
+    hits.append(now)
+    _MEMBER_TRIES[key] = hits
+    return len(hits) > limit
+
+
+def _client_ip(request) -> str:
+    return request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "")
+
+
 def parse_int(value) -> int | None:
     try:
         v = int(str(value))
@@ -686,7 +710,7 @@ async def security_resend(request):
 ADMIN_PATH = os.getenv("ADMIN_PATH", "").strip().strip("/")
 ADMIN_HOSTS = {h.strip().lower() for h in os.getenv("ADMIN_HOSTS", "").split(",") if h.strip()}
 SITE_NAME = os.getenv("SITE_NAME", "Syndicate")
-_PUBLIC = ("/v/", "/health", "/api/public/", "/static/", "/manifest")
+_PUBLIC = ("/v/", "/health", "/api/public/", "/static/", "/manifest", "/join", "/members/", "/watch")
 _PLAIN_CSS = ("body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f131a;color:#e6e9ef;"
               "font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}"
               ".c{text-align:center;padding:24px;max-width:420px}h1{font-size:28px;margin:0 0 8px}p{color:#9aa3b2;margin:0}")
@@ -776,7 +800,7 @@ class SecurityHeaders:
     """Browser security headers on every response: no framing, no sniffing, strict CSP."""
     CSP = ("default-src 'self'; img-src 'self' data: https://cdn.discordapp.com; "
            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
-           "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; "
+           "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src https://drive.google.com; frame-ancestors 'none'; "
            "base-uri 'none'; form-action 'self'; object-src 'none'")
 
     def __init__(self, app):
@@ -1243,6 +1267,213 @@ async def manifest_site(request):
     return JSONResponse(m, media_type="application/manifest+json")
 
 
+# ---------- member accounts (tutorials) ----------
+import hashlib as _hashlib
+
+
+def _hash_pw(password: str) -> str:
+    salt = secrets.token_hex(16)
+    dk = _hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120000)
+    return f"pbkdf2${salt}${dk.hex()}"
+
+
+def _check_pw(stored: str, password: str) -> bool:
+    try:
+        algo, salt, want = stored.split("$", 2)
+        if algo != "pbkdf2":
+            return False
+        dk = _hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120000)
+        return hmac.compare_digest(dk.hex(), want)
+    except Exception:
+        return False
+
+
+def member_authed(request) -> bool:
+    return bool(request.session.get("member"))
+
+
+def _valid_username(u: str) -> bool:
+    return 3 <= len(u) <= 40 and all(c.isalnum() or c in "_-." for c in u)
+
+
+async def join_page(request):
+    return templates.TemplateResponse(request=request, name="join.html", context={
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+        "public_name": await run(db.get_setting, "site_title", "") or SITE_NAME,
+    })
+
+
+async def join_submit(request):
+    form, resp = await public_post(request)
+    if resp:
+        return resp
+    if _too_many("join:" + _client_ip(request)):
+        flash(request, "Too many tries. Wait a few minutes and try again.")
+        return redirect("/join")
+    username = str(form.get("username", "")).strip()
+    password = str(form.get("password", ""))
+    code = str(form.get("code", "")).strip()
+    if not _valid_username(username):
+        flash(request, "Username must be 3-40 characters: letters, numbers, _ - . only.")
+        return redirect("/join")
+    if len(password) < 6:
+        flash(request, "Password must be at least 6 characters.")
+        return redirect("/join")
+    if await run(db.get_web_user, username) is not None:
+        flash(request, "That username is taken. Try another one.")
+        return redirect("/join")
+    info = await run(security.consume_web_signup_code_sync, code)
+    if info is None:
+        flash(request, "Invalid or used signup code. Run /weblogin in Discord to get a new one.")
+        return redirect("/join")
+    uid, dname = info
+    ok = await run(db.create_web_user, username, _hash_pw(password), uid, dname)
+    if not ok:
+        flash(request, "That username is taken. Run /weblogin again for a new code and try another name.")
+        return redirect("/join")
+    request.session["member"] = username
+    return redirect("/watch")
+
+
+async def member_login_page(request):
+    if member_authed(request):
+        return redirect("/watch")
+    return templates.TemplateResponse(request=request, name="member_login.html", context={
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+        "public_name": await run(db.get_setting, "site_title", "") or SITE_NAME,
+    })
+
+
+async def member_login_submit(request):
+    form, resp = await public_post(request)
+    if resp:
+        return resp
+    if _too_many("login:" + _client_ip(request)):
+        flash(request, "Too many tries. Wait a few minutes and try again.")
+        return redirect("/members/login")
+    username = str(form.get("username", "")).strip()
+    password = str(form.get("password", ""))
+    u = await run(db.get_web_user, username)
+    if u is not None and u.active and _check_pw(u.password_hash, password):
+        request.session["member"] = username
+        return redirect("/watch")
+    flash(request, "Wrong username or password.")
+    return redirect("/members/login")
+
+
+async def member_logout(request):
+    form, resp = await public_post(request)
+    if resp:
+        return resp
+    request.session.pop("member", None)
+    return redirect("/members/login")
+
+
+async def watch_page(request):
+    if not member_authed(request):
+        return redirect("/members/login")
+    vids = await run(db.list_videos, True)
+    return templates.TemplateResponse(request=request, name="watch.html", context={
+        "csrf": csrf_token(request), "videos": vids, "username": request.session.get("member"),
+        "public_name": await run(db.get_setting, "site_title", "") or SITE_NAME,
+        "watermark": await run(db.get_setting, "video_watermark", "") or "David_5522",
+    })
+
+
+# ---------- admin: videos management ----------
+def _drive_id(url: str) -> str:
+    """Extract the Google Drive file id from a share link or raw id."""
+    u = (url or "").strip()
+    import re as _re
+    m = _re.search(r"/d/([a-zA-Z0-9_-]{20,})", u) or _re.search(r"[?&]id=([a-zA-Z0-9_-]{20,})", u)
+    if m:
+        return m.group(1)
+    if _re.fullmatch(r"[a-zA-Z0-9_-]{20,}", u):
+        return u
+    return ""
+
+
+async def videos_page(request):
+    if not authed(request):
+        return redirect("/login")
+    return templates.TemplateResponse(request=request, name="videos.html", context={
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+        "videos": await run(db.list_videos), "members": await run(db.list_web_users),
+        "watermark": await run(db.get_setting, "video_watermark", "") or "David_5522",
+    })
+
+
+async def video_add(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    did = _drive_id(str(form.get("link", "")))
+    title = str(form.get("title", "")).strip()
+    if not did:
+        flash(request, "Could not read that Google Drive link. Use the file's Share link.")
+        return redirect("/videos")
+    if not title:
+        flash(request, "Please add a title.")
+        return redirect("/videos")
+    await run(db.add_video, title, str(form.get("description", "")).strip(), did)
+    flash(request, "Video added.")
+    return redirect("/videos")
+
+
+async def video_edit(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    vid = parse_int(form.get("id"))
+    did = _drive_id(str(form.get("link", "")))
+    if vid and did:
+        await run(db.update_video, vid, str(form.get("title", "")).strip(),
+                  str(form.get("description", "")).strip(), did)
+        flash(request, "Video updated.")
+    return redirect("/videos")
+
+
+async def video_toggle(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    vid = parse_int(form.get("id"))
+    if vid:
+        await run(db.toggle_video, vid)
+    return redirect("/videos")
+
+
+async def video_delete(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    vid = parse_int(form.get("id"))
+    if vid:
+        await run(db.delete_video, vid)
+        flash(request, "Video deleted.")
+    return redirect("/videos")
+
+
+async def video_wm_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    await run(db.set_setting, "video_watermark", str(form.get("watermark", "")).strip()[:60])
+    flash(request, "Watermark saved.")
+    return redirect("/videos")
+
+
+async def member_delete(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    mid = parse_int(form.get("id"))
+    if mid:
+        await run(db.delete_web_user, mid)
+        flash(request, "Member account removed.")
+    return redirect("/videos")
+
+
 async def health(request):
     return PlainTextResponse("ok")
 
@@ -1319,6 +1550,19 @@ app = Starlette(
         Route("/api/public/stats", public_stats_api),
         Route("/site", site_page),
         Route("/site/save", site_save, methods=["POST"]),
+        Route("/join", join_page),
+        Route("/join", join_submit, methods=["POST"]),
+        Route("/members/login", member_login_page),
+        Route("/members/login", member_login_submit, methods=["POST"]),
+        Route("/members/logout", member_logout, methods=["POST"]),
+        Route("/watch", watch_page),
+        Route("/videos", videos_page),
+        Route("/videos/add", video_add, methods=["POST"]),
+        Route("/videos/edit", video_edit, methods=["POST"]),
+        Route("/videos/toggle", video_toggle, methods=["POST"]),
+        Route("/videos/delete", video_delete, methods=["POST"]),
+        Route("/videos/watermark", video_wm_save, methods=["POST"]),
+        Route("/videos/member-delete", member_delete, methods=["POST"]),
         Route("/v/{token}", verify_page),
         Route("/v/{token}", verify_submit, methods=["POST"]),
         Route("/security/phone", security_phone, methods=["POST"]),

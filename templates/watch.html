@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{ public_name }} - Tutorials</title>
+<style>
+:root{--bg:#0b0e14;--card:#141925;--line:#222a3a;--ink:#eef1f6;--muted:#9aa4b6;--accent:#5865F2}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.top{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+.top h1{font-size:18px;margin:0}
+.top .who{color:var(--muted);font-size:13px;margin-right:12px}
+.btn{padding:8px 14px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--ink);font:inherit;font-size:13px;cursor:pointer}
+.wrap{max-width:900px;margin:0 auto;padding:24px 20px 60px}
+.vid{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:22px}
+.frame{position:relative;width:100%;aspect-ratio:16/9;background:#000}
+.frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.guard{position:absolute;inset:0;z-index:2;pointer-events:none}
+.wm{position:absolute;z-index:3;color:rgba(255,255,255,.5);font-size:14px;font-weight:700;pointer-events:none;
+  text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.wm.tl{top:10px;left:12px} .wm.br{bottom:10px;right:12px}
+.nopop{position:absolute;top:0;right:0;width:68px;height:60px;z-index:4}
+.meta{padding:14px 18px}
+.meta h2{margin:0 0 5px;font-size:17px}
+.meta p{margin:0;color:var(--muted);font-size:14px;white-space:pre-wrap}
+.empty{color:var(--muted);text-align:center;padding:60px 20px}
+</style>
+</head>
+<body oncontextmenu="return false">
+<div class="top">
+  <h1>{{ public_name }} - Tutorials</h1>
+  <div style="display:flex;align-items:center">
+    <span class="who">{{ username }}</span>
+    <form method="post" action="/members/logout" style="margin:0"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn">Log out</button></form>
+  </div>
+</div>
+<div class="wrap">
+  {% for v in videos %}
+  <div class="vid">
+    <div class="frame">
+      <iframe src="https://drive.google.com/file/d/{{ v.drive_id }}/preview" allow="autoplay" allowfullscreen referrerpolicy="no-referrer"></iframe>
+      <div class="guard"></div>
+      <div class="nopop"></div>
+      <div class="wm tl">{{ watermark }}</div>
+      <div class="wm br">{{ watermark }}</div>
+    </div>
+    <div class="meta">
+      <h2>{{ v.title }}</h2>
+      {% if v.description %}<p>{{ v.description }}</p>{% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="empty">No tutorials yet. Check back soon.</div>
+  {% endfor %}
+</div>
+<script>
+document.addEventListener('keydown',function(e){
+  if((e.ctrlKey||e.metaKey)&&['s','u','p'].indexOf(e.key.toLowerCase())>-1){e.preventDefault();}
+});
+</script>
+</body>
+</html>
