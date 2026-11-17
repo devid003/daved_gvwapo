@@ -1463,6 +1463,16 @@ async def video_wm_save(request):
     return redirect("/videos")
 
 
+async def video_strict_toggle(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    on = (await run(db.get_setting, "video_strict", "1")) != "0"
+    await run(db.set_setting, "video_strict", "0" if on else "1")
+    flash(request, "Strict mode is now " + ("OFF." if on else "ON."))
+    return redirect("/videos")
+
+
 async def member_delete(request):
     form, resp = await guarded_post(request)
     if resp:
@@ -1562,6 +1572,7 @@ app = Starlette(
         Route("/videos/toggle", video_toggle, methods=["POST"]),
         Route("/videos/delete", video_delete, methods=["POST"]),
         Route("/videos/watermark", video_wm_save, methods=["POST"]),
+        Route("/videos/strict", video_strict_toggle, methods=["POST"]),
         Route("/videos/member-delete", member_delete, methods=["POST"]),
         Route("/v/{token}", verify_page),
         Route("/v/{token}", verify_submit, methods=["POST"]),

@@ -7,7 +7,8 @@
 <style>
 :root{--bg:#0b0e14;--card:#141925;--line:#222a3a;--ink:#eef1f6;--muted:#9aa4b6;--accent:#5865F2}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-user-select:none;user-select:none}
 .top{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
 .top h1{font-size:18px;margin:0}
 .top .who{color:var(--muted);font-size:13px;margin-right:12px}
@@ -15,16 +16,20 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
 .wrap{max-width:900px;margin:0 auto;padding:24px 20px 60px}
 .vid{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:22px}
 .frame{position:relative;width:100%;aspect-ratio:16/9;background:#000}
+.frame:fullscreen{aspect-ratio:auto;width:100vw;height:100vh}
+.frame:-webkit-full-screen{aspect-ratio:auto;width:100vw;height:100vh}
 .frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-.guard{position:absolute;inset:0;z-index:2;pointer-events:none}
-.wm{position:absolute;z-index:3;color:rgba(255,255,255,.5);font-size:14px;font-weight:700;pointer-events:none;
-  text-shadow:0 1px 3px rgba(0,0,0,.6)}
-.wm.tl{top:10px;left:12px} .wm.br{bottom:10px;right:12px}
-.nopop{position:absolute;top:0;right:0;width:68px;height:60px;z-index:4}
-.meta{padding:14px 18px}
+/* covers the Drive toolbar (open in new window / download) across the whole top edge */
+.notop{position:absolute;top:0;left:0;right:0;height:60px;z-index:4;background:transparent}
+.wm{position:absolute;z-index:5;color:rgba(255,255,255,.55);font-size:14px;font-weight:700;pointer-events:none;
+  text-shadow:0 1px 3px rgba(0,0,0,.7)}
+.wm.tl{top:12px;left:14px} .wm.br{bottom:52px;right:14px}
+.wm.mid{top:50%;left:50%;transform:translate(-50%,-50%) rotate(-18deg);font-size:clamp(18px,4vw,34px);color:rgba(255,255,255,.14);white-space:nowrap}
+.meta{padding:14px 18px;display:flex;gap:14px;align-items:flex-start;justify-content:space-between}
 .meta h2{margin:0 0 5px;font-size:17px}
 .meta p{margin:0;color:var(--muted);font-size:14px;white-space:pre-wrap}
 .empty{color:var(--muted);text-align:center;padding:60px 20px}
+@media print{body{display:none}}
 </style>
 </head>
 <body oncontextmenu="return false">
@@ -38,16 +43,19 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
 <div class="wrap">
   {% for v in videos %}
   <div class="vid">
-    <div class="frame">
-      <iframe src="https://drive.google.com/file/d/{{ v.drive_id }}/preview" allow="autoplay" allowfullscreen referrerpolicy="no-referrer"></iframe>
-      <div class="guard"></div>
-      <div class="nopop"></div>
+    <div class="frame" id="f{{ v.id }}">
+      <iframe src="https://drive.google.com/file/d/{{ v.drive_id }}/preview" allow="autoplay" referrerpolicy="no-referrer"{% if strict %} sandbox="allow-scripts allow-same-origin"{% endif %}></iframe>
+      <div class="notop"></div>
       <div class="wm tl">{{ watermark }}</div>
+      <div class="wm mid">{{ watermark }} &middot; {{ username }}</div>
       <div class="wm br">{{ watermark }}</div>
     </div>
     <div class="meta">
-      <h2>{{ v.title }}</h2>
-      {% if v.description %}<p>{{ v.description }}</p>{% endif %}
+      <div>
+        <h2>{{ v.title }}</h2>
+        {% if v.description %}<p>{{ v.description }}</p>{% endif %}
+      </div>
+      <button class="btn" type="button" data-fs="f{{ v.id }}">Fullscreen</button>
     </div>
   </div>
   {% else %}
@@ -57,6 +65,15 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
 <script>
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&['s','u','p'].indexOf(e.key.toLowerCase())>-1){e.preventDefault();}
+});
+document.addEventListener('dragstart',function(e){e.preventDefault();});
+Array.prototype.forEach.call(document.querySelectorAll('[data-fs]'),function(b){
+  b.addEventListener('click',function(){
+    var el=document.getElementById(b.getAttribute('data-fs'));
+    if(document.fullscreenElement||document.webkitFullscreenElement){(document.exitFullscreen||document.webkitExitFullscreen).call(document);return;}
+    var go=el.requestFullscreen||el.webkitRequestFullscreen;
+    if(go){go.call(el);}else{b.textContent='Rotate your phone for a bigger view';}
+  });
 });
 </script>
 </body>

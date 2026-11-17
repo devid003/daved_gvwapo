@@ -24,7 +24,9 @@
 </section>
 
 <section class="panel">
-  <div class="panel-head"><div><h2>Watermark</h2><p>Shown on top of every video.</p></div></div>
+  <div class="panel-head"><div><h2>Protection</h2><p>Watermark on every video. Strict mode blocks the Drive "open in new window" button. Turn it off only if videos stop playing.</p></div>
+    <form method="post" action="/videos/strict" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><span class="badge {{ 'live' if strict else 'off' }}" style="margin-right:8px">Strict mode {{ 'on' if strict else 'off' }}</span><button class="btn sm">{{ 'Turn off' if strict else 'Turn on' }}</button></form>
+  </div>
   <div class="panel-body">
     <form method="post" action="/videos/watermark" class="row" style="align-items:flex-end">
       <input type="hidden" name="csrf" value="{{ csrf }}">
