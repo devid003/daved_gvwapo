@@ -3,27 +3,85 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>{{ public_name }}</title>
+<meta name="theme-color" content="#0b0e14">
+<meta name="robots" content="noindex">
+<title>{% block title %}{{ public_name }}{% endblock %}</title>
+<link rel="icon" href="/static/app-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0b0e14;--card:#141925;--line:#222a3a;--ink:#eef1f6;--muted:#9aa4b6;--accent:#5865F2;--bad:#ff6b6b}
+:root{--bg:#0b0e14;--card:#131824;--field:#0d111a;--line:#232b3b;--line2:#313b50;--ink:#eef1f6;--muted:#98a2b5;--faint:#6b7588;
+  --accent:#5865F2;--accent2:#7a85ff;--bad:#ff8080;--ok:#3ccf7a}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  min-height:100vh;display:grid;place-items:center;padding:24px}
-.card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:30px}
-h1{font-size:24px;margin:0 0 6px}
-.muted{color:var(--muted);font-size:14px;margin:0 0 20px}
-label{display:block;font-size:13px;color:var(--muted);margin:14px 0 5px}
-input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit;font-size:15px}
-.btn{width:100%;margin-top:20px;padding:13px;border:0;border-radius:10px;background:var(--accent);color:#fff;font-weight:700;font-size:15px;cursor:pointer}
-.flash{background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.4);color:#ffb3b3;padding:10px 12px;border-radius:10px;font-size:14px;margin-bottom:14px}
-.alt{text-align:center;margin-top:16px;font-size:14px;color:var(--muted)}
-.alt a{color:#aab4ff;text-decoration:none}
+html,body{height:100%}
+body{margin:0;color:var(--ink);background:var(--bg);
+  background-image:radial-gradient(900px 480px at 50% -8%,rgba(88,101,242,.20),transparent 62%),
+                   radial-gradient(600px 360px at 100% 100%,rgba(60,207,122,.06),transparent 60%);
+  background-attachment:fixed;
+  font-family:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:max(28px,env(safe-area-inset-top)) 20px max(28px,env(safe-area-inset-bottom))}
+.brand{display:flex;align-items:center;gap:11px;margin-bottom:22px;text-decoration:none;color:var(--ink)}
+.mark{width:40px;height:40px;border-radius:11px;background:linear-gradient(140deg,var(--accent2),var(--accent));
+  display:grid;place-items:center;font-weight:800;font-size:20px;color:#fff;box-shadow:0 8px 22px rgba(88,101,242,.35)}
+.brand b{font-size:18px;font-weight:700;letter-spacing:-.01em}
+.card{width:100%;max-width:412px;background:var(--card);border:1px solid var(--line);border-radius:18px;
+  padding:30px 28px 26px;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+h1{font-size:25px;line-height:1.2;margin:0 0 6px;font-weight:700;letter-spacing:-.02em}
+.sub{color:var(--muted);font-size:14.5px;margin:0 0 22px}
+.sub code,.steps code{background:rgba(88,101,242,.16);color:#c3c9ff;padding:2px 7px;border-radius:6px;font-size:13px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+label{display:block;font-size:13px;font-weight:600;color:#c5ccd9;margin:16px 0 7px}
+.hint{font-weight:400;color:var(--faint);margin-left:6px}
+.inp{position:relative}
+input[type=text],input[type=password]{width:100%;height:48px;padding:0 14px;border:1px solid var(--line2);border-radius:11px;
+  background:var(--field);color:var(--ink);font:inherit;font-size:16px;outline:none;transition:border-color .15s,box-shadow .15s}
+input::placeholder{color:#566076}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(88,101,242,.22)}
+.inp input{padding-right:64px}
+.show{position:absolute;right:6px;top:6px;height:36px;padding:0 11px;border:0;border-radius:8px;background:transparent;
+  color:var(--muted);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.show:hover{color:var(--ink);background:rgba(255,255,255,.06)}
+.code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:20px!important;font-weight:700;
+  letter-spacing:.34em;text-transform:uppercase;text-align:center}
+.code::placeholder{letter-spacing:.34em;font-weight:500}
+.btn{width:100%;height:50px;margin-top:22px;border:0;border-radius:12px;color:#fff;font:inherit;font-weight:700;font-size:15.5px;
+  cursor:pointer;background:linear-gradient(140deg,var(--accent2),var(--accent));box-shadow:0 10px 24px rgba(88,101,242,.32);
+  transition:transform .12s,filter .12s}
+.btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn:focus-visible,.show:focus-visible,a:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.flash{display:flex;gap:10px;align-items:flex-start;background:rgba(255,128,128,.10);border:1px solid rgba(255,128,128,.35);
+  color:#ffc9c9;padding:11px 13px;border-radius:11px;font-size:14px;margin-bottom:18px}
+.flash svg{flex:0 0 auto;margin-top:2px}
+.steps{list-style:none;margin:0 0 4px;padding:14px 14px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.02)}
+.steps li{display:flex;gap:11px;align-items:flex-start;font-size:13.5px;color:var(--muted);padding:4px 0}
+.steps .n{flex:0 0 22px;height:22px;border-radius:50%;background:rgba(88,101,242,.2);color:#c3c9ff;font-size:12px;font-weight:700;
+  display:grid;place-items:center;margin-top:1px}
+.alt{text-align:center;margin:20px 0 0;font-size:14px;color:var(--muted)}
+.alt a{color:#aab4ff;text-decoration:none;font-weight:600}
+.alt a:hover{text-decoration:underline}
+.foot{margin-top:20px;color:var(--faint);font-size:12.5px;text-align:center}
+.foot a{color:var(--faint)}
+@media (max-width:440px){.card{padding:26px 20px 22px;border-radius:16px}h1{font-size:23px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
-<div class="card">
-{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+<a class="brand" href="/"><span class="mark">{{ public_name[:1]|upper }}</span><b>{{ public_name }}</b></a>
+<main class="card">
+{% if flash %}<div class="flash" role="alert"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg><span>{{ flash }}</span></div>{% endif %}
 {% block body %}{% endblock %}
-</div>
+</main>
+<p class="foot">Members only. <a href="/">Back to home</a></p>
+<script>
+Array.prototype.forEach.call(document.querySelectorAll('.show'),function(b){
+  b.addEventListener('click',function(){
+    var i=b.parentNode.querySelector('input'); var on=i.type==='password';
+    i.type=on?'text':'password'; b.textContent=on?'Hide':'Show'; b.setAttribute('aria-pressed',on?'true':'false');
+  });
+});
+</script>
 </body>
 </html>

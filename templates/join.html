@@ -1,15 +1,24 @@
 {% extends "_auth_base.html" %}
+{% block title %}Create account - {{ public_name }}{% endblock %}
 {% block body %}
 <h1>Create your account</h1>
-<p class="muted">For {{ public_name }} members. Get your code by typing <b>/weblogin</b> in Discord.</p>
-<form method="post" action="/join">
+<p class="sub">For approved {{ public_name }} members.</p>
+<ol class="steps">
+  <li><span class="n">1</span><span>In Discord, type <code>/weblogin</code> to get your code by DM.</span></li>
+  <li><span class="n">2</span><span>Pick a username and password below.</span></li>
+  <li><span class="n">3</span><span>Enter the code and you're in.</span></li>
+</ol>
+<form method="post" action="/join" autocomplete="on">
   <input type="hidden" name="csrf" value="{{ csrf }}">
-  <label>Username</label>
-  <input type="text" name="username" placeholder="3-40 chars" required>
-  <label>Password</label>
-  <input type="password" name="password" placeholder="at least 6 characters" required>
-  <label>Signup code (from /weblogin)</label>
-  <input type="text" name="code" placeholder="6-character code" required>
+  <label for="u">Username <span class="hint">3 to 40 characters</span></label>
+  <input id="u" type="text" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="40" placeholder="e.g. david_5522" required>
+  <label for="p">Password <span class="hint">at least 6 characters</span></label>
+  <div class="inp">
+    <input id="p" type="password" name="password" autocomplete="new-password" minlength="6" placeholder="Choose a password" required>
+    <button class="show" type="button" aria-pressed="false">Show</button>
+  </div>
+  <label for="c">Signup code <span class="hint">from /weblogin</span></label>
+  <input id="c" class="code" type="text" name="code" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="6" placeholder="ABC123" required>
   <button class="btn">Create account</button>
 </form>
 <p class="alt">Already have an account? <a href="/members/login">Log in</a></p>
