@@ -223,7 +223,6 @@ async def index(request):
         "regs_pending": data.get("regs_pending", 0),
         "prompts_total": await run(db.prompt_use_total),
     }
-    ctx.update(await _watch_ctx())
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
 
 
@@ -1197,7 +1196,6 @@ async def overview_live(request):
         "regs_total": data.get("regs_total", 0),
         "regs_pending": data.get("regs_pending", 0),
         "prompts_total": await run(db.prompt_use_total),
-        **await _watching_live(),
     }, headers={"Cache-Control": "no-store"})
 
 
@@ -1620,6 +1618,28 @@ async def resource_delete(request):
     return redirect("/videos")
 
 
+async def _viewers_ctx() -> dict:
+    ctx = await _watch_ctx()
+    ctx["totals"] = await run(db.view_stats)
+    return ctx
+
+
+async def viewers_page(request):
+    """Admin page: who is watching the tutorials, per lesson."""
+    if not authed(request):
+        return redirect("/login")
+    ctx = await _viewers_ctx()
+    ctx["csrf"] = csrf_token(request)
+    return templates.TemplateResponse(request=request, name="viewers.html", context=ctx)
+
+
+async def viewers_live(request):
+    if not authed(request):
+        return JSONResponse({"error": "login"}, status_code=401)
+    ctx = await _viewers_ctx()
+    return JSONResponse({"watching_now": len(ctx["watching"]),
+                         "html": templates.env.get_template("_watching.html").render(**ctx)},
+                        headers={"Cache-Control": "no-store"})
 async def member_delete(request):
     form, resp = await guarded_post(request)
     if resp:
@@ -1714,6 +1734,8 @@ app = Starlette(
         Route("/members/logout", member_logout, methods=["POST"]),
         Route("/watch", watch_page),
         Route("/watch/ping", watch_ping, methods=["POST"]),
+        Route("/viewers", viewers_page),
+        Route("/api/viewers/live", viewers_live),
         Route("/videos", videos_page),
         Route("/videos/add", video_add, methods=["POST"]),
         Route("/videos/edit", video_edit, methods=["POST"]),

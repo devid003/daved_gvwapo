@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Viewers{% endblock %}
+{% block content %}
+<style>
+.vgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.vgrid>.panel{min-width:0;margin-bottom:0}
+.vwrap td{vertical-align:middle}
+.vwrap .dot{margin-right:6px;vertical-align:middle}
+.lbar{display:inline-block;vertical-align:middle;width:110px;height:6px;border-radius:99px;background:var(--sunk);margin-right:10px;overflow:hidden}
+.lbar i{display:block;height:100%;background:var(--accent);border-radius:99px}
+@media (max-width:1000px){.vgrid{grid-template-columns:1fr}}
+@media (max-width:600px){.lbar{display:none}}
+</style>
+
+<div class="head">
+  <div><h1>Viewers</h1><p>Who is watching your tutorials, and how each lesson is doing. Updates every 10 seconds.</p></div>
+  <a class="btn ghost" href='/watch' target="_blank" rel="noopener">Open tutorials page</a>
+</div>
+
+<div class="vwrap" id="viewers-wrap">{% include "_watching.html" %}</div>
+
+<script>
+(function(){
+  function refresh(){
+    fetch('/api/viewers/live',{credentials:'same-origin',cache:'no-store'})
+      .then(function(r){if(r.status===401){location.href='/login';throw 0;}if(!r.ok)throw 0;return r.json();})
+      .then(function(j){var w=document.getElementById('viewers-wrap'); if(w&&j.html)w.innerHTML=j.html;})
+      .catch(function(){});
+  }
+  setInterval(function(){if(!document.hidden)refresh();},10000);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)refresh();});
+})();
+</script>
+{% endblock %}

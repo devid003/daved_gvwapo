@@ -13,29 +13,8 @@
   <div><div class="v" id="ov-servers">{{ servers|length }}</div><div class="k">Approved servers</div></div>
   <div><div class="v" id="ov-regs">{{ regs_total }}{% if regs_pending %} <span style="font-size:14px;color:var(--warn)">+{{ regs_pending }}</span>{% endif %}</div><div class="k">Registered users</div></div>
   <div><div class="v" id="ov-prompts">{{ prompts_total }}</div><div class="k">Prompts sent</div></div>
-  <div><div class="v" id="ov-watching">{{ watching|length }}</div><div class="k">Watching tutorials now</div></div>
 </div>
 
-
-
-<style>
-.watch-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
-.watch-grid>div{min-width:0}
-.watch-grid>div+div{border-left:1px solid var(--line)}
-.wh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 20px 10px}
-.wh .muted{margin-left:auto}
-.lessons{border-bottom:1px solid var(--line)}
-.lessons td{vertical-align:middle}
-.lessons .dot{margin-right:6px;vertical-align:middle}
-.lbar{display:inline-block;vertical-align:middle;width:90px;height:6px;border-radius:99px;background:var(--sunk);margin-right:10px;overflow:hidden}
-.lbar i{display:block;height:100%;background:var(--accent);border-radius:99px}
-@media (max-width:600px){.lbar{display:none}}
-@media (max-width:900px){.watch-grid{grid-template-columns:1fr}.watch-grid>div+div{border-left:0;border-top:1px solid var(--line)}}
-</style>
-<section class="panel">
-  <div class="panel-head"><div><h2>Tutorial viewers</h2><p>Who is watching which lesson, and what they watched before. Updates on its own.</p></div></div>
-  <div id="watching-wrap">{% include "_watching.html" %}</div>
-</section>
 
 <section class="panel">
   <div class="panel-head"><div><h2>Approved servers</h2><p>The bot works only here and leaves any other server.</p></div></div>
@@ -80,8 +59,6 @@
         var sv=document.getElementById('ov-servers'); if(sv)sv.textContent=j.servers;
         var rg=document.getElementById('ov-regs'); if(rg)rg.innerHTML=j.regs_total+(j.regs_pending?' <span style="font-size:14px;color:var(--warn)">+'+j.regs_pending+'</span>':'');
         var pr=document.getElementById('ov-prompts'); if(pr)pr.textContent=j.prompts_total;
-        var wn=document.getElementById('ov-watching'); if(wn)wn.textContent=j.watching_now;
-        var ww=document.getElementById('watching-wrap'); if(ww&&j.watching_html)ww.innerHTML=j.watching_html;
       }).catch(function(){});
   }
   setInterval(function(){if(!document.hidden)refresh();},15000);
