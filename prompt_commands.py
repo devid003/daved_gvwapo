@@ -18,7 +18,25 @@ from prompts import render_txt
 log = logging.getLogger("prompts")
 run = asyncio.to_thread
 import os as _os
-PROMPT_DELETE_AFTER = int(_os.getenv("PROMPT_DELETE_SECONDS", "600") or 0)  # 0 = keep forever
+
+
+def _int_env(name: str, default: int) -> int:
+    """Read a number from an env var; ignores extra text, falls back to default."""
+    import re as _re
+    m = _re.search(r"\d+", _os.getenv(name, "") or "")
+    return int(m.group()) if m else default
+
+
+PROMPT_DELETE_AFTER = _int_env("PROMPT_DELETE_SECONDS", 600)  # 0 = keep forever
+_DELETE_TASKS: set = set()
+
+
+async def _delete_later(msg, delay: int) -> None:
+    await asyncio.sleep(delay)
+    try:
+        await msg.delete()
+    except Exception:
+        pass
 
 
 async def _is_cleared(guild_id: int, user_id: int) -> bool:
@@ -132,10 +150,11 @@ async def prompt_cmd(interaction: discord.Interaction, niche: str):
     await run(db.log_prompt_use, interaction.guild_id, interaction.user.id, niche)
     file = discord.File(io.BytesIO(data), filename=f"{niche}-prompt.txt")
     note = f"\n-# This message will be removed in {PROMPT_DELETE_AFTER // 60} min." if PROMPT_DELETE_AFTER else ""
-    kwargs = {"content": f"Here's a **{n.label}** prompt:{note}", "file": file}
-    if PROMPT_DELETE_AFTER:
-        kwargs["delete_after"] = PROMPT_DELETE_AFTER
-    await interaction.followup.send(**kwargs)
+    msg = await interaction.followup.send(content=f"Here's a **{n.label}** prompt:{note}", file=file, wait=True)
+    if PROMPT_DELETE_AFTER and msg is not None:
+        t = asyncio.create_task(_delete_later(msg, PROMPT_DELETE_AFTER))
+        _DELETE_TASKS.add(t)
+        t.add_done_callback(_DELETE_TASKS.discard)
 
 
 @prompt_cmd.autocomplete("niche")
