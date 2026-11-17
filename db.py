@@ -166,6 +166,21 @@ class VideoView(Base):
     seconds: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class MemberDevice(Base):
+    """The one device a website member account is locked to (anti account-sharing)."""
+    __tablename__ = "member_devices"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, default=0)
+    token_hash: Mapped[str] = mapped_column(String(64), default="")
+    label: Mapped[str] = mapped_column(String(80), default="")
+    linked_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    last_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    blocked: Mapped[int] = mapped_column(Integer, default=0)
+    blocked_label: Mapped[str] = mapped_column(String(80), default="")
+    blocked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Niche(Base):
     """A prompt niche (slash dropdown option). Created/edited on the dashboard, no restart."""
     __tablename__ = "niches"
@@ -660,6 +675,52 @@ def view_stats() -> dict:
         viewers = s.scalar(select(func.count(func.distinct(VideoView.username)))) or 0
     return {"per_video": {v: {"views": c, "viewers": u} for v, c, u in per},
             "views": sum(c for _, c, _ in per), "viewers": viewers, "minutes": int(total_seconds // 60)}
+
+
+# ---------- one device per member account ----------
+def device_check(username: str, user_id: int, token_hash: str, label: str, mode: str,
+                 user_created=None) -> str:
+    """mode 'login': link this device if the account has none.  mode 'watch': link only if never linked.
+    Returns 'ok' (same device), 'bound' (just linked), 'other' (locked to another device), 'reset' (owner reset it)."""
+    import hmac as _hmac
+    now = utcnow()
+    with Session.begin() as s:
+        d = s.scalars(select(MemberDevice).where(MemberDevice.username == username)).first()
+        if d is not None and (d.user_id != user_id or (user_created and d.linked_at < user_created)):
+            # leftover from a deleted account with the same name
+            s.delete(d)
+            s.flush()
+            d = None
+        if d is None or not d.token_hash:
+            if d is not None and mode != "login":
+                return "reset"
+            if d is None:
+                d = MemberDevice(username=username, user_id=user_id)
+                s.add(d)
+            d.token_hash, d.label, d.linked_at, d.last_seen = token_hash, (label or "")[:80], now, now
+            return "bound"
+        if _hmac.compare_digest(d.token_hash, token_hash):
+            if (now - d.last_seen).total_seconds() > 60:
+                d.last_seen = now
+            return "ok"
+        d.blocked = (d.blocked or 0) + 1
+        d.blocked_label, d.blocked_at = (label or "")[:80], now
+        return "other"
+
+
+def device_reset(username: str) -> None:
+    with Session.begin() as s:
+        d = s.scalars(select(MemberDevice).where(MemberDevice.username == username)).first()
+        if d is not None:
+            d.token_hash, d.label, d.blocked, d.blocked_label, d.blocked_at = "", "", 0, "", None
+
+
+def device_map() -> dict:
+    with Session() as s:
+        return {d.username: {"user_id": d.user_id, "linked": bool(d.token_hash), "label": d.label,
+                             "linked_at": d.linked_at, "last_seen": d.last_seen, "blocked": d.blocked or 0,
+                             "blocked_label": d.blocked_label, "blocked_at": d.blocked_at}
+                for d in s.scalars(select(MemberDevice))}
 
 
 # ---------- niches (dynamic, dashboard-managed) ----------

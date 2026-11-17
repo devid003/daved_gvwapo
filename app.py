@@ -1406,6 +1406,8 @@ async def videos_page(request):
     if not authed(request):
         return redirect("/login")
     return templates.TemplateResponse(request=request, name="videos.html", context={
+        "devices": await run(db.device_map),
+        "one_device": (await run(db.get_setting, "member_one_device", "1")) != "0",
         "announce": await _announce_options(),
         "announce_video": await run(db.get_setting, "announce_video", ""),
         "announce_resource": await run(db.get_setting, "announce_resource", ""),
@@ -1778,6 +1780,120 @@ async def resource_add_and_announce(request):
     return resp
 
 
+# ---------- one device per member account ----------
+_DEV_COOKIE = "sdev"
+_LOCKED_MSG = ("This account is already used on another device. "
+               "Ask the owner to reset your device, then log in again.")
+
+
+def _device_label(request) -> str:
+    ua = request.headers.get("user-agent", "")
+    os_ = ("iPhone" if "iPhone" in ua else "iPad" if "iPad" in ua else "Android" if "Android" in ua else
+           "Windows" if "Windows" in ua else "Mac" if "Macintosh" in ua else "Linux" if "Linux" in ua else "Unknown")
+    br = ("App" if "; wv)" in ua else "Edge" if "Edg/" in ua else "Opera" if "OPR/" in ua else
+          "Samsung Internet" if "SamsungBrowser" in ua else "Chrome" if ("Chrome/" in ua or "CriOS" in ua) else
+          "Firefox" if ("Firefox/" in ua or "FxiOS" in ua) else "Safari" if "Safari/" in ua else "Browser")
+    return f"{os_} - {br}"
+
+
+async def _device_gate(request, username: str, mode: str) -> tuple:
+    """Check this browser against the account's locked device. Returns (status, new_cookie_or_None)."""
+    import hashlib
+    if (await run(db.get_setting, "member_one_device", "1")) == "0":
+        return "off", None
+    u = await run(db.get_web_user, username)
+    if u is None:
+        return "ok", None
+    tok, new = request.cookies.get(_DEV_COOKIE, ""), None
+    if not (20 <= len(tok) <= 100):
+        tok = new = secrets.token_urlsafe(32)
+    st = await run(db.device_check, username, u.id, hashlib.sha256(tok.encode()).hexdigest(),
+                   _device_label(request), mode, u.created_at)
+    return st, new
+
+
+def _set_dev_cookie(resp, tok) -> None:
+    if tok:
+        resp.set_cookie(_DEV_COOKIE, tok, max_age=60 * 60 * 24 * 400, httponly=True,
+                        secure=bool(os.getenv("RENDER")), samesite="lax", path="/")
+
+
+async def _login_with_device(request, handler):
+    """Run the normal login/signup, then lock the account to this device (or refuse another one)."""
+    resp = await handler(request)
+    user = request.session.get("member")
+    if not user or not resp.headers.get("location", "").endswith("/watch"):
+        return resp
+    st, new = await _device_gate(request, user, "login")
+    if st == "other":
+        request.session.pop("member", None)
+        flash(request, _LOCKED_MSG)
+        resp = redirect("/members/login")
+    _set_dev_cookie(resp, new)
+    return resp
+
+
+async def member_login_submit_1dev(request):
+    return await _login_with_device(request, member_login_submit)
+
+
+async def join_submit_1dev(request):
+    return await _login_with_device(request, join_submit)
+
+
+async def _watch_device_ok(request) -> tuple:
+    user = request.session.get("member")
+    if not user:
+        return True, None
+    st, new = await _device_gate(request, user, "watch")
+    if st in ("other", "reset"):
+        request.session.pop("member", None)
+        flash(request, _LOCKED_MSG if st == "other" else
+              "Your device was reset. Log in again on the device you want to use.")
+        return False, None
+    return True, new
+
+
+async def watch_page_1dev(request):
+    ok, new = await _watch_device_ok(request)
+    if not ok:
+        return redirect("/members/login")
+    resp = await watch_page(request)
+    _set_dev_cookie(resp, new)
+    return resp
+
+
+async def watch_ping_1dev(request):
+    ok, new = await _watch_device_ok(request)
+    if not ok:
+        return JSONResponse({"ok": False}, status_code=401)
+    resp = await watch_ping(request)
+    _set_dev_cookie(resp, new)
+    return resp
+
+
+async def member_device_reset(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    name = str(form.get("username", "")).strip()[:40]
+    if name:
+        await run(db.device_reset, name)
+        flash(request, f"Device reset for {name}. The next device they log in on becomes their device.")
+    return redirect("/videos")
+
+
+async def one_device_toggle(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    on = (await run(db.get_setting, "member_one_device", "1")) != "0"
+    await run(db.set_setting, "member_one_device", "0" if on else "1")
+    flash(request, "1 device per account is now off." if on else
+          "1 device per account is on. Each account works only on the device it logs in on first.")
+    return redirect("/videos")
+
+
 async def member_delete(request):
     form, resp = await guarded_post(request)
     if resp:
@@ -1866,12 +1982,12 @@ app = Starlette(
         Route("/site", site_page),
         Route("/site/save", site_save, methods=["POST"]),
         Route("/join", join_page),
-        Route("/join", join_submit, methods=["POST"]),
+        Route("/join", join_submit_1dev, methods=["POST"]),
         Route("/members/login", member_login_page),
-        Route("/members/login", member_login_submit, methods=["POST"]),
+        Route("/members/login", member_login_submit_1dev, methods=["POST"]),
         Route("/members/logout", member_logout, methods=["POST"]),
-        Route("/watch", watch_page),
-        Route("/watch/ping", watch_ping, methods=["POST"]),
+        Route("/watch", watch_page_1dev),
+        Route("/watch/ping", watch_ping_1dev, methods=["POST"]),
         Route("/viewers", viewers_page),
         Route("/api/viewers/live", viewers_live),
         Route("/videos", videos_page),
@@ -1885,6 +2001,8 @@ app = Starlette(
         Route("/videos/resource/edit", resource_edit, methods=["POST"]),
         Route("/videos/resource/toggle", resource_toggle, methods=["POST"]),
         Route("/videos/resource/delete", resource_delete, methods=["POST"]),
+        Route("/videos/member-device-reset", member_device_reset, methods=["POST"]),
+        Route("/videos/one-device", one_device_toggle, methods=["POST"]),
         Route("/videos/member-delete", member_delete, methods=["POST"]),
         Route("/v/{token}", verify_page),
         Route("/v/{token}", verify_submit, methods=["POST"]),

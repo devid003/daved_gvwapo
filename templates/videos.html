@@ -131,16 +131,25 @@
 </section>
 
 <section class="panel">
-  <div class="panel-head"><div><h2>Member accounts</h2><p>People who created a website account with /weblogin. {{ members|length }} total.</p></div></div>
+  <div class="panel-head"><div><h2>Member accounts</h2><p>People who created a website account with /weblogin. {{ members|length }} total.{% if one_device %} Each account works on one device only.{% endif %}</p></div>
+    <form method="post" action="/videos/one-device" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><span class="badge {{ 'live' if one_device else 'off' }}" style="margin-right:8px">1 device per account {{ 'on' if one_device else 'off' }}</span><button class="btn sm">{{ 'Turn off' if one_device else 'Turn on' }}</button></form>
+  </div>
   {% if members %}
   <div class="scroll"><table>
-    <tr><th>Username</th><th>Discord</th><th>Created</th><th></th></tr>
+    <tr><th>Username</th><th>Discord</th><th>Device</th><th class="nowrap">Blocked tries</th><th>Created</th><th></th></tr>
     {% for m in members %}
+    {% set d = devices.get(m.username) %}{% if d and d.user_id != m.id %}{% set d = none %}{% endif %}
     <tr>
       <td><b>{{ m.username }}</b></td>
       <td>{{ m.discord_name or m.discord_user_id }}</td>
+      <td>{% if d and d.linked %}<b>{{ d.label }}</b><div class="muted small nowrap">since {{ (d.linked_at|local)[:10] }}, seen {{ (d.last_seen|local)[:16] }}</div>
+          {% elif d %}<span class="muted">Reset, waiting for next login</span>{% else %}<span class="muted">Not linked yet</span>{% endif %}</td>
+      <td>{% if d and d.blocked %}<b style="color:var(--warn)">{{ d.blocked }}</b><div class="muted small nowrap">last: {{ d.blocked_label }}{% if d.blocked_at %}, {{ (d.blocked_at|local)[:16] }}{% endif %}</div>{% else %}<span class="muted">0</span>{% endif %}</td>
       <td class="nowrap">{{ (m.created_at|local)[:16] }}</td>
-      <td class="actions"><form method="post" action="/videos/member-delete" class="inline" onsubmit="return confirm('Remove this account?')"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ m.id }}"><button class="btn sm bad">Remove</button></form></td>
+      <td class="actions">
+        {% if d and d.linked %}<form method="post" action="/videos/member-device-reset" class="inline" onsubmit="return confirm('Reset the device for {{ m.username }}? The next device they log in on becomes their device.')"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="username" value="{{ m.username }}"><button class="btn sm">Reset device</button></form>{% endif %}
+        <form method="post" action="/videos/member-delete" class="inline" onsubmit="return confirm('Remove this account?')"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ m.id }}"><button class="btn sm bad">Remove</button></form>
+      </td>
     </tr>
     {% endfor %}
   </table></div>
