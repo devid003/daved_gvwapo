@@ -1406,6 +1406,9 @@ async def videos_page(request):
     if not authed(request):
         return redirect("/login")
     return templates.TemplateResponse(request=request, name="videos.html", context={
+        "announce": await _announce_options(),
+        "announce_video": await run(db.get_setting, "announce_video", ""),
+        "announce_resource": await run(db.get_setting, "announce_resource", ""),
         "resources": await run(db.list_resources),
         "vstats": await run(db.view_stats),
         "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
@@ -1640,6 +1643,106 @@ async def viewers_live(request):
     return JSONResponse({"watching_now": len(ctx["watching"]),
                          "html": templates.env.get_template("_watching.html").render(**ctx)},
                         headers={"Cache-Control": "no-store"})
+# ---------- Discord posts for new videos / resources ----------
+async def _announce_options() -> list:
+    """Text channels the bot can post in, grouped by category, for the 'Post to Discord' dropdowns."""
+    import discord
+    b = discord_bot.bot
+    if not b.is_ready():
+        return []
+    out = []
+    for gid in sorted(await run(db.allowed_guild_ids)):
+        g = b.get_guild(gid)
+        if g is None:
+            continue
+        groups = []
+        for cat, chans in g.by_category():
+            ok = []
+            for c in chans:
+                if getattr(c, "type", None) not in (discord.ChannelType.text, discord.ChannelType.news):
+                    continue
+                perms = c.permissions_for(g.me)
+                if perms.view_channel and perms.send_messages and perms.embed_links:
+                    ok.append((str(c.id), c.name))
+            if ok:
+                groups.append((cat.name if cat else "No category", ok))
+        if groups:
+            out.append({"server": g.name, "groups": groups})
+    return out
+
+
+async def _announce(channel_id: str, title: str, body: str, buttons: list) -> str:
+    """Post an embed with link buttons. Returns the channel name, or raises ValueError with a short reason."""
+    import discord
+    b = discord_bot.bot
+    if not b.is_ready():
+        raise ValueError("the bot is offline")
+    ch = b.get_channel(int(channel_id)) if channel_id.isdigit() else None
+    if ch is None or getattr(ch, "guild", None) is None or ch.guild.id not in await run(db.allowed_guild_ids):
+        raise ValueError("that channel was not found")
+    name = await run(db.get_setting, "site_title", "") or SITE_NAME
+    e = discord.Embed(title=title[:250], description=body[:3800], color=0x5865F2)
+    e.set_footer(text=f"{name} tutorials")
+    view = discord.ui.View(timeout=None)
+    for label, url in buttons:
+        if url and url.startswith(("https://", "http://")):
+            view.add_item(discord.ui.Button(label=label[:80], url=url))
+    try:
+        await ch.send(embed=e, view=view if view.children else None)
+    except discord.Forbidden:
+        raise ValueError(f"the bot can't post in #{ch.name}")
+    except discord.HTTPException as ex:
+        raise ValueError(f"Discord said no ({ex.status})")
+    return ch.name
+
+
+def _watch_url() -> str:
+    return f"{security.PUBLIC_URL.rstrip('/')}/watch" if security.PUBLIC_URL else ""
+
+
+async def _post_result(request, kind: str, channel_id: str, title: str, body: str, buttons: list) -> None:
+    """Remember the channel choice, post, and add the outcome to the flash message."""
+    await run(db.set_setting, f"announce_{kind}", channel_id)
+    if not channel_id:
+        return
+    try:
+        ch = await _announce(channel_id, title, body, buttons)
+        note = f" Posted in #{ch}."
+    except ValueError as ex:
+        note = f" Not posted to Discord: {ex}."
+    request.session["flash"] = (request.session.get("flash") or "") + note
+
+
+async def video_add_and_announce(request):
+    """Add the video as usual, then post it to the chosen Discord channel."""
+    form = await request.form()
+    before = {v.id for v in await run(db.list_videos, False)}
+    resp = await video_add(request)
+    new = [v for v in await run(db.list_videos, False) if v.id not in before]
+    if new:
+        v = new[0]
+        body = (v.description + "\n\n" if v.description else "") + \
+            "Watch it on the tutorials page. No account yet? Use `/weblogin` in the server."
+        await _post_result(request, "video", str(form.get("announce", "")).strip(), f"New tutorial: {v.title}",
+                           body, [("Watch now", _watch_url())])
+    return resp
+
+
+async def resource_add_and_announce(request):
+    """Add the resource as usual, then post it to the chosen Discord channel."""
+    form = await request.form()
+    before = {r.id for r in await run(db.list_resources)}
+    resp = await resource_add(request)
+    new = [r for r in await run(db.list_resources) if r.id not in before]
+    if new:
+        r = new[0]
+        body = (r.description + "\n\n" if r.description else "") + \
+            "You can also find it under Resources on the tutorials page."
+        await _post_result(request, "resource", str(form.get("announce", "")).strip(), f"New resource: {r.name}",
+                           body, [(f"Open {r.name}", r.url), ("Tutorials page", _watch_url())])
+    return resp
+
+
 async def member_delete(request):
     form, resp = await guarded_post(request)
     if resp:
@@ -1737,13 +1840,13 @@ app = Starlette(
         Route("/viewers", viewers_page),
         Route("/api/viewers/live", viewers_live),
         Route("/videos", videos_page),
-        Route("/videos/add", video_add, methods=["POST"]),
+        Route("/videos/add", video_add_and_announce, methods=["POST"]),
         Route("/videos/edit", video_edit, methods=["POST"]),
         Route("/videos/toggle", video_toggle, methods=["POST"]),
         Route("/videos/delete", video_delete, methods=["POST"]),
         Route("/videos/watermark", video_wm_save, methods=["POST"]),
         Route("/videos/strict", video_strict_toggle, methods=["POST"]),
-        Route("/videos/resource/add", resource_add, methods=["POST"]),
+        Route("/videos/resource/add", resource_add_and_announce, methods=["POST"]),
         Route("/videos/resource/edit", resource_edit, methods=["POST"]),
         Route("/videos/resource/toggle", resource_toggle, methods=["POST"]),
         Route("/videos/resource/delete", resource_delete, methods=["POST"]),

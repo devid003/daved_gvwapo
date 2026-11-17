@@ -1,6 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Videos{% endblock %}
 {% block content %}
+{% macro post_to(kind, current) %}
+      <label class="field" style="margin-bottom:12px">Post to Discord
+        <select name="announce">
+          <option value="">Don't post</option>
+          {% for s in announce %}{% for cat, chans in s.groups %}
+          <optgroup label="{{ s.server ~ ' / ' if announce|length > 1 }}{{ cat }}">
+            {% for cid, name in chans %}<option value="{{ cid }}"{{ ' selected' if cid == current }}># {{ name }}</option>{% endfor %}
+          </optgroup>
+          {% endfor %}{% endfor %}
+        </select></label>
+      {% if not announce %}<p class="muted small" style="margin:-6px 0 12px">The bot is offline or can't post in any channel, so this {{ kind }} will only be added here.</p>{% endif %}
+{% endmacro %}
 <div class="head">
   <div><h1>Tutorials</h1><p>Add Google Drive videos for your approved members. {{ vstats.views }} view{{ '' if vstats.views == 1 else 's' }} by {{ vstats.viewers }} member{{ '' if vstats.viewers == 1 else 's' }}, about {{ vstats.minutes }} min watched in total.</p></div>
   <a class="btn ghost" href='/members/login' target="_blank" rel="noopener">Open members page</a>
@@ -8,7 +20,7 @@
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
 
 <section class="panel">
-  <div class="panel-head"><div><h2>Add a video</h2><p>Share the Drive file as "Anyone with the link", then paste the link here.</p></div></div>
+  <div class="panel-head"><div><h2>Add a video</h2><p>Share the Drive file as "Anyone with the link", then paste the link here. Pick a channel to announce it in your server.</p></div></div>
   <div class="panel-body">
     <form method="post" action="/videos/add">
       <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -18,6 +30,7 @@
         <input type="text" name="link" placeholder="https://drive.google.com/file/d/.../view" required></label>
       <label class="field" style="margin-bottom:12px">Description (optional)
         <input type="text" name="description" placeholder="Short note about this tutorial"></label>
+      {{ post_to('video', announce_video) }}
       <button class="btn primary">Add video</button>
     </form>
   </div>
@@ -45,8 +58,9 @@
         <label class="field" style="flex:1;min-width:180px">Name<input type="text" name="name" maxlength="80" placeholder="CapCut" required></label>
         <label class="field" style="flex:2;min-width:240px">Link<input type="text" name="url" maxlength="500" placeholder="https://www.capcut.com" required></label>
       </div>
-      <label class="field" style="margin-top:8px">Short description (optional)<input type="text" name="description" maxlength="300" placeholder="Free video editor we use for every tutorial"></label>
-      <button class="btn primary" style="margin-top:10px">Add resource</button>
+      <label class="field" style="margin:8px 0 12px">Short description (optional)<input type="text" name="description" maxlength="300" placeholder="Free video editor we use for every tutorial"></label>
+      {{ post_to('resource', announce_resource) }}
+      <button class="btn primary">Add resource</button>
     </form>
   </div>
   {% for r in resources %}
