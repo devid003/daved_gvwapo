@@ -223,6 +223,7 @@ async def index(request):
         "regs_pending": data.get("regs_pending", 0),
         "prompts_total": await run(db.prompt_use_total),
     }
+    ctx.update(await _watch_ctx())
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
 
 
@@ -1176,6 +1177,12 @@ async def prompts_live(request):
     }, headers={"Cache-Control": "no-store"})
 
 
+async def _watching_live() -> dict:
+    w = await _watch_ctx()
+    return {"watching_now": len(w["watching"]),
+            "watching_html": templates.env.get_template("_watching.html").render(**w)}
+
+
 async def overview_live(request):
     if not authed(request):
         return JSONResponse({"error": "login"}, status_code=401)
@@ -1190,6 +1197,7 @@ async def overview_live(request):
         "regs_total": data.get("regs_total", 0),
         "regs_pending": data.get("regs_pending", 0),
         "prompts_total": await run(db.prompt_use_total),
+        **await _watching_live(),
     }, headers={"Cache-Control": "no-store"})
 
 
@@ -1377,6 +1385,9 @@ async def watch_page(request):
         "csrf": csrf_token(request), "videos": vids, "username": request.session.get("member"),
         "public_name": await run(db.get_setting, "site_title", "") or SITE_NAME,
         "watermark": await run(db.get_setting, "video_watermark", "") or "David_5522",
+        "resources": [{"id": r.id, "name": r.name, "url": r.url, "description": r.description,
+                       "host": (r.url.split("//", 1)[-1].split("/", 1)[0].replace("www.", ""))}
+                      for r in await run(db.list_resources, True)],
     })
 
 
@@ -1397,6 +1408,8 @@ async def videos_page(request):
     if not authed(request):
         return redirect("/login")
     return templates.TemplateResponse(request=request, name="videos.html", context={
+        "resources": await run(db.list_resources),
+        "vstats": await run(db.view_stats),
         "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
         "videos": await run(db.list_videos), "members": await run(db.list_web_users),
         "watermark": await run(db.get_setting, "video_watermark", "") or "David_5522",
@@ -1470,6 +1483,140 @@ async def video_strict_toggle(request):
     on = (await run(db.get_setting, "video_strict", "1")) != "0"
     await run(db.set_setting, "video_strict", "0" if on else "1")
     flash(request, "Strict mode is now " + ("OFF." if on else "ON."))
+    return redirect("/videos")
+
+
+def _ago(t) -> str:
+    """'just now', '3m ago', '2h ago', '4d ago' for a naive-UTC datetime."""
+    if t is None:
+        return ""
+    s = int((dt.datetime.now(dt.timezone.utc) - t.replace(tzinfo=dt.timezone.utc)).total_seconds())
+    if s < 60:
+        return "just now"
+    if s < 3600:
+        return f"{s // 60}m ago"
+    if s < 86400:
+        return f"{s // 3600}h ago"
+    return f"{s // 86400}d ago"
+
+
+def _dur(seconds: int) -> str:
+    s = int(seconds or 0)
+    if s < 60:
+        return "<1m"
+    m = s // 60
+    return f"{m // 60}h {m % 60}m" if m >= 60 else f"{m}m"
+
+
+async def _watch_ctx() -> dict:
+    """Live viewers + recent views for the Overview panel."""
+    now_rows = await run(db.watching_now)
+    recent = await run(db.recent_views, 12)
+    per = (await run(db.view_stats))["per_video"]
+    live = {}
+    for r in now_rows:
+        live[r.video_id] = live.get(r.video_id, 0) + 1
+    vids = list(reversed(await run(db.list_videos, True)))  # oldest first, same order as the tutorials page
+    top = max([per.get(v.id, {}).get("views", 0) for v in vids] + [1])
+    lessons = [{"n": i + 1, "title": v.title, "now": live.get(v.id, 0),
+                "views": per.get(v.id, {}).get("views", 0), "members": per.get(v.id, {}).get("viewers", 0),
+                "pct": round(100 * per.get(v.id, {}).get("views", 0) / top)} for i, v in enumerate(vids)]
+    return {
+        "lessons": lessons,
+        "watching": [{"user": r.username, "discord": r.discord_name, "title": r.title,
+                      "for": _dur(r.seconds), "seen": _ago(r.last_seen)} for r in now_rows],
+        "recent_views": [{"user": r.username, "discord": r.discord_name, "title": r.title,
+                          "dur": _dur(r.seconds), "when": _ago(r.last_seen)} for r in recent],
+    }
+
+
+async def watch_ping(request):
+    """Heartbeat from the tutorials page: marks the member as watching a video."""
+    if not member_authed(request):
+        return JSONResponse({"ok": False}, status_code=401)
+    form, resp = await public_post(request)
+    if resp:
+        return JSONResponse({"ok": False}, status_code=400)
+    vid = parse_int(form.get("vid"))
+    if not vid:
+        return JSONResponse({"ok": False}, status_code=400)
+    v = next((x for x in await run(db.list_videos, True) if x.id == vid), None)
+    if v is None:
+        return JSONResponse({"ok": False}, status_code=404)
+    username = request.session.get("member")
+    u = await run(db.get_web_user, username)
+    if u is None or not u.active:
+        request.session.pop("member", None)
+        return JSONResponse({"ok": False}, status_code=401)
+    await run(db.record_view_ping, username, u.discord_name, v.id, v.title)
+    return JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
+
+
+def _clean_url(u: str) -> str:
+    """Only plain web links (https://site.com/...). Anything else returns ''."""
+    from urllib.parse import urlsplit
+    u = (u or "").strip()
+    if u and "://" not in u:
+        u = "https://" + u
+    try:
+        p = urlsplit(u)
+    except ValueError:
+        return ""
+    host = p.hostname or ""
+    if p.scheme not in ("http", "https") or "." not in host or len(u) > 500:
+        return ""
+    if any(c in u for c in ' "\'<>'):
+        return ""
+    return u
+
+
+async def resource_add(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    name = str(form.get("name", "")).strip()
+    url = _clean_url(str(form.get("url", "")))
+    if not name or not url:
+        flash(request, "Add a name and a valid link (https://...).")
+        return redirect("/videos")
+    await run(db.add_resource, name, url, str(form.get("description", "")).strip())
+    flash(request, f"Resource '{name}' added. Members see it under Resources.")
+    return redirect("/videos")
+
+
+async def resource_edit(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    rid = parse_int(form.get("id"))
+    name = str(form.get("name", "")).strip()
+    url = _clean_url(str(form.get("url", "")))
+    if rid and name and url:
+        await run(db.update_resource, rid, name, url, str(form.get("description", "")).strip())
+        flash(request, "Resource updated.")
+    else:
+        flash(request, "Add a name and a valid link (https://...).")
+    return redirect("/videos")
+
+
+async def resource_toggle(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    rid = parse_int(form.get("id"))
+    if rid:
+        await run(db.toggle_resource, rid)
+    return redirect("/videos")
+
+
+async def resource_delete(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    rid = parse_int(form.get("id"))
+    if rid:
+        await run(db.delete_resource, rid)
+        flash(request, "Resource deleted.")
     return redirect("/videos")
 
 
@@ -1566,6 +1713,7 @@ app = Starlette(
         Route("/members/login", member_login_submit, methods=["POST"]),
         Route("/members/logout", member_logout, methods=["POST"]),
         Route("/watch", watch_page),
+        Route("/watch/ping", watch_ping, methods=["POST"]),
         Route("/videos", videos_page),
         Route("/videos/add", video_add, methods=["POST"]),
         Route("/videos/edit", video_edit, methods=["POST"]),
@@ -1573,6 +1721,10 @@ app = Starlette(
         Route("/videos/delete", video_delete, methods=["POST"]),
         Route("/videos/watermark", video_wm_save, methods=["POST"]),
         Route("/videos/strict", video_strict_toggle, methods=["POST"]),
+        Route("/videos/resource/add", resource_add, methods=["POST"]),
+        Route("/videos/resource/edit", resource_edit, methods=["POST"]),
+        Route("/videos/resource/toggle", resource_toggle, methods=["POST"]),
+        Route("/videos/resource/delete", resource_delete, methods=["POST"]),
         Route("/videos/member-delete", member_delete, methods=["POST"]),
         Route("/v/{token}", verify_page),
         Route("/v/{token}", verify_submit, methods=["POST"]),

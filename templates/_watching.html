@@ -1,0 +1,56 @@
+<div class="lessons">
+  <div class="wh"><b>Per lesson</b><span class="muted small">{{ lessons|length }} lesson{{ '' if lessons|length == 1 else 's' }} &middot; viewers right now and all-time views</span></div>
+  {% if lessons %}
+  <div class="scroll"><table>
+    <tr><th>Lesson</th><th class="nowrap">Watching now</th><th class="nowrap">Views</th><th>Members</th></tr>
+    {% for l in lessons %}
+    <tr>
+      <td><span class="muted">{{ l.n }}.</span> <b>{{ l.title }}</b></td>
+      <td class="nowrap">{% if l.now %}<span class="dot on"></span> <b>{{ l.now }}</b>{% else %}<span class="muted">0</span>{% endif %}</td>
+      <td class="nowrap"><span class="lbar"><i style="width:{{ l.pct }}%"></i></span>{{ l.views }}</td>
+      <td>{{ l.members }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <div class="empty">No active lessons. Add videos on the Videos page.</div>
+  {% endif %}
+</div>
+<div class="watch-grid">
+  <div>
+    <div class="wh"><span class="dot {{ 'on' if watching }}"></span><b>Watching now</b><span class="muted small">{{ watching|length }} member{{ '' if watching|length == 1 else 's' }} with a tutorial open</span></div>
+    {% if watching %}
+    <div class="scroll"><table>
+      <tr><th>Member</th><th>Tutorial</th><th class="nowrap">Watching for</th><th class="nowrap">Last seen</th></tr>
+      {% for w in watching %}
+      <tr>
+        <td><b>{{ w.user }}</b>{% if w.discord %}<div class="muted small nowrap">{{ w.discord }}</div>{% endif %}</td>
+        <td>{{ w.title }}</td>
+        <td class="nowrap">{{ w.for }}</td>
+        <td class="nowrap muted">{{ w.seen }}</td>
+      </tr>
+      {% endfor %}
+    </table></div>
+    {% else %}
+    <div class="empty">Nobody is watching right now.</div>
+    {% endif %}
+  </div>
+  <div>
+    <div class="wh"><b>Recent views</b><span class="muted small">Latest tutorial sessions</span></div>
+    {% if recent_views %}
+    <div class="scroll"><table>
+      <tr><th>Member</th><th>Tutorial</th><th>Watched</th><th>When</th></tr>
+      {% for r in recent_views %}
+      <tr>
+        <td><b>{{ r.user }}</b>{% if r.discord %}<div class="muted small nowrap">{{ r.discord }}</div>{% endif %}</td>
+        <td>{{ r.title }}</td>
+        <td class="nowrap">{{ r.dur }}</td>
+        <td class="nowrap muted">{{ r.when }}</td>
+      </tr>
+      {% endfor %}
+    </table></div>
+    {% else %}
+    <div class="empty">No views yet. They show up when members open the tutorials page.</div>
+    {% endif %}
+  </div>
+</div>

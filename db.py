@@ -142,6 +142,30 @@ class Video(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class Resource(Base):
+    """A tool/link shown in the Resources pop-up on the tutorials page (e.g. CapCut)."""
+    __tablename__ = "resources"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(80), default="")
+    url: Mapped[str] = mapped_column(String(500), default="")
+    description: Mapped[str] = mapped_column(String(300), default="")
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class VideoView(Base):
+    """One viewing session of a tutorial by a member (kept alive by pings from the page)."""
+    __tablename__ = "video_views"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(40), index=True)
+    discord_name: Mapped[str] = mapped_column(String(200), default="")
+    video_id: Mapped[int] = mapped_column(Integer, index=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    started_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    last_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    seconds: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class Niche(Base):
     """A prompt niche (slash dropdown option). Created/edited on the dashboard, no restart."""
     __tablename__ = "niches"
@@ -551,6 +575,91 @@ def delete_video(vid: int) -> None:
         v = s.get(Video, vid)
         if v:
             s.delete(v)
+
+
+# ---------- resources (tutorials page pop-up) ----------
+def list_resources(active_only: bool = False) -> list:
+    with Session() as s:
+        q = select(Resource)
+        if active_only:
+            q = q.where(Resource.active.is_(True))
+        return list(s.scalars(q.order_by(Resource.created_at)))
+
+
+def add_resource(name: str, url: str, description: str) -> int:
+    with Session.begin() as s:
+        r = Resource(name=name[:80], url=url[:500], description=(description or "")[:300])
+        s.add(r)
+        s.flush()
+        return r.id
+
+
+def update_resource(rid: int, name: str, url: str, description: str) -> None:
+    with Session.begin() as s:
+        r = s.get(Resource, rid)
+        if r:
+            r.name, r.url, r.description = name[:80], url[:500], (description or "")[:300]
+
+
+def toggle_resource(rid: int) -> None:
+    with Session.begin() as s:
+        r = s.get(Resource, rid)
+        if r:
+            r.active = not r.active
+
+
+def delete_resource(rid: int) -> None:
+    with Session.begin() as s:
+        r = s.get(Resource, rid)
+        if r:
+            s.delete(r)
+
+
+# ---------- tutorial viewing (who is watching) ----------
+def record_view_ping(username: str, discord_name: str, video_id: int, title: str, gap: int = 90) -> None:
+    """Extend the member's open session for this video, or start a new one."""
+    now = utcnow()
+    with Session.begin() as s:
+        row = s.scalars(select(VideoView).where(
+            VideoView.username == username, VideoView.video_id == video_id,
+            VideoView.last_seen >= now - dt.timedelta(seconds=gap))
+            .order_by(VideoView.last_seen.desc()).limit(1)).first()
+        if row is None:
+            s.add(VideoView(username=username[:40], discord_name=(discord_name or "")[:200],
+                            video_id=video_id, title=(title or "")[:200], started_at=now, last_seen=now))
+            return
+        row.seconds = (row.seconds or 0) + min(30, max(0, int((now - row.last_seen).total_seconds())))
+        row.last_seen = now
+
+
+def watching_now(window: int = 60) -> list:
+    """Sessions that pinged within the last `window` seconds (one row per member)."""
+    since = utcnow() - dt.timedelta(seconds=window)
+    with Session() as s:
+        rows = list(s.scalars(select(VideoView).where(VideoView.last_seen >= since)
+                              .order_by(VideoView.last_seen.desc())))
+    seen, out = set(), []
+    for r in rows:
+        if r.username not in seen:
+            seen.add(r.username)
+            out.append(r)
+    return out
+
+
+def recent_views(limit: int = 15) -> list:
+    with Session() as s:
+        return list(s.scalars(select(VideoView).order_by(VideoView.last_seen.desc()).limit(limit)))
+
+
+def view_stats() -> dict:
+    """Per-video session counts and unique viewers, plus totals."""
+    with Session() as s:
+        per = s.execute(select(VideoView.video_id, func.count(), func.count(func.distinct(VideoView.username)))
+                        .group_by(VideoView.video_id)).all()
+        total_seconds = s.scalar(select(func.coalesce(func.sum(VideoView.seconds), 0))) or 0
+        viewers = s.scalar(select(func.count(func.distinct(VideoView.username)))) or 0
+    return {"per_video": {v: {"views": c, "viewers": u} for v, c, u in per},
+            "views": sum(c for _, c, _ in per), "viewers": viewers, "minutes": int(total_seconds // 60)}
 
 
 # ---------- niches (dynamic, dashboard-managed) ----------
