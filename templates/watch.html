@@ -3,78 +3,185 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>{{ public_name }} - Tutorials</title>
+<meta name="theme-color" content="#0b0e14">
+<meta name="robots" content="noindex">
+<title>Tutorials - {{ public_name }}</title>
+<link rel="icon" href="/static/app-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0b0e14;--card:#141925;--line:#222a3a;--ink:#eef1f6;--muted:#9aa4b6;--accent:#5865F2}
+:root{--bg:#0b0e14;--card:#131824;--card2:#171d2b;--line:#232b3b;--line2:#313b50;--ink:#eef1f6;--muted:#98a2b5;--faint:#6b7588;
+  --accent:#5865F2;--accent2:#7a85ff;--ok:#3ccf7a}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  -webkit-user-select:none;user-select:none}
-.top{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
-.top h1{font-size:18px;margin:0}
-.top .who{color:var(--muted);font-size:13px;margin-right:12px}
-.btn{padding:8px 14px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--ink);font:inherit;font-size:13px;cursor:pointer}
-.wrap{max-width:900px;margin:0 auto;padding:24px 20px 60px}
-.vid{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:22px}
+body{margin:0;color:var(--ink);background:var(--bg);
+  background-image:radial-gradient(1000px 420px at 30% -10%,rgba(88,101,242,.16),transparent 62%);background-attachment:fixed;
+  font-family:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+button{font:inherit;color:inherit}
+
+/* top bar */
+.top{position:sticky;top:0;z-index:20;background:rgba(11,14,20,.86);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top)}
+.top-in{max-width:1280px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:14px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);min-width:0}
+.mark{flex:0 0 34px;height:34px;border-radius:10px;background:linear-gradient(140deg,var(--accent2),var(--accent));
+  display:grid;place-items:center;font-weight:800;font-size:17px;color:#fff}
+.brand b{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{font-size:12px;font-weight:600;color:#c3c9ff;background:rgba(88,101,242,.16);border:1px solid rgba(88,101,242,.35);
+  padding:3px 9px;border-radius:999px;white-space:nowrap}
+.sp{flex:1}
+.who{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13.5px;min-width:0}
+.av{flex:0 0 28px;height:28px;border-radius:50%;background:var(--card2);border:1px solid var(--line2);display:grid;place-items:center;
+  font-size:12px;font-weight:700;color:var(--ink)}
+.who span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px}
+.ghost{height:36px;padding:0 14px;border:1px solid var(--line2);border-radius:10px;background:transparent;font-size:13.5px;font-weight:600;cursor:pointer}
+.ghost:hover{background:rgba(255,255,255,.06)}
+.ghost:disabled{opacity:.4;cursor:default;background:transparent}
+
+/* layout */
+.wrap{max-width:1280px;margin:0 auto;padding:24px 20px 60px;display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:24px;align-items:start}
+.player{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.4)}
 .frame{position:relative;width:100%;aspect-ratio:16/9;background:#000}
 .frame:fullscreen{aspect-ratio:auto;width:100vw;height:100vh}
 .frame:-webkit-full-screen{aspect-ratio:auto;width:100vw;height:100vh}
 .frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-/* covers the Drive toolbar (open in new window / download) across the whole top edge */
 .notop{position:absolute;top:0;left:0;right:0;height:60px;z-index:4;background:transparent}
-.wm{position:absolute;z-index:5;color:rgba(255,255,255,.55);font-size:14px;font-weight:700;pointer-events:none;
-  text-shadow:0 1px 3px rgba(0,0,0,.7)}
+.wm{position:absolute;z-index:5;color:rgba(255,255,255,.55);font-size:14px;font-weight:700;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.7)}
 .wm.tl{top:12px;left:14px} .wm.br{bottom:52px;right:14px}
 .wm.mid{top:50%;left:50%;transform:translate(-50%,-50%) rotate(-18deg);font-size:clamp(18px,4vw,34px);color:rgba(255,255,255,.14);white-space:nowrap}
-.meta{padding:14px 18px;display:flex;gap:14px;align-items:flex-start;justify-content:space-between}
-.meta h2{margin:0 0 5px;font-size:17px}
-.meta p{margin:0;color:var(--muted);font-size:14px;white-space:pre-wrap}
-.empty{color:var(--muted);text-align:center;padding:60px 20px}
+.info{padding:20px 22px 22px}
+.kicker{font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#aab4ff;margin-bottom:6px}
+.info h1{font-size:clamp(20px,2.4vw,26px);line-height:1.25;margin:0 0 8px;font-weight:700;letter-spacing:-.01em}
+.info p{margin:0;color:var(--muted);font-size:15px;white-space:pre-wrap;max-width:70ch}
+.ctl{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+.ctl .sp{flex:1}
+.pri{height:36px;padding:0 16px;border:0;border-radius:10px;background:linear-gradient(140deg,var(--accent2),var(--accent));color:#fff;
+  font-size:13.5px;font-weight:700;cursor:pointer}
+.pri:hover{filter:brightness(1.08)}
+.pri:disabled{opacity:.4;cursor:default;filter:none}
+
+/* playlist */
+.list{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;position:sticky;top:84px}
+.list-h{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;justify-content:space-between}
+.list-h h2{margin:0;font-size:15px;font-weight:700}
+.list-h span{font-size:13px;color:var(--muted)}
+.items{max-height:calc(100vh - 190px);overflow:auto}
+.item{display:flex;gap:12px;width:100%;text-align:left;padding:13px 16px 13px 14px;border:0;border-left:3px solid transparent;
+  border-bottom:1px solid var(--line);background:transparent;cursor:pointer;align-items:flex-start}
+.item:last-child{border-bottom:0}
+.item:hover{background:rgba(255,255,255,.035)}
+.item .n{flex:0 0 30px;height:30px;border-radius:9px;background:var(--card2);border:1px solid var(--line2);display:grid;place-items:center;
+  font-size:13px;font-weight:700;color:var(--muted)}
+.item .t{font-size:14.5px;font-weight:600;line-height:1.35;display:block}
+.item .d{font-size:13px;color:var(--faint);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
+.item .now{display:none;font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ok);margin-top:5px}
+.item.on{background:rgba(88,101,242,.12);border-left-color:var(--accent)}
+.item.on .n{background:var(--accent);border-color:var(--accent);color:#fff}
+.item.on .now{display:block}
+.item:focus-visible,.ghost:focus-visible,.pri:focus-visible{outline:2px solid #fff;outline-offset:-2px}
+
+.empty{grid-column:1/-1;text-align:center;padding:90px 20px;background:var(--card);border:1px solid var(--line);border-radius:18px}
+.empty h1{font-size:22px;margin:0 0 6px}.empty p{color:var(--muted);margin:0}
+
+@media (max-width:980px){
+  .wrap{grid-template-columns:1fr;padding:16px 14px 50px;gap:16px}
+  .list{position:static}.items{max-height:none}
+  .tag{display:none}.who span{max-width:90px}
+  .info{padding:16px 16px 18px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 @media print{body{display:none}}
 </style>
 </head>
 <body oncontextmenu="return false">
-<div class="top">
-  <h1>{{ public_name }} - Tutorials</h1>
-  <div style="display:flex;align-items:center">
-    <span class="who">{{ username }}</span>
-    <form method="post" action="/members/logout" style="margin:0"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn">Log out</button></form>
-  </div>
-</div>
+{# oldest first, so Lesson 1 is the first video you added #}
+{% set vids = videos|reverse|list %}
+<header class="top"><div class="top-in">
+  <a class="brand" href="/"><span class="mark">{{ public_name[:1]|upper }}</span><b>{{ public_name }}</b></a>
+  <span class="tag">Member tutorials</span>
+  <span class="sp"></span>
+  <div class="who"><span class="av">{{ username[:1]|upper }}</span><span>{{ username }}</span></div>
+  <form method="post" action="/members/logout" style="margin:0"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="ghost">Log out</button></form>
+</div></header>
+
 <div class="wrap">
-  {% for v in videos %}
-  <div class="vid">
-    <div class="frame" id="f{{ v.id }}">
-      <iframe src="https://drive.google.com/file/d/{{ v.drive_id }}/preview" allow="autoplay" referrerpolicy="no-referrer"{% if strict %} sandbox="allow-scripts allow-same-origin"{% endif %}></iframe>
+{% if vids %}
+  <main class="player">
+    <div class="frame" id="frame">
+      <iframe id="vid" title="Tutorial video" src="https://drive.google.com/file/d/{{ vids[0].drive_id }}/preview" allow="autoplay" referrerpolicy="no-referrer"{% if strict %} sandbox="allow-scripts allow-same-origin"{% endif %}></iframe>
       <div class="notop"></div>
       <div class="wm tl">{{ watermark }}</div>
       <div class="wm mid">{{ watermark }} &middot; {{ username }}</div>
       <div class="wm br">{{ watermark }}</div>
     </div>
-    <div class="meta">
-      <div>
-        <h2>{{ v.title }}</h2>
-        {% if v.description %}<p>{{ v.description }}</p>{% endif %}
+    <div class="info">
+      <div class="kicker" id="kicker">Lesson 1 of {{ vids|length }}</div>
+      <h1 id="title">{{ vids[0].title }}</h1>
+      <p id="desc">{{ vids[0].description }}</p>
+      <div class="ctl">
+        <button class="ghost" type="button" id="prev">Previous</button>
+        <button class="pri" type="button" id="next">Next lesson</button>
+        <span class="sp"></span>
+        <button class="ghost" type="button" id="fs">Fullscreen</button>
       </div>
-      <button class="btn" type="button" data-fs="f{{ v.id }}">Fullscreen</button>
     </div>
-  </div>
-  {% else %}
-  <div class="empty">No tutorials yet. Check back soon.</div>
-  {% endfor %}
+  </main>
+
+  <aside class="list" aria-label="All tutorials">
+    <div class="list-h"><h2>All tutorials</h2><span>{{ vids|length }} lesson{{ '' if vids|length == 1 else 's' }}</span></div>
+    <div class="items">
+      {% for v in vids %}
+      <button class="item{{ ' on' if loop.first }}" type="button" data-i="{{ loop.index0 }}" data-drive="{{ v.drive_id }}" data-title="{{ v.title }}" data-desc="{{ v.description }}"{% if loop.first %} aria-current="true"{% endif %}>
+        <span class="n">{{ loop.index }}</span>
+        <span><span class="t">{{ v.title }}</span>{% if v.description %}<span class="d">{{ v.description }}</span>{% endif %}<span class="now">Now playing</span></span>
+      </button>
+      {% endfor %}
+    </div>
+  </aside>
+{% else %}
+  <div class="empty"><h1>No tutorials yet</h1><p>New lessons will show up here. Check back soon.</p></div>
+{% endif %}
 </div>
+
 <script>
-document.addEventListener('keydown',function(e){
-  if((e.ctrlKey||e.metaKey)&&['s','u','p'].indexOf(e.key.toLowerCase())>-1){e.preventDefault();}
-});
-document.addEventListener('dragstart',function(e){e.preventDefault();});
-Array.prototype.forEach.call(document.querySelectorAll('[data-fs]'),function(b){
-  b.addEventListener('click',function(){
-    var el=document.getElementById(b.getAttribute('data-fs'));
+(function(){
+  document.addEventListener('keydown',function(e){
+    if((e.ctrlKey||e.metaKey)&&['s','u','p'].indexOf(e.key.toLowerCase())>-1){e.preventDefault();}
+  });
+  document.addEventListener('dragstart',function(e){e.preventDefault();});
+  var items=Array.prototype.slice.call(document.querySelectorAll('.item'));
+  if(!items.length)return;
+  var $=function(id){return document.getElementById(id);};
+  var cur=0;
+  function show(i,load){
+    if(i<0||i>=items.length)return;
+    cur=i; var it=items[i];
+    items.forEach(function(x,k){x.classList.toggle('on',k===i); if(k===i){x.setAttribute('aria-current','true');}else{x.removeAttribute('aria-current');}});
+    $('kicker').textContent='Lesson '+(i+1)+' of '+items.length;
+    $('title').textContent=it.getAttribute('data-title');
+    $('desc').textContent=it.getAttribute('data-desc')||'';
+    $('desc').style.display=it.getAttribute('data-desc')?'':'none';
+    $('prev').disabled=i===0; $('next').disabled=i===items.length-1;
+    if(load){$('vid').src='https://drive.google.com/file/d/'+encodeURIComponent(it.getAttribute('data-drive'))+'/preview';}
+    try{localStorage.setItem('lastLesson',it.getAttribute('data-drive'));}catch(e){}
+  }
+  items.forEach(function(it,i){it.addEventListener('click',function(){
+    show(i,true);
+    if(window.innerWidth<=980){window.scrollTo({top:0,behavior:'smooth'});}
+  });});
+  $('prev').addEventListener('click',function(){show(cur-1,true);});
+  $('next').addEventListener('click',function(){show(cur+1,true);});
+  $('fs').addEventListener('click',function(){
+    var el=$('frame');
     if(document.fullscreenElement||document.webkitFullscreenElement){(document.exitFullscreen||document.webkitExitFullscreen).call(document);return;}
     var go=el.requestFullscreen||el.webkitRequestFullscreen;
-    if(go){go.call(el);}else{b.textContent='Rotate your phone for a bigger view';}
+    if(go){go.call(el);}else{$('fs').textContent='Rotate your phone for a bigger view';}
   });
-});
+  var start=0;
+  try{var last=localStorage.getItem('lastLesson'); items.forEach(function(it,i){if(it.getAttribute('data-drive')===last)start=i;});}catch(e){}
+  show(start,start!==0);
+})();
 </script>
 </body>
 </html>
