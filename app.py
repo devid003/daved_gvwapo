@@ -1671,9 +1671,33 @@ async def _announce_options() -> list:
     return out
 
 
-async def _announce(channel_id: str, title: str, body: str, buttons: list) -> str:
-    """Post an embed with link buttons. Returns the channel name, or raises ValueError with a short reason."""
+_IMG_SIGS = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"), (b"GIF87a", "gif"), (b"GIF89a", "gif"))
+_IMG_MAX = 8 * 1024 * 1024
+
+
+async def _read_image(form) -> tuple:
+    """The picture chosen for the Discord post: ((bytes, filename) or None, problem text)."""
+    f = form.get("image")
+    if f is None or isinstance(f, str) or not getattr(f, "filename", ""):
+        return None, ""
+    data = await f.read(_IMG_MAX + 1)
+    if not data:
+        return None, ""
+    if len(data) > _IMG_MAX:
+        return None, "the picture is bigger than 8 MB"
+    ext = next((e for sig, e in _IMG_SIGS if data.startswith(sig)), None)
+    if ext is None and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        ext = "webp"
+    if ext is None:
+        return None, "it must be a PNG, JPG, GIF or WEBP picture"
+    return (data, f"cover.{ext}"), ""
+
+
+async def _announce(channel_id: str, title: str, body: str, buttons: list, image=None) -> str:
+    """Post an embed with link buttons (and an optional big picture).
+    Returns the channel name, or raises ValueError with a short reason."""
     import discord
+    import io
     b = discord_bot.bot
     if not b.is_ready():
         raise ValueError("the bot is offline")
@@ -1687,11 +1711,17 @@ async def _announce(channel_id: str, title: str, body: str, buttons: list) -> st
     for label, url in buttons:
         if url and url.startswith(("https://", "http://")):
             view.add_item(discord.ui.Button(label=label[:80], url=url))
+    extra = {}
+    if image:
+        e.set_image(url=f"attachment://{image[1]}")
+        extra["file"] = discord.File(io.BytesIO(image[0]), filename=image[1])
     try:
-        await ch.send(embed=e, view=view if view.children else None)
+        await ch.send(embed=e, view=view if view.children else None, **extra)
     except discord.Forbidden:
         raise ValueError(f"the bot can't post in #{ch.name}")
     except discord.HTTPException as ex:
+        if ex.status == 413:
+            raise ValueError("the picture is too big for Discord")
         raise ValueError(f"Discord said no ({ex.status})")
     return ch.name
 
@@ -1700,14 +1730,17 @@ def _watch_url() -> str:
     return f"{security.PUBLIC_URL.rstrip('/')}/watch" if security.PUBLIC_URL else ""
 
 
-async def _post_result(request, kind: str, channel_id: str, title: str, body: str, buttons: list) -> None:
+async def _post_result(request, kind: str, channel_id: str, title: str, body: str, buttons: list,
+                       image=None, problem: str = "") -> None:
     """Remember the channel choice, post, and add the outcome to the flash message."""
     await run(db.set_setting, f"announce_{kind}", channel_id)
     if not channel_id:
         return
     try:
-        ch = await _announce(channel_id, title, body, buttons)
-        note = f" Posted in #{ch}."
+        ch = await _announce(channel_id, title, body, buttons, image)
+        note = f" Posted in #{ch}" + (" with your picture." if image else ".")
+        if problem:
+            note += f" Picture left out: {problem}."
     except ValueError as ex:
         note = f" Not posted to Discord: {ex}."
     request.session["flash"] = (request.session.get("flash") or "") + note
@@ -1716,6 +1749,7 @@ async def _post_result(request, kind: str, channel_id: str, title: str, body: st
 async def video_add_and_announce(request):
     """Add the video as usual, then post it to the chosen Discord channel."""
     form = await request.form()
+    image, problem = await _read_image(form)
     before = {v.id for v in await run(db.list_videos, False)}
     resp = await video_add(request)
     new = [v for v in await run(db.list_videos, False) if v.id not in before]
@@ -1724,13 +1758,14 @@ async def video_add_and_announce(request):
         body = (v.description + "\n\n" if v.description else "") + \
             "Watch it on the tutorials page. No account yet? Use `/weblogin` in the server."
         await _post_result(request, "video", str(form.get("announce", "")).strip(), f"New tutorial: {v.title}",
-                           body, [("Watch now", _watch_url())])
+                           body, [("Watch now", _watch_url())], image, problem)
     return resp
 
 
 async def resource_add_and_announce(request):
     """Add the resource as usual, then post it to the chosen Discord channel."""
     form = await request.form()
+    image, problem = await _read_image(form)
     before = {r.id for r in await run(db.list_resources)}
     resp = await resource_add(request)
     new = [r for r in await run(db.list_resources) if r.id not in before]
@@ -1739,7 +1774,7 @@ async def resource_add_and_announce(request):
         body = (r.description + "\n\n" if r.description else "") + \
             "You can also find it under Resources on the tutorials page."
         await _post_result(request, "resource", str(form.get("announce", "")).strip(), f"New resource: {r.name}",
-                           body, [(f"Open {r.name}", r.url), ("Tutorials page", _watch_url())])
+                           body, [(f"Open {r.name}", r.url), ("Tutorials page", _watch_url())], image, problem)
     return resp
 
 
