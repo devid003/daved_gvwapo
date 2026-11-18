@@ -3,7 +3,7 @@
 {% block content %}
 <div class="head">
   <div><h1>Landing page</h1><p>This is your public page. The live stats update on their own. Add your links below.</p></div>
-  <a class="btn" href="/" target="_blank" rel="noopener">View public page</a>
+  <a class="btn" href="../" target="_blank" rel="noopener">View public page</a>
 </div>
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
 
@@ -28,6 +28,34 @@
           <input type="text" name="link_facebook" value="{{ g.link_facebook }}" placeholder="https://facebook.com/..."></label>
       </div>
       <button class="btn primary" style="margin-top:16px">Save landing page</button>
+    </form>
+  </div>
+</section>
+
+{% set ci = contact_info() %}
+<style>.c-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.c-warn{color:var(--bad);font-size:12.5px;font-weight:600}</style>
+<section class="panel" id="contact">
+  <div class="panel-head"><div><h2>Contact the owner</h2><p>Shown on your public page under <b>Contact us</b>. Fill in only the ones you want people to use. Blank ones stay hidden.</p></div>
+    <a class="btn sm" href="../#contact" target="_blank" rel="noopener">View on public page</a></div>
+  <div class="panel-body">
+    <form method="post" action="/site/contact">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field" style="margin-bottom:14px">Short message
+        <input type="text" name="contact_note" maxlength="200" value="{{ ci.vals.contact_note }}" placeholder="Have a question or need help with your access? Reach the owner here."></label>
+      <div class="c-grid">
+        {% for k, label, ph in [('contact_messenger', 'Messenger or Facebook link', 'https://m.me/yourpage'),
+                                ('contact_email', 'Email', 'you@gmail.com'),
+                                ('contact_telegram', 'Telegram username', '@yourname'),
+                                ('contact_discord', 'Discord username', 'yourname'),
+                                ('contact_other_label', 'Other link name', 'Instagram'),
+                                ('contact_other_url', 'Other link', 'https://instagram.com/yourname')] %}
+        <label class="field">{{ label }}
+          <input type="text" name="{{ k }}" maxlength="300" value="{{ ci.vals[k] }}" placeholder="{{ ph }}"{% if ci.problems[k] %} aria-invalid="true"{% endif %}>
+          {% if ci.problems[k] %}<span class="c-warn">{{ ci.problems[k] }}</span>{% endif %}</label>
+        {% endfor %}
+      </div>
+      <button class="btn primary" style="margin-top:16px">Save contact</button>
     </form>
   </div>
 </section>

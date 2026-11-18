@@ -1211,7 +1211,81 @@ async def _site_ctx() -> dict:
         "links": [("Discord", g["link_discord"], "#5865F2"), ("TikTok", g["link_tiktok"], "#000000"),
                   ("YouTube", g["link_youtube"], "#FF0000"), ("Facebook", g["link_facebook"], "#1877F2")],
         "stats": stats,
+        "contact": await run(contact_info),
     }
+
+
+# ---------- landing page: Contact us (filled in on the Site page) ----------
+import re as _re_c
+
+CONTACT_KEYS = ["contact_note", "contact_messenger", "contact_email", "contact_telegram",
+                "contact_discord", "contact_other_label", "contact_other_url"]
+_EMAIL_RX = _re_c.compile(r"^[^@\s<>\"']{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}$")
+
+
+def contact_info() -> dict:
+    """The Contact us rows for the public page, and why a filled-in field is hidden (for the Site page)."""
+    from urllib.parse import urlsplit
+    v = {k: db.get_setting(k, "") for k in CONTACT_KEYS}
+    rows, problems = [], {}
+    if v["contact_messenger"]:
+        u = _clean_url(v["contact_messenger"])
+        if u:
+            rows.append({"kind": "messenger", "label": "Messenger", "value": "Send us a message", "href": u})
+        else:
+            problems["contact_messenger"] = "Hidden: use a full link like https://m.me/yourpage"
+    if v["contact_email"]:
+        e = v["contact_email"].strip()
+        if _EMAIL_RX.match(e) and len(e) <= 254:
+            rows.append({"kind": "email", "label": "Email", "value": e, "href": "mailto:" + e, "clip": e})
+        else:
+            problems["contact_email"] = "Hidden: this doesn't look like an email address"
+    if v["contact_telegram"]:
+        tg = _re_c.sub(r"^(https?://)?(www\.)?(t\.me|telegram\.me)/", "", v["contact_telegram"].strip(), flags=_re_c.I)
+        tg = tg.strip("/").lstrip("@")
+        if _re_c.fullmatch(r"[A-Za-z][A-Za-z0-9_]{3,31}", tg):
+            rows.append({"kind": "telegram", "label": "Telegram", "value": "@" + tg, "href": "https://t.me/" + tg})
+        else:
+            problems["contact_telegram"] = "Hidden: use your Telegram username, like @yourname"
+    if v["contact_discord"]:
+        dc = v["contact_discord"].strip().lstrip("@")
+        if _re_c.fullmatch(r"[A-Za-z0-9_.]{2,32}", dc):
+            rows.append({"kind": "discord", "label": "Discord", "value": dc, "href": "", "clip": dc})
+        else:
+            problems["contact_discord"] = "Hidden: use your Discord username, like yourname"
+    if v["contact_other_url"]:
+        u = _clean_url(v["contact_other_url"])
+        if u:
+            sp = urlsplit(u)
+            host = (sp.hostname or "").lower()
+            host = host[4:] if host.startswith("www.") else host
+            rows.append({"kind": "link", "label": (v["contact_other_label"].strip() or host)[:30],
+                         "value": (host + sp.path).rstrip("/")[:60], "href": u})
+        else:
+            problems["contact_other_url"] = "Hidden: use a full link like https://instagram.com/yourname"
+    note = " ".join(v["contact_note"].split())[:200]
+    return {"vals": v, "rows": rows, "problems": problems,
+            "note": note or "Have a question or need help with your access? Reach the owner here."}
+
+
+templates.env.globals["contact_info"] = contact_info
+
+
+async def site_contact_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    for k in CONTACT_KEYS:
+        await run(db.set_setting, k, " ".join(str(form.get(k, "")).split())[:300])
+    info = await run(contact_info)
+    n = len(info["rows"])
+    if info["problems"]:
+        flash(request, "Saved, but some contacts are hidden. Check the red notes under them.")
+    elif n:
+        flash(request, f"Contact saved. Your public page now shows {n} way{'s' if n != 1 else ''} to reach you.")
+    else:
+        flash(request, "Contact saved. Everything is blank, so Contact us is hidden on your public page.")
+    return redirect("/site#contact")
 
 
 async def _render_landing() -> str:
@@ -2419,6 +2493,7 @@ app = Starlette(
         Route("/api/public/send-code", send_code_api, methods=["POST"]),
         Route("/api/public/stats", public_stats_api),
         Route("/site", site_page),
+        Route("/site/contact", site_contact_save, methods=["POST"]),
         Route("/site/save", site_save, methods=["POST"]),
         Route("/join", join_page),
         Route("/join", join_submit_1dev, methods=["POST"]),
