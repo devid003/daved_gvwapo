@@ -2407,10 +2407,11 @@ async def feedback_delete(request):
 # Images made with a key have no Pollinations logo.
 IMG_MODELS = [("zimage", "Z-Image Turbo: sharp, realistic (recommended)"), ("flux", "Flux: fastest, uses the fewest credits"),
               ("klein", "FLUX.2 Klein: good detail"), ("gptimage", "GPT Image: best with text, uses more credits")]
-_IMG_SIZES = {"9:16": [(1008, 1792), (720, 1280)], "16:9": [(1792, 1008), (1280, 720)]}
+_IMG_SIZES = {"9:16": [(1088, 1920), (768, 1344)], "16:9": [(1920, 1088), (1344, 768)]}   # what we ask for
+_IMG_FINAL = {"9:16": (1080, 1920), "16:9": (1920, 1080)}                                 # what members get
+_IMG_SAFE = "sexual"          # block adult content only; drama scenes (fights, crying) are fine
 _IMG_BUSY: set = set()
 _IMG_SEM = asyncio.Semaphore(3)
-_IMG_OUT_SIGS = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")
 
 
 def _img_key() -> str:
@@ -2450,15 +2451,22 @@ templates.env.globals["imagine_member"] = imagine_member
 templates.env.globals["imagine_admin"] = imagine_admin
 
 
-def _img_dims(data: bytes):
-    """(width, height) if this is a real picture, else None."""
+def _img_finish(data: bytes, ratio: str) -> tuple:
+    """Check the picture and make it exactly 1080x1920 or 1920x1080 (sharp JPEG).
+    Returns (jpeg bytes, "") or (None, "bad" | "blank")."""
     try:
-        from PIL import Image
-        with Image.open(io.BytesIO(data)) as im:
-            im.verify()
-            return im.size
+        from PIL import Image, ImageOps, ImageStat
+        with Image.open(io.BytesIO(data)) as src:
+            src.load()
+            im = src.convert("RGB")
     except Exception:
-        return None
+        return None, "bad"
+    if ImageStat.Stat(im.convert("L").resize((96, 168))).stddev[0] < 1.5:
+        return None, "blank"          # one flat color (all black, all gray...): a blocked or failed image
+    im = ImageOps.fit(im, _IMG_FINAL[ratio], Image.LANCZOS, centering=(0.5, 0.5))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=94, subsampling=0, optimize=True)
+    return buf.getvalue(), ""
 
 
 async def _img_problem(msg: str) -> None:
@@ -2468,11 +2476,11 @@ async def _img_problem(msg: str) -> None:
 
 
 async def _pollinations(prompt: str, w: int, h: int, model: str, seed: int) -> tuple:
-    """(status, content_type, bytes or error text). status 0 = could not reach / timed out."""
+    """(status, content_type, bytes or error text, extra info). status 0 = could not reach / timed out."""
     import aiohttp
     from urllib.parse import quote
     base = os.getenv("POLLINATIONS_URL", "https://gen.pollinations.ai").rstrip("/")
-    params = {"model": model, "width": str(w), "height": str(h), "seed": str(seed), "safe": "true"}
+    params = {"model": model, "width": str(w), "height": str(h), "seed": str(seed), "safe": _IMG_SAFE}
     if model.startswith("gptimage"):
         params["quality"] = "high"
     timeout = aiohttp.ClientTimeout(total=float(os.getenv("POLLINATIONS_TIMEOUT", "150")))
@@ -2481,14 +2489,20 @@ async def _pollinations(prompt: str, w: int, h: int, model: str, seed: int) -> t
             async with s.get(f"{base}/image/{quote(prompt, safe='')}", params=params,
                              headers={"Authorization": f"Bearer {_img_key()}", "Accept": "image/*"}) as r:
                 ctype = r.headers.get("Content-Type", "").split(";")[0].strip().lower()
-                data = await r.content.read(20 * 1024 * 1024 + 1)
+                info = ", ".join(f"{k}: {v[:60]}" for k, v in r.headers.items()
+                                 if k.lower().startswith("x-") and "cookie" not in k.lower())[:240]
+                data, cap = b"", 20 * 1024 * 1024
+                async for chunk in r.content.iter_chunked(256 * 1024):   # read the WHOLE picture, not just the first part
+                    data += chunk
+                    if len(data) > cap:
+                        break
                 if r.status == 200 and ctype.startswith("image/"):
-                    return 200, ctype, data
-                return r.status, ctype, data[:600].decode("utf-8", "replace")
+                    return 200, ctype, data, info
+                return r.status, ctype, data[:600].decode("utf-8", "replace"), info
     except asyncio.TimeoutError:
-        return 0, "", "timeout"
+        return 0, "", "timeout", ""
     except aiohttp.ClientError as e:
-        return 0, "", f"could not reach Pollinations ({type(e).__name__})"
+        return 0, "", f"could not reach Pollinations ({type(e).__name__})", ""
 
 
 async def watch_imagine(request):
@@ -2529,7 +2543,7 @@ async def watch_imagine(request):
             seed = secrets.randbelow(2_000_000_000) + 1
             sizes = _IMG_SIZES[ratio]
             for i, (w, h) in enumerate(sizes):
-                status, ctype, out = await _pollinations(prompt, w, h, cfg["model"], seed)
+                status, ctype, out, info = await _pollinations(prompt, w, h, cfg["model"], seed)
                 low = str(out).lower() if status != 200 else ""
                 if status == 400 and i + 1 < len(sizes) and any(
                         k in low for k in ("size", "width", "height", "dimension", "resolution", "pixel")):
@@ -2537,24 +2551,26 @@ async def watch_imagine(request):
                 break
     finally:
         _IMG_BUSY.discard(username)
-    ok = status == 200 and isinstance(out, (bytes, bytearray)) and out[:8].startswith(_IMG_OUT_SIGS + (b"RIFF",)) \
-        and len(out) <= 20 * 1024 * 1024
-    if ok and out[:4] == b"RIFF" and out[8:12] != b"WEBP":
-        ok = False
-    if ok:
-        dims = await run(_img_dims, bytes(out))
-        if dims:
-            w, h = dims
-        else:
-            ok = False
+    final, why = None, "bad"
+    if status == 200 and isinstance(out, (bytes, bytearray)) and len(out) <= 20 * 1024 * 1024:
+        final, why = await run(_img_finish, bytes(out), ratio)
+    ok = final is not None
     await run(db.log_image_gen, username, prompt, ratio, cfg["model"], ok)
     if ok:
         if await run(db.get_setting, "img_err", ""):
             await run(db.set_setting, "img_err", "")
-        return Response(content=bytes(out), media_type=ctype, headers={
-            "Cache-Control": "no-store", "X-Seed": str(seed), "X-Size": f"{w}x{h}",
+        fw, fh = _IMG_FINAL[ratio]
+        return Response(content=final, media_type="image/jpeg", headers={
+            "Cache-Control": "no-store", "X-Seed": str(seed), "X-Size": f"{fw}x{fh}",
             "X-Left": str(max(0, cfg["limit"] - used - 1))})
-    if status in (401, 403):
+    if status == 200 and why == "blank":
+        await _img_problem(f"Pollinations sent back a blank image (model {cfg['model']}, {w}x{h}). {info}".strip())
+        msg = ("The image came back blank, so it wasn't counted. This can happen when the prompt asks to copy "
+               "a real person's face or photo. Describe the people instead, then try again.")
+    elif status == 200:
+        await _img_problem(f"Pollinations sent something that isn't a picture ({ctype or 'unknown type'}).")
+        msg = "The image service had a problem. Try again in a moment."
+    elif status in (401, 403):
         await _img_problem(f"Pollinations refused the key (HTTP {status}). Check POLLINATIONS_KEY on Render.")
         msg = "The image generator isn't working right now. The owner has been told."
     elif status == 402:
