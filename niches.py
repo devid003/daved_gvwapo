@@ -30,16 +30,6 @@ YOUTUBE = {
         "hashtags": ["#top10", "#ranking", "#tierlist", "#top5", "#ranked", "#bestof",
                      "#countdown", "#facts", "#comparison", "#versus"],
     },
-    "distortion": {
-        "name": "Distortion", "emoji": "🔊",
-        "days": week(
-            [(15, 30, 18, 0), (20, 0, 22, 0)], [(15, 30, 18, 0), (20, 0, 22, 0)],
-            [(15, 30, 18, 0), (20, 0, 22, 0)], [(15, 30, 18, 0), (20, 0, 22, 0)],
-            [(15, 0, 18, 0), (21, 0, 23, 0)], [(11, 0, 14, 0), (19, 0, 22, 0)],
-            [(11, 0, 14, 0), (18, 0, 21, 0)]),
-        "hashtags": ["#shorts", "#distortion", "#meme", "#memes", "#funny", "#bassboosted",
-                     "#distorted", "#fyp", "#viral", "#funnyshorts"],
-    },
     "ranking_commentary": {
         "name": "Ranking + Commentary", "emoji": "🗣️",
         "days": week(
