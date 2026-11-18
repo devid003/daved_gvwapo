@@ -153,6 +153,80 @@ a{color:inherit}
 .fb-msg{margin:10px 0 0;font-size:13.5px;color:var(--done)}
 .fb-msg.err{color:#ff8a8a}
 .fb-msg:empty{display:none}
+/* ---------- tabs: Lessons / Create images ---------- */
+.views{border-bottom:1px solid var(--line);background:var(--bg)}
+.views-in{max-width:1320px;margin:0 auto;padding:0 22px;display:flex;gap:6px}
+.vt{position:relative;height:48px;padding:0 14px;border:0;background:transparent;cursor:pointer;display:inline-flex;align-items:center;gap:8px;
+  font-weight:600;font-size:14.5px;color:var(--muted)}
+.vt:hover{color:var(--ink)}
+.vt[aria-selected="true"]{color:var(--ink)}
+.vt[aria-selected="true"]::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;background:var(--brand2)}
+.v-create .page{display:none}
+.gen{display:none}
+.v-create .gen{display:block}
+
+/* ---------- image generator ---------- */
+.gen [hidden]{display:none!important}
+.gen-in{max-width:1320px;margin:0 auto;padding:26px 22px 64px;display:grid;grid-template-columns:380px minmax(0,1fr);gap:26px;align-items:start}
+.gen-ctl{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;position:sticky;top:88px}
+.gen-ctl h1{margin:0 0 4px;font-size:22px;letter-spacing:-.015em;line-height:1.25}
+.gen-sub{margin:0 0 18px;color:var(--muted);font-size:14px}
+.gl{display:block;font-size:13.5px;font-weight:600;color:var(--soft);margin:0 0 7px}
+.gen textarea{width:100%;min-height:128px;resize:vertical;border-radius:12px;border:1px solid var(--line2);background:var(--bg);color:var(--ink);
+  padding:12px 13px;font:inherit;font-size:15px;line-height:1.5;outline:none;-webkit-user-select:text;user-select:text}
+.gen textarea:focus{border-color:var(--brand)}
+.gen textarea::placeholder{color:var(--faint)}
+.gen-count{display:flex;justify-content:flex-end;color:var(--faint);font-size:12.5px;margin:6px 0 16px}
+.ratio{border:0;margin:0 0 18px;padding:0}
+.ratio-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ratio input{position:absolute;opacity:0;pointer-events:none}
+.rc{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line2);border-radius:12px;cursor:pointer;min-height:76px}
+.rc:hover{background:var(--raise)}
+.rshape{flex:0 0 auto;border:2px solid var(--faint);border-radius:4px}
+.rshape.tall{width:27px;height:48px}.rshape.wide{width:48px;height:27px}
+.rc b{display:block;font-size:15px}
+.rc small{display:block;color:var(--faint);font-size:12px;line-height:1.35}
+.ratio input:checked+.rc{border-color:var(--brand2);background:rgba(88,101,242,.12)}
+.ratio input:checked+.rc .rshape{border-color:var(--brand2);background:rgba(122,133,255,.22)}
+.ratio input:focus-visible+.rc{outline:2px solid #fff;outline-offset:2px}
+.gen-go{width:100%;justify-content:center;height:48px;font-size:15.5px}
+.gen-left{margin:12px 0 0;color:var(--muted);font-size:13.5px;text-align:center}
+.gen-msg{margin:12px 0 0;font-size:14px;color:#ff8a8a}
+.gen-msg:empty{display:none}
+
+.gen-out{min-width:0}
+.stagebox{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;display:flex;justify-content:center;align-items:center;min-height:420px}
+.canvas{position:relative;border-radius:12px;overflow:hidden;background:#0d1119;border:1px dashed var(--line2);transition:width .3s ease,height .3s ease}
+.canvas.tall{height:min(72vh,780px);aspect-ratio:9/16}
+.canvas.wide{width:100%;aspect-ratio:16/9}
+.canvas.has{border-style:solid;border-color:var(--line)}
+.canvas img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;-webkit-touch-callout:default}
+.ph,.busy{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:20px;color:var(--faint);font-size:14px}
+.ph svg{color:var(--line2)}
+.ph b{color:var(--muted);font-size:15px}
+.busy{background:linear-gradient(110deg,#0d1119 30%,#161d2b 50%,#0d1119 70%);background-size:220% 100%;animation:sweep 1.6s linear infinite;color:var(--muted)}
+.busy b{color:var(--ink);font-size:15.5px}
+.busy .sec{font-variant-numeric:tabular-nums}
+@keyframes sweep{from{background-position:120% 0}to{background-position:-120% 0}}
+.spin{width:30px;height:30px;border-radius:50%;border:3px solid var(--line2);border-top-color:var(--brand2);animation:rot .8s linear infinite;margin-bottom:6px}
+@keyframes rot{to{transform:rotate(360deg)}}
+.gen-act{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:14px}
+.gen-act .info{color:var(--faint);font-size:13px;margin-left:auto}
+a.btn{text-decoration:none}
+.recent{margin-top:22px}
+.thumbs{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 6px}
+.thumbs button{flex:0 0 auto;height:96px;padding:0;border:2px solid transparent;border-radius:10px;overflow:hidden;background:#000;cursor:pointer}
+.thumbs button[aria-current="true"]{border-color:var(--brand2)}
+.thumbs img{display:block;height:100%;width:auto}
+@media (max-width:1020px){
+  .gen-in{grid-template-columns:1fr;padding:16px 14px 56px;gap:18px}
+  .gen-ctl{position:static}
+  .stagebox{padding:14px;min-height:0}
+  .canvas.tall{height:auto;width:min(100%,420px)}
+}
+@media (max-width:520px){.views-in{padding:0 8px}.vt{padding:0 12px}.gen-act .btn{flex:1;justify-content:center}.gen-act .info{flex-basis:100%;margin:0;text-align:center}}
+@media (prefers-reduced-motion:reduce){.busy,.spin{animation:none}}
+
 @media (max-width:1020px){
   .page{grid-template-columns:1fr;padding:16px 14px 56px;gap:18px}
   .course{position:static}.rail{max-height:none}
@@ -183,8 +257,17 @@ a{color:inherit}
   <div class="me"><span class="av">{{ username[:1]|upper }}</span><span class="nm">{{ username }}</span></div>
   <form method="post" action="/members/logout" style="margin:0"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="tbtn out">Log out</button></form>
 </div></header>
+{% set ig = imagine_member(username) if imagine_member is defined else {} %}
+{% if ig.show %}
+<nav class="views" aria-label="Sections"><div class="views-in" role="tablist">
+  <button class="vt" type="button" role="tab" id="tab-lessons" aria-selected="true" aria-controls="lessons-view">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg>Lessons</button>
+  <button class="vt" type="button" role="tab" id="tab-create" aria-selected="false" aria-controls="gen">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>Create images</button>
+</div></nav>
+{% endif %}
 
-<div class="page">
+<div class="page" id="lessons-view">
 {% if vids %}
   <main class="stage">
     <div class="frame" id="frame">
@@ -246,6 +329,49 @@ a{color:inherit}
   <div class="empty-page"><h1>No tutorials yet</h1><p>New lessons will appear here as soon as they are added.</p></div>
 {% endif %}
 </div>
+
+{% if ig.show %}
+<section class="gen" id="gen" role="tabpanel" aria-labelledby="tab-create">
+  <div class="gen-in">
+    <form class="gen-ctl" id="gen-form" autocomplete="off">
+      <h1>Create an image</h1>
+      <p class="gen-sub">Describe what you want to see, pick a shape, then tap Generate.</p>
+      <label class="gl" for="gen-prompt">What should the image show?</label>
+      <textarea id="gen-prompt" maxlength="600" rows="5" placeholder="A rainy street in Manila at night, neon signs reflecting on the road, cinematic, ultra detailed"></textarea>
+      <div class="gen-count"><span id="gen-chars">600 left</span></div>
+      <fieldset class="ratio"><legend class="gl">Shape</legend>
+        <div class="ratio-row">
+          <label><input type="radio" name="ratio" value="9:16" checked><span class="rc"><i class="rshape tall"></i><span><b>9:16</b><small>TikTok, Reels, Shorts</small></span></span></label>
+          <label><input type="radio" name="ratio" value="16:9"><span class="rc"><i class="rshape wide"></i><span><b>16:9</b><small>YouTube, thumbnails</small></span></span></label>
+        </div>
+      </fieldset>
+      <button class="btn go gen-go" id="gen-go" type="submit">Generate</button>
+      <p class="gen-left" id="gen-left" data-left="{{ ig.left }}" data-limit="{{ ig.limit }}">{{ ig.left }} of {{ ig.limit }} images left today</p>
+      <p class="gen-msg" id="gen-msg" role="alert"></p>
+    </form>
+    <div class="gen-out">
+      <div class="stagebox">
+        <div class="canvas tall" id="gen-canvas">
+          <div class="ph" id="gen-ph"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>
+            <b>Your image shows up here</b><span>HD, no logo</span></div>
+          <div class="busy" id="gen-busy" hidden><span class="spin"></span><b>Creating your image</b><span>Usually 5 to 30 seconds. <span class="sec" id="gen-sec">0s</span></span></div>
+          <img id="gen-img" alt="" hidden>
+        </div>
+      </div>
+      <div class="gen-act" id="gen-act" hidden>
+        <a class="btn go" id="gen-dl" href="#" download="image.jpg">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>Download</a>
+        <button class="btn" type="button" id="gen-again">Make another</button>
+        <span class="info" id="gen-info"></span>
+      </div>
+      <div class="recent" id="gen-recent" hidden>
+        <p class="gl">Made this visit</p>
+        <div class="thumbs" id="gen-thumbs"></div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
 
 <div id="res" class="">
   <div class="veil" id="veil"></div>
@@ -322,7 +448,7 @@ a{color:inherit}
     timer=setTimeout(function(){seen[vid]=1;store('watched',JSON.stringify(Object.keys(seen)));paintProgress();},30000);
   }
   function ping(){
-    var vid=btn(cur).getAttribute('data-vid'); if(document.hidden)return;
+    var vid=btn(cur).getAttribute('data-vid'); if(document.hidden||document.body.classList.contains('v-create'))return;
     var f=new FormData(); f.append('csrf',csrf); f.append('vid',vid);
     fetch('/watch/ping',{method:'POST',body:f,credentials:'same-origin',cache:'no-store'})
       .then(function(r){if(r.status===401)location.href='/members/login';}).catch(function(){});
@@ -391,6 +517,97 @@ a{color:inherit}
   paintProgress(); show(start,start!==0);
   setInterval(ping,20000);
   document.addEventListener('visibilitychange',function(){if(!document.hidden)ping();});
+})();
+</script>
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id);};
+  var gen=$('gen'); if(!gen)return;
+  var body=document.body, tabL=$('tab-lessons'), tabC=$('tab-create'), vid=$('vid'), vidSrc='';
+  function view(create,push){
+    body.classList.toggle('v-create',create);
+    tabL.setAttribute('aria-selected',String(!create)); tabC.setAttribute('aria-selected',String(create));
+    if(vid){ if(create){ if(vid.getAttribute('src')){vidSrc=vid.getAttribute('src');vid.removeAttribute('src');} }
+             else if(vidSrc&&!vid.getAttribute('src')){vid.setAttribute('src',vidSrc);} }
+    if(push!==false){try{history.replaceState(null,'',create?'#create':location.pathname+location.search);}catch(e){}}
+    window.scrollTo(0,0);
+  }
+  tabL.addEventListener('click',function(){view(false);});
+  tabC.addEventListener('click',function(){view(true);});
+  [tabL,tabC].forEach(function(t){t.addEventListener('keydown',function(e){if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();var o=t===tabL?tabC:tabL;o.focus();o.click();}});});
+  if(location.hash==='#create')view(true,false);
+  window.addEventListener('hashchange',function(){view(location.hash==='#create',false);});
+
+  var form=$('gen-form'), ta=$('gen-prompt'), go=$('gen-go'), msg=$('gen-msg'), canvas=$('gen-canvas'), img=$('gen-img'),
+      ph=$('gen-ph'), busy=$('gen-busy'), act=$('gen-act'), dl=$('gen-dl'), left=$('gen-left'), thumbs=$('gen-thumbs');
+  var made=[], working=false, tick=null;
+  function store(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v);}catch(e){return null;}}
+  ta.value=store('genPrompt')||'';
+  function chars(){$('gen-chars').textContent=(600-ta.value.length)+' left';}
+  chars();
+  ta.addEventListener('input',function(){chars();store('genPrompt',ta.value);});
+  ta.addEventListener('contextmenu',function(e){e.stopPropagation();});
+  img.addEventListener('contextmenu',function(e){e.stopPropagation();});
+  ta.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();form.requestSubmit?form.requestSubmit():go.click();}});
+  function ratio(){var r=form.querySelector('input[name=ratio]:checked');return r?r.value:'9:16';}
+  function shape(r){canvas.classList.toggle('tall',r==='9:16');canvas.classList.toggle('wide',r!=='9:16');}
+  Array.prototype.forEach.call(form.querySelectorAll('input[name=ratio]'),function(r){r.addEventListener('change',function(){if(!made.length||img.hidden)shape(ratio());});});
+  function setLeft(n){var lim=left.getAttribute('data-limit');left.setAttribute('data-left',n);
+    left.textContent=n+' of '+lim+' images left today';if(+n<=0){go.disabled=true;left.textContent='No images left today. Come back tomorrow for more.';}}
+  if(+left.getAttribute('data-left')<=0)setLeft(0);
+  function say(t){msg.textContent=t||'';}
+  function showItem(it){
+    shape(it.ratio); img.src=it.src; img.alt=it.prompt; img.hidden=false; ph.hidden=true; canvas.classList.add('has');
+    dl.href=it.src; dl.setAttribute('download',it.name); $('gen-info').textContent=it.ratio+', '+it.size.replace('x',' \u00d7 ');
+    act.hidden=false;
+    Array.prototype.forEach.call(thumbs.children,function(b,i){b.setAttribute('aria-current',String(made[i]===it));});
+  }
+  function addThumb(it){
+    var b=document.createElement('button'); b.type='button'; b.setAttribute('aria-label','Show image: '+it.prompt.slice(0,60));
+    var t=document.createElement('img'); t.src=it.src; t.alt=''; b.appendChild(t);
+    b.addEventListener('click',function(){showItem(it);});
+    thumbs.insertBefore(b,thumbs.firstChild); made.unshift(it);
+    if(made.length>8){made.pop();thumbs.removeChild(thumbs.lastChild);}
+    $('gen-recent').hidden=made.length<2;
+  }
+  function make(){
+    var p=ta.value.trim(), r=ratio();
+    if(working)return;
+    if(p.length<3){say('Describe the image you want first.');ta.focus();return;}
+    working=true; say(''); go.disabled=true; go.textContent='Generating...'; $('gen-again').disabled=true;
+    shape(r); img.hidden=true; ph.hidden=true; busy.hidden=false; act.hidden=true; canvas.classList.remove('has');
+    var s=0; $('gen-sec').textContent='0s'; tick=setInterval(function(){s++;$('gen-sec').textContent=s+'s';},1000);
+    var info={};
+    fetch('/watch/imagine',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p,ratio:r})})
+      .then(function(res){
+        if(res.status===401){location.href='/members/login';throw 0;}
+        var ct=res.headers.get('Content-Type')||'';
+        if(res.ok&&ct.indexOf('image/')===0){
+          info={seed:res.headers.get('X-Seed')||'',size:res.headers.get('X-Size')||'',left:res.headers.get('X-Left'),ext:ct.indexOf('png')>-1?'png':(ct.indexOf('webp')>-1?'webp':'jpg')};
+          return res.blob();
+        }
+        return res.json().then(function(j){if(j&&j.left===0)setLeft(0);throw new Error(j&&j.msg||'Something went wrong. Try again.');});
+      })
+      .then(function(blob){
+        return new Promise(function(ok,bad){var fr=new FileReader();fr.onload=function(){ok(fr.result);};fr.onerror=bad;fr.readAsDataURL(blob);});
+      })
+      .then(function(src){
+        var it={src:src,prompt:p,ratio:r,size:info.size,name:'image-'+r.replace(':','x')+'-'+info.seed+'.'+info.ext};
+        addThumb(it); showItem(it);
+        if(info.left!==null&&info.left!==undefined)setLeft(info.left);
+      })
+      .catch(function(e){
+        if(e===0)return;
+        say(e&&e.message&&e.message.indexOf('Failed to fetch')<0?e.message:'Could not reach the server. Check your connection and try again.');
+        if(made.length){showItem(made[0]);}else{ph.hidden=false;}
+      })
+      .then(function(){
+        clearInterval(tick); busy.hidden=true; working=false; go.textContent='Generate';
+        go.disabled=+left.getAttribute('data-left')<=0; $('gen-again').disabled=false;
+      });
+  }
+  form.addEventListener('submit',function(e){e.preventDefault();make();});
+  $('gen-again').addEventListener('click',make);
 })();
 </script>
 </body>

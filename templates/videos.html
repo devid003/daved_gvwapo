@@ -101,6 +101,46 @@
   {% endfor %}
 </section>
 
+{% set ia = imagine_admin() %}
+<style>.ig-form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 16px;margin-top:4px}.ig-form .field{margin:0}
+.ig-chk{display:inline-flex;align-items:center;gap:8px;height:40px;font-size:14px;cursor:pointer}.ig-chk input{width:16px;height:16px;margin:0}
+.ig-note{border:1px solid var(--warn);background:var(--warn-soft);color:var(--ink);border-radius:10px;padding:12px 14px;font-size:13.5px;margin:0 0 14px}
+.ig-note code{font-weight:700}</style>
+<section class="panel" id="imagine">
+  <div class="panel-head"><div><h2>Image generator</h2><p>Members make 9:16 or 16:9 HD images under <b>Create images</b> on the tutorials page. It runs on your Pollinations account, so the images have no logo.</p></div>
+    {% if not ia.key %}<span class="badge pending">Needs key</span>{% elif ia.on %}<span class="badge live">On for members</span>{% else %}<span class="badge off">Off</span>{% endif %}
+  </div>
+  <div class="panel-body">
+    {% if not ia.key %}<div class="ig-note"><b>One step left:</b> make a free account at enter.pollinations.ai, create a <b>secret key</b> (starts with <code>sk_</code>), then on Render open your service, go to <b>Environment</b>, and add <code>POLLINATIONS_KEY</code> with that key. Members won't see the tab until the key is added.</div>{% endif %}
+    {% if ia.err %}<p class="small" style="color:var(--bad);margin:0 0 14px"><b>Last problem{{ ' (' ~ ia.err_when ~ ')' if ia.err_when }}:</b> {{ ia.err }}</p>{% endif %}
+    <div class="strip">
+      <div><div class="v">{{ ia.stats.day }}</div><div class="k">Images in the last 24 hours</div></div>
+      <div><div class="v">{{ ia.stats.week }}</div><div class="k">Images this week</div></div>
+      <div><div class="v">{{ ia.stats.people }}</div><div class="k">Members using it this week</div></div>
+    </div>
+    <form method="post" action="/videos/imagine" class="ig-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="ig-chk"><input type="checkbox" name="on" value="1"{{ ' checked' if ia.on }}> Show to members</label>
+      <label class="field">Model
+        <select name="model">{% for k, label in ia.models %}<option value="{{ k }}"{{ ' selected' if k == ia.model }}>{{ label }}</option>{% endfor %}</select></label>
+      <label class="field">Images per member per day
+        <input type="number" name="limit" min="1" max="500" value="{{ ia.limit }}" style="width:120px"></label>
+      <button class="btn primary">Save</button>
+    </form>
+    {% if ia.rows %}
+    <h3 style="margin:22px 0 8px;font-size:14px">Latest images</h3>
+    <div class="scroll"><table>
+      <tr><th>Member</th><th>Prompt</th><th>Shape</th><th>Result</th><th>When</th></tr>
+      {% for r in ia.rows %}
+      <tr><td class="nowrap">{{ r.user }}</td><td style="min-width:240px">{{ r.prompt }}</td><td class="nowrap">{{ r.ratio }}</td>
+        <td class="nowrap">{% if r.ok %}<span class="badge live">Made</span>{% else %}<span class="badge off">Failed</span>{% endif %}</td>
+        <td class="nowrap muted">{{ r.when }}</td></tr>
+      {% endfor %}
+    </table></div>
+    {% endif %}
+  </div>
+</section>
+
 <section class="panel">
   <div class="panel-head"><div><h2>Videos</h2><p>{{ videos|length }} total. Only active ones show to members.</p></div></div>
   {% if videos %}

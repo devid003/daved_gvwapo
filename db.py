@@ -194,6 +194,18 @@ class LessonFeedback(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class ImageGen(Base):
+    """One image a member made with the tutorials page image generator."""
+    __tablename__ = "image_gens"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(40), index=True)
+    prompt: Mapped[str] = mapped_column(String(600), default="")
+    ratio: Mapped[str] = mapped_column(String(8), default="")
+    model: Mapped[str] = mapped_column(String(40), default="")
+    ok: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class Niche(Base):
     """A prompt niche (slash dropdown option). Created/edited on the dashboard, no restart."""
     __tablename__ = "niches"
@@ -784,6 +796,39 @@ def delete_feedback(fid: int) -> None:
         f = s.get(LessonFeedback, fid)
         if f:
             s.delete(f)
+
+
+# ---------- image generator (tutorials page) ----------
+def log_image_gen(username: str, prompt: str, ratio: str, model: str, ok: bool) -> None:
+    now = utcnow()
+    with Session.begin() as s:
+        s.add(ImageGen(username=username[:40], prompt=prompt[:600], ratio=ratio[:8], model=model[:40], ok=ok, created_at=now))
+        s.execute(delete(ImageGen).where(ImageGen.created_at < now - dt.timedelta(days=90)))
+
+
+def image_gens_since(username: str, hours: int = 24) -> int:
+    """Images this member made (successfully) in the last N hours."""
+    since = utcnow() - dt.timedelta(hours=hours)
+    with Session() as s:
+        return s.scalar(select(func.count()).select_from(ImageGen).where(
+            ImageGen.username == username, ImageGen.ok.is_(True), ImageGen.created_at >= since)) or 0
+
+
+def image_gen_stats() -> dict:
+    now = utcnow()
+    with Session() as s:
+        def n(hours):
+            return s.scalar(select(func.count()).select_from(ImageGen).where(
+                ImageGen.ok.is_(True), ImageGen.created_at >= now - dt.timedelta(hours=hours))) or 0
+        people = s.scalar(select(func.count(func.distinct(ImageGen.username))).where(
+            ImageGen.ok.is_(True), ImageGen.created_at >= now - dt.timedelta(days=7))) or 0
+        return {"day": n(24), "week": n(24 * 7), "people": people}
+
+
+def recent_image_gens(limit: int = 15) -> list:
+    with Session() as s:
+        return list(s.scalars(select(ImageGen).order_by(ImageGen.created_at.desc()).limit(limit)))
+
 
 
 # ---------- niches (dynamic, dashboard-managed) ----------

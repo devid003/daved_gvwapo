@@ -2402,6 +2402,192 @@ async def feedback_delete(request):
     return redirect("/viewers")
 
 
+# ---------- image generator for members (Pollinations, on the tutorials page) ----------
+# Needs POLLINATIONS_KEY (a secret sk_ key from enter.pollinations.ai) in the environment.
+# Images made with a key have no Pollinations logo.
+IMG_MODELS = [("zimage", "Z-Image Turbo: sharp, realistic (recommended)"), ("flux", "Flux: fastest, uses the fewest credits"),
+              ("klein", "FLUX.2 Klein: good detail"), ("gptimage", "GPT Image: best with text, uses more credits")]
+_IMG_SIZES = {"9:16": [(1008, 1792), (720, 1280)], "16:9": [(1792, 1008), (1280, 720)]}
+_IMG_BUSY: set = set()
+_IMG_SEM = asyncio.Semaphore(3)
+_IMG_OUT_SIGS = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")
+
+
+def _img_key() -> str:
+    return os.getenv("POLLINATIONS_KEY", "").strip()
+
+
+def _img_cfg() -> dict:
+    model = db.get_setting("img_model", "zimage") or "zimage"
+    try:
+        limit = max(1, min(500, int(db.get_setting("img_limit", "15") or 15)))
+    except ValueError:
+        limit = 15
+    return {"on": db.get_setting("img_on", "1") != "0", "model": model, "limit": limit, "key": bool(_img_key())}
+
+
+def imagine_member(username: str) -> dict:
+    """For the tutorials page: show the Create images tab? How many left today?"""
+    c = _img_cfg()
+    used = db.image_gens_since(username, 24) if username else 0
+    return {"show": c["on"] and c["key"], "limit": c["limit"], "left": max(0, c["limit"] - used)}
+
+
+def imagine_admin() -> dict:
+    """For the Videos page."""
+    c = _img_cfg()
+    err, _, when = db.get_setting("img_err", "").partition("|")
+    try:
+        err_when = _ago(dt.datetime.fromtimestamp(float(when), dt.timezone.utc).replace(tzinfo=None)) if err else ""
+    except ValueError:
+        err_when = ""
+    rows = [{"user": g.username, "prompt": g.prompt, "ratio": g.ratio, "ok": g.ok, "when": _ago(g.created_at)}
+            for g in db.recent_image_gens(15)]
+    return {**c, "models": IMG_MODELS, "stats": db.image_gen_stats(), "rows": rows, "err": err, "err_when": err_when}
+
+
+templates.env.globals["imagine_member"] = imagine_member
+templates.env.globals["imagine_admin"] = imagine_admin
+
+
+def _img_dims(data: bytes):
+    """(width, height) if this is a real picture, else None."""
+    try:
+        from PIL import Image
+        with Image.open(io.BytesIO(data)) as im:
+            im.verify()
+            return im.size
+    except Exception:
+        return None
+
+
+async def _img_problem(msg: str) -> None:
+    """Remember the last problem so the owner sees it on the Videos page."""
+    log.warning("Image generator: %s", msg)
+    await run(db.set_setting, "img_err", f"{msg[:300]}|{time.time():.0f}")
+
+
+async def _pollinations(prompt: str, w: int, h: int, model: str, seed: int) -> tuple:
+    """(status, content_type, bytes or error text). status 0 = could not reach / timed out."""
+    import aiohttp
+    from urllib.parse import quote
+    base = os.getenv("POLLINATIONS_URL", "https://gen.pollinations.ai").rstrip("/")
+    params = {"model": model, "width": str(w), "height": str(h), "seed": str(seed), "safe": "true"}
+    if model.startswith("gptimage"):
+        params["quality"] = "high"
+    timeout = aiohttp.ClientTimeout(total=float(os.getenv("POLLINATIONS_TIMEOUT", "150")))
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as s:
+            async with s.get(f"{base}/image/{quote(prompt, safe='')}", params=params,
+                             headers={"Authorization": f"Bearer {_img_key()}", "Accept": "image/*"}) as r:
+                ctype = r.headers.get("Content-Type", "").split(";")[0].strip().lower()
+                data = await r.content.read(20 * 1024 * 1024 + 1)
+                if r.status == 200 and ctype.startswith("image/"):
+                    return 200, ctype, data
+                return r.status, ctype, data[:600].decode("utf-8", "replace")
+    except asyncio.TimeoutError:
+        return 0, "", "timeout"
+    except aiohttp.ClientError as e:
+        return 0, "", f"could not reach Pollinations ({type(e).__name__})"
+
+
+async def watch_imagine(request):
+    """POST JSON {prompt, ratio}: make one image for a logged-in member. Returns the image itself."""
+    if not member_authed(request):
+        return JSONResponse({"ok": False}, status_code=401)
+    username = request.session.get("member")
+    check = globals().get("_member_access")
+    if check and await check(username):
+        return JSONResponse({"ok": False}, status_code=401)
+    if not _same_site_json(request):
+        return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
+    cfg = await run(_img_cfg)
+    if not (cfg["on"] and cfg["key"]):
+        return JSONResponse({"ok": False, "msg": "The image generator is turned off right now."}, status_code=503)
+    body = await request.body()
+    try:
+        data = json.loads(body) if len(body) < 4000 else None
+        if not isinstance(data, dict):
+            raise ValueError
+    except ValueError:
+        return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
+    prompt = " ".join("".join(ch for ch in str(data.get("prompt", "")) if ch.isprintable() or ch == " ").split())[:600]
+    ratio = data.get("ratio") if data.get("ratio") in _IMG_SIZES else "9:16"
+    if len(prompt) < 3:
+        return JSONResponse({"ok": False, "msg": "Describe the image you want first."}, status_code=400)
+    if username in _IMG_BUSY:
+        return JSONResponse({"ok": False, "msg": "Your last image is still being made. Wait for it to finish."}, status_code=429)
+    if _too_many("img:" + username, limit=8, window=120):
+        return JSONResponse({"ok": False, "msg": "That's a lot of images at once. Wait a minute and try again."}, status_code=429)
+    used = await run(db.image_gens_since, username, 24)
+    if used >= cfg["limit"]:
+        return JSONResponse({"ok": False, "msg": f"You've made {cfg['limit']} images today, the most allowed. "
+                                                 "Come back tomorrow for more.", "left": 0}, status_code=429)
+    _IMG_BUSY.add(username)
+    try:
+        async with _IMG_SEM:
+            seed = secrets.randbelow(2_000_000_000) + 1
+            sizes = _IMG_SIZES[ratio]
+            for i, (w, h) in enumerate(sizes):
+                status, ctype, out = await _pollinations(prompt, w, h, cfg["model"], seed)
+                low = str(out).lower() if status != 200 else ""
+                if status == 400 and i + 1 < len(sizes) and any(
+                        k in low for k in ("size", "width", "height", "dimension", "resolution", "pixel")):
+                    continue                      # this model can't do HD: try the standard size
+                break
+    finally:
+        _IMG_BUSY.discard(username)
+    ok = status == 200 and isinstance(out, (bytes, bytearray)) and out[:8].startswith(_IMG_OUT_SIGS + (b"RIFF",)) \
+        and len(out) <= 20 * 1024 * 1024
+    if ok and out[:4] == b"RIFF" and out[8:12] != b"WEBP":
+        ok = False
+    if ok:
+        dims = await run(_img_dims, bytes(out))
+        if dims:
+            w, h = dims
+        else:
+            ok = False
+    await run(db.log_image_gen, username, prompt, ratio, cfg["model"], ok)
+    if ok:
+        if await run(db.get_setting, "img_err", ""):
+            await run(db.set_setting, "img_err", "")
+        return Response(content=bytes(out), media_type=ctype, headers={
+            "Cache-Control": "no-store", "X-Seed": str(seed), "X-Size": f"{w}x{h}",
+            "X-Left": str(max(0, cfg["limit"] - used - 1))})
+    if status in (401, 403):
+        await _img_problem(f"Pollinations refused the key (HTTP {status}). Check POLLINATIONS_KEY on Render.")
+        msg = "The image generator isn't working right now. The owner has been told."
+    elif status == 402:
+        await _img_problem("Out of Pollinations credits (pollen). They refill on Pollinations' schedule, or top up at enter.pollinations.ai.")
+        msg = "The image generator is out of credits for now. Try again later."
+    elif status in (429, 503):
+        msg = "The image service is busy. Try again in a minute."
+    elif status == 400:
+        msg = "That prompt couldn't be made into an image. Try describing it differently."
+    elif status == 0 and out == "timeout":
+        msg = "That took too long. Try again."
+    else:
+        await _img_problem(f"Pollinations error (HTTP {status}): {str(out)[:160]}")
+        msg = "The image service had a problem. Try again in a moment."
+    return JSONResponse({"ok": False, "msg": msg}, status_code=502)
+
+
+async def imagine_settings_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    model = str(form.get("model", "zimage"))
+    if model not in dict(IMG_MODELS):
+        model = "zimage"
+    limit = parse_int(form.get("limit")) or 15
+    await run(db.set_setting, "img_on", "1" if form.get("on") else "0")
+    await run(db.set_setting, "img_model", model)
+    await run(db.set_setting, "img_limit", str(max(1, min(500, limit))))
+    flash(request, "Image generator saved." if _img_key() else
+          "Saved. Add POLLINATIONS_KEY on Render so members can use it.")
+    return redirect("/videos#imagine")
+
+
 async def member_delete(request):
     form, resp = await guarded_post(request)
     if resp:
@@ -2505,6 +2691,8 @@ app = Starlette(
         Route("/watch/go/{token}", magic_login_submit, methods=["POST"]),
         Route("/watch/feedback", watch_feedback, methods=["GET", "POST"]),
         Route("/viewers/feedback/delete", feedback_delete, methods=["POST"]),
+        Route("/watch/imagine", watch_imagine, methods=["POST"]),
+        Route("/videos/imagine", imagine_settings_save, methods=["POST"]),
         Route("/watch/ping", watch_ping_1dev, methods=["POST"]),
         Route("/viewers", viewers_page),
         Route("/api/viewers/live", viewers_live),
