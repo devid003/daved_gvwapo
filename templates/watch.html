@@ -176,7 +176,7 @@ a{color:inherit}
   padding:12px 13px;font:inherit;font-size:15px;line-height:1.5;outline:none;-webkit-user-select:text;user-select:text}
 .gen textarea:focus{border-color:var(--brand)}
 .gen textarea::placeholder{color:var(--faint)}
-.gen-count{display:flex;justify-content:flex-end;color:var(--faint);font-size:12.5px;margin:6px 0 16px}
+.gen-count{display:flex;justify-content:space-between;gap:10px;color:var(--faint);font-size:12.5px;margin:6px 0 16px}
 .ratio{border:0;margin:0 0 18px;padding:0}
 .ratio-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .ratio input{position:absolute;opacity:0;pointer-events:none}
@@ -337,8 +337,8 @@ a.btn{text-decoration:none}
       <h1>Create an image</h1>
       <p class="gen-sub">Describe what you want to see, pick a shape, then tap Generate.</p>
       <label class="gl" for="gen-prompt">What should the image show?</label>
-      <textarea id="gen-prompt" maxlength="600" rows="5" placeholder="A rainy street in Manila at night, neon signs reflecting on the road, cinematic, ultra detailed"></textarea>
-      <div class="gen-count"><span id="gen-chars">600 left</span></div>
+      <textarea id="gen-prompt" maxlength="2000" rows="6" placeholder="A rainy street in Manila at night, neon signs reflecting on the road, cinematic, ultra detailed"></textarea>
+      <div class="gen-count"><span>Put the most important details first.</span><span id="gen-chars">2000 left</span></div>
       <fieldset class="ratio"><legend class="gl">Shape</legend>
         <div class="ratio-row">
           <label><input type="radio" name="ratio" value="9:16" checked><span class="rc"><i class="rshape tall"></i><span><b>9:16</b><small>TikTok, Reels, Shorts</small></span></span></label>
@@ -543,7 +543,7 @@ a.btn{text-decoration:none}
   var made=[], working=false, tick=null;
   function store(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v);}catch(e){return null;}}
   ta.value=store('genPrompt')||'';
-  function chars(){$('gen-chars').textContent=(600-ta.value.length)+' left';}
+  function chars(){$('gen-chars').textContent=(2000-ta.value.length)+' left';}
   chars();
   ta.addEventListener('input',function(){chars();store('genPrompt',ta.value);});
   ta.addEventListener('contextmenu',function(e){e.stopPropagation();});

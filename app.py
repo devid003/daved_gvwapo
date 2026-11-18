@@ -2520,12 +2520,12 @@ async def watch_imagine(request):
         return JSONResponse({"ok": False, "msg": "The image generator is turned off right now."}, status_code=503)
     body = await request.body()
     try:
-        data = json.loads(body) if len(body) < 4000 else None
+        data = json.loads(body) if len(body) < 12000 else None
         if not isinstance(data, dict):
             raise ValueError
     except ValueError:
         return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
-    prompt = " ".join("".join(ch for ch in str(data.get("prompt", "")) if ch.isprintable() or ch == " ").split())[:600]
+    prompt = " ".join("".join(ch for ch in str(data.get("prompt", "")) if ch.isprintable() or ch == " ").split())[:2000]
     ratio = data.get("ratio") if data.get("ratio") in _IMG_SIZES else "9:16"
     if len(prompt) < 3:
         return JSONResponse({"ok": False, "msg": "Describe the image you want first."}, status_code=400)
