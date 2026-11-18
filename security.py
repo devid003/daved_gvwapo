@@ -324,6 +324,98 @@ async def check_device(token: str, cookie_id: str, fp: dict, ip: str, ua: str) -
     return {"ok": True, "code": code, "server": guild.name if guild else ""}
 
 
+# ------------------------- tap to verify: /register and /weblogin -------------------------
+def new_register_token_sync(reg_id: int) -> str:
+    """A one-time 'Tap to verify' link token for a prompt registration (valid 24 hours)."""
+    import time
+    old = db.get_setting(f"rtok_for:{reg_id}", "")
+    if old:
+        db.set_setting(f"rtok:{old}", "")
+    tok = secrets.token_urlsafe(24)
+    db.set_setting(f"rtok:{tok}", f"{reg_id}|{int(time.time())}")
+    db.set_setting(f"rtok_for:{reg_id}", tok)
+    return tok
+
+
+def reg_for_token_sync(token: str):
+    import time
+    if not token or len(token) > 64:
+        return None
+    rid, _, ts = db.get_setting(f"rtok:{token}", "").partition("|")
+    if not rid.isdigit() or (ts.isdigit() and time.time() - int(ts) > 86400):
+        return None
+    reg = db.get_registration_by_id(int(rid))
+    return reg if reg is not None and reg.status == "pending" else None
+
+
+async def check_register_device(token: str, cookie_id: str, fp: dict, ip: str, ua: str) -> dict:
+    """Prompt access: one device check, then approved right away (no code, no waiting)."""
+    key = "r:" + token
+    _TOKEN_TRIES[key] = _TOKEN_TRIES.get(key, 0) + 1
+    if _TOKEN_TRIES[key] > 10:
+        return {"ok": False, "msg": "Too many tries. Run /register again in Discord for a new link."}
+    reg = await run(reg_for_token_sync, token)
+    if reg is None:
+        return {"ok": False, "msg": "This link has expired or was already used. Run /register again in Discord."}
+    keys = ("platform", "tz", "langs", "screen", "depth", "ratio", "cores", "mem", "touch", "canvas", "gpu")
+    fp_h = _h("|".join(str(fp.get(k, ""))[:300] for k in keys))
+    cookie_h, ip_h = _h(cookie_id or ""), _h(ip or "")
+    device, tz = describe_ua(ua or ""), str(fp.get("tz", ""))[:64]
+    matches = await run(db.device_matches, reg.guild_id, reg.user_id, cookie_h, fp_h, ip_h)
+    await run(lambda: db.add_device_check(
+        guild_id=reg.guild_id, user_id=reg.user_id, username=reg.username, join_id=-reg.id,
+        cookie_hash=cookie_h, fp_hash=fp_h, ip_hash=ip_h, device=device, tz=tz,
+        screen=str(fp.get("screen", ""))[:32]))
+    strong = [m for m in matches if m["rank"] >= 2]
+    guild = bot.get_guild(reg.guild_id)
+    base = (reg.username or "").split("#")[0].split(" ID")[0] or str(reg.user_id)
+    if strong:
+        other = strong[0]["username"] or strong[0]["user_id"]
+        log.warning("Prompt register blocked, duplicate device: %s matches %s", reg.username, other)
+        if guild is not None:
+            e = discord.Embed(title="\u26a0\ufe0f Prompt access blocked", color=0xB42318,
+                              description=(f"**{reg.username}** tried to get prompt access on a device "
+                                           f"already used by **{other}**. They were not approved."))
+            e.set_footer(text="You can still approve them by hand in the bot panel \u2192 Prompts")
+            await notify(guild, e)
+        return {"ok": False, "msg": "This device is already linked to another account in this server. "
+                                    "Please contact the server owner."}
+    await run(db.set_registration_status, reg.id, "approved")
+    await run(db.set_setting, f"rtok:{token}", "")
+    await run(db.set_setting, f"rtok_for:{reg.id}", "")
+    await set_member_number_nick(reg.guild_id, reg.user_id, base, reg.number)
+    if guild is not None:
+        e = discord.Embed(title="Prompt access approved", color=0x2E7D32,
+                          description=f"**{base} ID{reg.number:04d}** verified their device and can now use /prompt.")
+        await notify(guild, e)
+    return {"ok": True, "name": f"{base} ID{reg.number:04d}"}
+
+
+def new_web_login_token_sync(user_id: int, username: str) -> str:
+    """A one-time 'Open tutorials' login link for /weblogin (valid 15 minutes)."""
+    import time
+    tok = secrets.token_urlsafe(32)
+    db.set_setting(f"wl:{_hash_code(tok)[:40]}", f"{int(time.time())}|{user_id}|{username}"[:480])
+    return tok
+
+
+def consume_web_login_token_sync(token: str):
+    """Return (discord_user_id, discord_name) once for a valid login link, else None."""
+    import time
+    if not token or len(token) > 80:
+        return None
+    key = f"wl:{_hash_code(token)[:40]}"
+    val = db.get_setting(key, "")
+    if not val:
+        return None
+    db.set_setting(key, "")
+    ts, _, rest = val.partition("|")
+    uid, _, name = rest.partition("|")
+    if not ts.isdigit() or time.time() - int(ts) > 900 or not uid.isdigit():
+        return None
+    return int(uid), name
+
+
 async def send_code(guild: discord.Guild, member, join_id: int) -> bool:
     """DM a verification link (device check first). Falls back to a plain code without PUBLIC_URL."""
     if not PUBLIC_URL:

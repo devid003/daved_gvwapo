@@ -1997,6 +1997,94 @@ async def security_approve_web(request):
     return redirect("/security")
 
 
+# ---------- tap to verify: /register (device check) and /weblogin (one-tap login) ----------
+def _same_site_json(request) -> bool:
+    return (request.headers.get("content-type", "").split(";")[0].strip().lower() == "application/json"
+            and request.headers.get("sec-fetch-site", "same-origin") in ("same-origin", "none"))
+
+
+async def reg_verify_page(request):
+    token = request.path_params.get("token", "")
+    reg = await run(security.reg_for_token_sync, token)
+    guild = discord_bot.bot.get_guild(reg.guild_id) if reg else None
+    resp = templates.TemplateResponse(request=request, name="register_verify.html", context={
+        "valid": reg is not None, "server": guild.name if guild else "the server",
+    })
+    if not request.cookies.get("dbv"):
+        resp.set_cookie("dbv", secrets.token_urlsafe(24), max_age=60 * 60 * 24 * 730,
+                        httponly=True, secure=bool(os.getenv("RENDER")), samesite="lax", path="/v/")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+async def reg_verify_submit(request):
+    body = await request.body()
+    if len(body) > 8000:
+        return JSONResponse({"ok": False, "msg": "Request too large."}, status_code=413)
+    try:
+        fp = json.loads(body or b"{}")
+        if not isinstance(fp, dict):
+            raise ValueError
+    except ValueError:
+        return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
+    if not discord_bot.bot.is_ready():
+        return JSONResponse({"ok": False, "msg": "The bot is starting up. Wait a minute and tap Verify again."})
+    result = await security.check_register_device(request.path_params.get("token", ""), request.cookies.get("dbv", ""),
+                                                  fp, _client_ip(request), request.headers.get("user-agent", "")[:400])
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+def _web_user_for_discord_sync(uid: int, dname: str) -> str:
+    """The website username for this Discord member; makes one (no password needed) the first time."""
+    u = db.get_web_user_by_discord(uid)
+    if u is not None:
+        return u.username
+    base = "".join(c for c in (dname or "").split("#")[0].split(" ID")[0].lower() if c.isalnum() or c in "_-.")[:24]
+    if len(base) < 3:
+        base = f"member{str(uid)[-4:]}"
+    for n in range(0, 60):
+        name = base if n == 0 else f"{base}{n + 1}"
+        if db.create_web_user(name, _hash_pw(secrets.token_urlsafe(24)), uid, dname):
+            return name
+    name = f"{base}{secrets.randbelow(10 ** 6)}"
+    db.create_web_user(name, _hash_pw(secrets.token_urlsafe(24)), uid, dname)
+    return name
+
+
+async def magic_login_page(request):
+    return templates.TemplateResponse(request=request, name="member_go.html", context={
+        "public_name": await run(db.get_setting, "site_title", "") or SITE_NAME, "flash": None,
+    }, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+async def magic_login_submit(request):
+    """One tap from /weblogin: log in on this device (device lock still applies)."""
+    if not _same_site_json(request):
+        return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
+    if _too_many("magic:" + _client_ip(request), limit=20):
+        return JSONResponse({"ok": False, "msg": "Too many tries. Wait a few minutes and try again."}, status_code=429)
+    got = await run(security.consume_web_login_token_sync, request.path_params.get("token", ""))
+    if not got:
+        return JSONResponse({"ok": False, "msg": "This login link has expired or was already used. "
+                                                 "Run /weblogin in Discord for a new one."})
+    uid, dname = got
+    username = await run(_web_user_for_discord_sync, uid, dname)
+    u = await run(db.get_web_user, username)
+    if u is None or not u.active:
+        return JSONResponse({"ok": False, "msg": "Your website account is turned off. Contact the server owner."})
+    new = None
+    gate = globals().get("_device_gate")
+    if gate is not None:
+        st, new = await gate(request, username, "login")
+        if st == "other":
+            return JSONResponse({"ok": False, "msg": _LOCKED_MSG})
+    request.session["member"] = username
+    resp = JSONResponse({"ok": True, "next": "/watch"}, headers={"Cache-Control": "no-store"})
+    if new:
+        _set_dev_cookie(resp, new)
+    return resp
+
+
 async def member_delete(request):
     form, resp = await guarded_post(request)
     if resp:
@@ -2092,6 +2180,8 @@ app = Starlette(
         Route("/members/login", member_login_submit_1dev, methods=["POST"]),
         Route("/members/logout", member_logout, methods=["POST"]),
         Route("/watch", watch_page_1dev),
+        Route("/watch/go/{token}", magic_login_page),
+        Route("/watch/go/{token}", magic_login_submit, methods=["POST"]),
         Route("/watch/ping", watch_ping_1dev, methods=["POST"]),
         Route("/viewers", viewers_page),
         Route("/api/viewers/live", viewers_live),
@@ -2109,6 +2199,8 @@ app = Starlette(
         Route("/videos/member-device-reset", member_device_reset, methods=["POST"]),
         Route("/videos/one-device", one_device_toggle, methods=["POST"]),
         Route("/videos/member-delete", member_delete, methods=["POST"]),
+        Route("/v/r/{token}", reg_verify_page),
+        Route("/v/r/{token}", reg_verify_submit, methods=["POST"]),
         Route("/v/{token}", verify_page),
         Route("/v/{token}", verify_submit, methods=["POST"]),
         Route("/security/phone", security_phone, methods=["POST"]),

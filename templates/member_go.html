@@ -1,0 +1,23 @@
+{% extends "_auth_base.html" %}
+{% block title %}Opening tutorials - {{ public_name }}{% endblock %}
+{% block body %}
+<div id="wait">
+  <h1>Logging you in</h1>
+  <p class="sub" style="margin:0">One moment, opening the tutorials...</p>
+</div>
+<div id="fail" hidden>
+  <h1>Couldn't log you in</h1>
+  <p class="sub" id="fail-msg" style="margin:0"></p>
+</div>
+<noscript><p class="sub">Turn on JavaScript to log in.</p></noscript>
+<script>
+(function(){
+  function fail(m){document.getElementById('wait').hidden=true;document.getElementById('fail').hidden=false;
+    document.getElementById('fail-msg').textContent=m;}
+  fetch(location.pathname,{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:'{}'})
+    .then(function(r){return r.json();})
+    .then(function(j){ if(j.ok){location.replace(j.next||'/watch');} else {fail(j.msg||'Something went wrong.');} })
+    .catch(function(){fail('Could not reach the server. Check your connection, then tap the button in Discord again.');});
+})();
+</script>
+{% endblock %}

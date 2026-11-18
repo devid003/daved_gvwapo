@@ -723,6 +723,12 @@ def device_map() -> dict:
                 for d in s.scalars(select(MemberDevice))}
 
 
+def get_web_user_by_discord(discord_user_id: int):
+    with Session() as s:
+        return s.scalars(select(WebUser).where(WebUser.discord_user_id == discord_user_id)
+                         .order_by(WebUser.created_at)).first()
+
+
 # ---------- niches (dynamic, dashboard-managed) ----------
 import re as _re
 

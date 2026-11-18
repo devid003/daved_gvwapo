@@ -68,7 +68,13 @@ async def _can_use_prompts(interaction: discord.Interaction) -> bool:
     return True
 
 
-@bot.tree.command(name="register", description="Register to use the prompt commands")
+def _tap_view(label: str, url: str) -> discord.ui.View:
+    v = discord.ui.View(timeout=None)
+    v.add_item(discord.ui.Button(label=label, url=url))
+    return v
+
+
+@bot.tree.command(name="register", description="Get access to the prompt commands")
 @app_commands.guild_only()
 async def register_cmd(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
@@ -81,50 +87,54 @@ async def register_cmd(interaction: discord.Interaction):
 
     reg, created = await run(db.register_user, gid, user.id, str(user))
     num = f"ID{reg.number:04d}"
-    if not created:
-        state = {"pending": "still waiting for approval", "approved": "already approved",
-                 "denied": "was declined"}.get(reg.status, reg.status)
-        await interaction.followup.send(f"You're already registered for **prompts** as **{user} {num}** ({state}).", ephemeral=True)
+    if reg.status == "approved":
+        await interaction.followup.send(f"You already have prompt access as **{user} {num}**. Use /prompt.", ephemeral=True)
+        return
+    if reg.status == "denied":
+        await interaction.followup.send("Your prompt access was declined. Contact the server owner.", ephemeral=True)
         return
     if user.id in OWNER_IDS:
         await run(db.set_registration_status, reg.id, "approved")
-    await interaction.followup.send(
-        f"Registered for **prompts** as **{user} {num}**. The owner will approve you, then you can use /prompt.",
-        ephemeral=True)
+        await interaction.followup.send(f"You're the owner, so you're approved as **{user} {num}**.", ephemeral=True)
+        return
+    if not security.PUBLIC_URL:
+        await interaction.followup.send(
+            f"Registered for **prompts** as **{user} {num}**. The owner will approve you, then you can use /prompt.",
+            ephemeral=True)
+        return
+    tok = await run(security.new_register_token_sync, reg.id)
+    e = discord.Embed(
+        title="Tap to verify",
+        description=(f"You're **{user} {num}**. Tap the button, check your device once, and you can use "
+                     "/prompt right away.\n\nThe link works for 24 hours and only for you. Don't share it."),
+        color=0x2747C7)
+    await interaction.followup.send(embed=e, view=_tap_view("Tap to verify", f"{security.PUBLIC_URL}/v/r/{tok}"),
+                                    ephemeral=True)
 
 
-@bot.tree.command(name="weblogin", description="Get a code to create your website account for tutorials")
+@bot.tree.command(name="weblogin", description="Open the tutorials website (one tap, no password)")
 @app_commands.guild_only()
 async def weblogin_cmd(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     gid, user = interaction.guild_id, interaction.user
     if user.id not in OWNER_IDS and not await run(db.is_registered_approved, gid, user.id):
         await interaction.followup.send(
-            "Only approved prompt members can get tutorial access. Run /register (Prompts) and wait for approval first.",
-            ephemeral=True)
+            "Only members with prompt access can watch the tutorials. Run /register first.", ephemeral=True)
         return
-    if await run(db.web_user_exists_for_discord, user.id):
-        await interaction.followup.send(
-            "You already have a website account. Just log in at the tutorials page.", ephemeral=True)
+    if not security.PUBLIC_URL:
+        code = await run(security.new_web_signup_code_sync, user.id, str(user))
+        await interaction.followup.send(f"Your signup code: **{code}**. Use it on the website's /join page.",
+                                        ephemeral=True)
         return
-    code = await run(security.new_web_signup_code_sync, user.id, str(user))
-    base = security.PUBLIC_URL or "the website"
-    join_url = f"{security.PUBLIC_URL}/join" if security.PUBLIC_URL else "the website /join page"
+    tok = await run(security.new_web_login_token_sync, user.id, str(user))
     e = discord.Embed(
-        title="Your tutorials signup code",
-        description=(f"Use this code to create your account and watch the tutorials.\n\n"
-                     f"**Code:** `{code}`\n\n"
-                     f"**1.** Go to {join_url}\n"
-                     f"**2.** Pick a username and password.\n"
-                     f"**3.** Enter this code to finish.\n\n"
-                     "This code works once and only for you. Don't share it."),
-        color=0x2747C7,
-    )
-    try:
-        await user.send(embed=e)
-        await interaction.followup.send("I sent your signup code to your DMs.", ephemeral=True)
-    except (discord.Forbidden, discord.HTTPException):
-        await interaction.followup.send(f"Your signup code: **{code}** (open DMs next time). Go to {join_url} to use it.", ephemeral=True)
+        title="Open the tutorials",
+        description=("Tap the button to open the tutorials. You'll be logged in right away, no password needed.\n\n"
+                     "Use the device you'll watch on: your account stays on that one device. "
+                     "The button works once, for 15 minutes. Don't share it."),
+        color=0x2747C7)
+    await interaction.followup.send(embed=e, view=_tap_view("Open tutorials", f"{security.PUBLIC_URL}/watch/go/{tok}"),
+                                    ephemeral=True)
 
 
 @bot.tree.command(name="prompt", description="Get a random prompt for a niche")
