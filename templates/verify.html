@@ -46,8 +46,10 @@
         <p class="vok">Device verified.</p>
         <p class="muted" style="margin:0">Your verification code is:</p>
         <div class="vcode" id="code"></div>
-        <button class="btn" id="copy" style="width:100%;justify-content:center">Copy code</button>
-        <p class="muted small" style="margin-top:14px">Send this code to the server owner. You'll get a message from the bot once you're approved.</p>
+        <button class="btn primary" id="send" style="width:100%;justify-content:center;padding:11px">Send code to owner</button>
+        <p class="small" id="send-msg" role="status" style="margin:10px 0 0"></p>
+        <button class="btn" id="copy" style="width:100%;justify-content:center;margin-top:10px">Copy code</button>
+        <p class="muted small" style="margin-top:14px">Tap <b>Send code to owner</b> and you're done. You'll get a message from the bot once you're approved.</p>
       </div>
       <div id="s-bad" class="vstate">
         <p class="vbad" id="bad-msg"></p>
@@ -87,6 +89,18 @@
         else { $('bad-msg').textContent = j.msg || 'Something went wrong.'; show('s-bad'); }
       })
       .catch(function () { $('bad-msg').textContent = 'Could not reach the server. Check your connection and try again.'; show('s-bad'); });
+  });
+  $('send').addEventListener('click', function () {
+    var b = $('send'), m = $('send-msg');
+    b.disabled = true; m.style.color = ''; m.textContent = 'Sending...';
+    fetch('/api/public/send-code', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: $('code').textContent }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        m.style.color = j.ok ? 'var(--live)' : 'var(--bad)'; m.textContent = j.msg || 'Something went wrong.';
+        if (j.ok) { b.textContent = 'Sent to the owner'; } else { b.disabled = false; }
+      })
+      .catch(function () { m.style.color = 'var(--bad)'; m.textContent = 'Could not reach the server. Try again.'; b.disabled = false; });
   });
   $('copy').addEventListener('click', function () {
     var t = $('code').textContent;

@@ -14,10 +14,15 @@
       {% elif st == 'sent' %}<span class="badge live">Code sent by DM</span>
       {% elif st == 'dm_closed' %}<span class="badge off">DM closed</span>
       {% else %}<span class="muted small">None</span>{% endif %}
-      {% if c.get('device') %}<div class="muted small nowrap" style="margin-top:4px;white-space:nowrap">{{ c.device }}</div>{% endif %}</td>
+      {% if c.get('device') %}<div class="muted small nowrap" style="margin-top:4px;white-space:nowrap">{{ c.device }}</div>{% endif %}
+      {% set w = web_code_info(j.id) %}{% if w %}<div style="margin-top:6px"><span class="badge live">Sent code on website</span></div><div class="muted small nowrap" style="margin-top:4px;white-space:nowrap">{{ w.ago }}{% if w.note %}, "{{ w.note }}"{% endif %}</div>{% endif %}</td>
     <td class="nowrap">{{ (j.joined_at|local)[5:16] }}</td>
     {% if multi %}<td>{{ names.get(j.guild_id, j.guild_id) }}</td>{% endif %}
     <td class="actions">
+      {% if w %}<form method="post" action="/security/approve-web" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ j.id }}">
+        <button class="btn sm primary">Approve</button>
+      </form>{% endif %}
       <form method="post" action="/security/resend" class="inline">
         <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ j.id }}">
         <button class="btn sm">Resend link</button>

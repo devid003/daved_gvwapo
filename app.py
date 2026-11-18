@@ -1894,6 +1894,109 @@ async def one_device_toggle(request):
     return redirect("/videos")
 
 
+# ---------- members send their verification code from the website ----------
+async def _pending_by_code(code: str):
+    for j in await run(db.list_joins, None, True, 500):
+        saved = await run(db.get_setting, f"code:{j.id}", "")
+        if saved and security._code_matches(saved, code):
+            return j
+    return None
+
+
+async def _tell_owners(j, note: str) -> None:
+    """DM the owner(s) that a waiting member sent their code. Falls back to the security log channel."""
+    import discord
+    b = discord_bot.bot
+    if not b.is_ready():
+        return
+    g = b.get_guild(j.guild_id)
+    e = discord.Embed(title="Verification code received",
+                      description=(f"**{j.username}** sent their code from the website.\n"
+                                   "Open **Security** in your bot panel and tap **Approve**."),
+                      color=0x5865F2)
+    e.add_field(name="Discord ID", value=str(j.user_id))
+    if note:
+        e.add_field(name="Their note", value=note[:200], inline=False)
+    if g:
+        e.set_footer(text=g.name)
+    sent = 0
+    for oid in discord_bot.OWNER_IDS:
+        try:
+            u = b.get_user(oid) or await b.fetch_user(oid)
+            await u.send(embed=e)
+            sent += 1
+        except Exception:
+            pass
+    if not sent and g:
+        try:
+            await security.notify(g, e)
+        except Exception:
+            pass
+
+
+async def send_code_api(request):
+    """Public: a waiting member sends their 6-character code to the owner (landing page or verify page)."""
+    bad = JSONResponse({"ok": False, "msg": "Something went wrong. Refresh the page and try again."}, status_code=400)
+    if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
+        return bad
+    if request.headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
+        return bad
+    if _too_many("sendcode:" + _client_ip(request), limit=8):
+        return JSONResponse({"ok": False, "msg": "Too many tries. Wait a few minutes and try again."}, status_code=429)
+    body = await request.body()
+    if len(body) > 2000:
+        return bad
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return bad
+    if not isinstance(data, dict):
+        return bad
+    code = "".join(ch for ch in str(data.get("code", "")).upper() if ch.isalnum())
+    note = " ".join(str(data.get("name", "")).split())[:60]
+    if len(code) != 6:
+        return JSONResponse({"ok": False, "msg": "Codes are 6 characters, like K7MQ2X."})
+    j = await _pending_by_code(code)
+    if j is None:
+        return JSONResponse({"ok": False, "msg": "That code doesn't match anyone waiting. Check it, or open the "
+                                                 "Verify link from the bot again to see your code."})
+    prev, _, old_note = (await run(db.get_setting, f"wcode:{j.id}", "")).partition("|")
+    await run(db.set_setting, f"wcode:{j.id}", f"{int(time.time())}|{note or old_note}"[:480])
+    if not prev.isdigit() or time.time() - int(prev) > 600:      # one DM per member every 10 minutes
+        await _tell_owners(j, note)
+    return JSONResponse({"ok": True, "msg": "Sent! The owner will check your code. "
+                                            "You'll get a message from the bot once you're approved."})
+
+
+def web_code_info(join_id: int):
+    """For the Security page: did this member send their code from the website?"""
+    t, _, note = db.get_setting(f"wcode:{join_id}", "").partition("|")
+    if not t.isdigit():
+        return None
+    return {"ago": _ago(dt.datetime.fromtimestamp(int(t), dt.timezone.utc).replace(tzinfo=None)), "note": note}
+
+
+templates.env.globals["web_code_info"] = web_code_info
+
+
+async def security_approve_web(request):
+    """Approve a member who sent a valid code from the website."""
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    jid = parse_int(form.get("id"))
+    if not jid or not await run(db.get_setting, f"wcode:{jid}", ""):
+        flash(request, "That member hasn't sent their code from the website.")
+        return redirect("/security")
+    if not discord_bot.bot.is_ready():
+        flash(request, "The bot is not connected to Discord yet. Try again in a moment.")
+        return redirect("/security")
+    msg = await security.decide(jid, "approve")
+    await run(db.set_setting, f"wcode:{jid}", "")
+    flash(request, msg)
+    return redirect("/security")
+
+
 async def member_delete(request):
     form, resp = await guarded_post(request)
     if resp:
@@ -1949,6 +2052,7 @@ app = Starlette(
         Route("/security", security_page_v2),
         Route("/security/gate", security_gate, methods=["POST"]),
         Route("/security/log", security_log, methods=["POST"]),
+        Route("/security/approve-web", security_approve_web, methods=["POST"]),
         Route("/security/decide", security_decide, methods=["POST"]),
         Route("/security/verify", security_verify, methods=["POST"]),
         Route("/security/resend", security_resend, methods=["POST"]),
@@ -1978,6 +2082,7 @@ app = Starlette(
         Route("/manifest-admin.webmanifest", manifest_admin),
         Route("/manifest.webmanifest", manifest_site),
         Mount("/static", app=StaticFiles(directory=str(Path(__file__).parent / "static")), name="static"),
+        Route("/api/public/send-code", send_code_api, methods=["POST"]),
         Route("/api/public/stats", public_stats_api),
         Route("/site", site_page),
         Route("/site/save", site_save, methods=["POST"]),

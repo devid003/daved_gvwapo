@@ -37,7 +37,7 @@
 
 <section class="panel">
   <div class="panel-head" style="border-bottom:0">
-    <div><h2>Verify a code</h2><p>New members get a link by DM, check their device, and see a 6-character code. When they send it to you, type it here.</p></div>
+    <div><h2>Verify a code</h2><p>New members get a link by DM, check their device, and see a 6-character code. When they send it to you, type it here. Codes sent from your website show up in the waiting list below with an Approve button.</p></div>
     <form method="post" action="/security/verify" class="row" autocomplete="off">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="text" name="code" class="code-in" maxlength="8" placeholder="K7MQ2X" aria-label="Verification code" required autocapitalize="characters" spellcheck="false">

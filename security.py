@@ -334,7 +334,7 @@ async def send_code(guild: discord.Guild, member, join_id: int) -> bool:
         description=("To keep the server safe, please verify your device first.\n\n"
                      "**1.** Tap **Verify now** below.\n"
                      "**2.** Your 6-character code will appear on the page.\n"
-                     "**3.** Send that code to the server owner.\n\n"
+                     "**3.** Tap **Send code to owner** on that page. Done!\n\n"
                      "This link works only for you. Don't share it."),
         color=0x2747C7,
     )
