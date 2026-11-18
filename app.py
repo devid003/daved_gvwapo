@@ -1818,12 +1818,87 @@ def _set_dev_cookie(resp, tok) -> None:
                         secure=bool(os.getenv("RENDER")), samesite="lax", path="/")
 
 
+# ---------- tutorials: only current, verified members ----------
+_ACCESS_CACHE: dict = {}
+_ACCESS_MSG = {
+    "gone": "Your website account was removed. Contact the server owner.",
+    "off": "Your website account is turned off. Contact the server owner.",
+    "noreg": "You don't have prompt access right now, so the tutorials are closed for you. "
+             "Contact the server owner.",
+    "left": "You're no longer in the Discord server, so the tutorials are closed for you. "
+            "Rejoin and get approved to watch again.",
+    "pending": "You need to finish the verification in the Discord server first, then log in again.",
+}
+
+
+async def _member_access_check(username: str) -> str:
+    import discord
+    u = await run(db.get_web_user, username)
+    if u is None:
+        return "gone"
+    if not u.active:
+        return "off"
+    uid = int(u.discord_user_id or 0)
+    if not uid or uid in discord_bot.OWNER_IDS:
+        return ""
+    gids = await run(lambda: [g for g in db.allowed_guild_ids() if db.is_registered_approved(g, uid)])
+    if not gids:
+        return "noreg"
+    b = discord_bot.bot
+    if not b.is_ready():
+        return ""            # can't ask Discord right now: don't lock everyone out during a restart
+    unsure = pending = False
+    for gid in gids:
+        g = b.get_guild(gid)
+        if g is None:
+            unsure = True
+            continue
+        m = g.get_member(uid)
+        if m is None:
+            try:
+                m = await g.fetch_member(uid)
+            except discord.NotFound:
+                continue     # not in this server anymore
+            except Exception:
+                unsure = True
+                continue
+        if await run(security.gate_on_sync, gid):
+            role = await security.find_role(g)
+            if role is not None and role in m.roles:
+                pending = True
+                continue
+        return ""
+    if unsure:
+        return ""
+    return "pending" if pending else "left"
+
+
+async def _member_access(username: str) -> str:
+    """'' if this website member may still watch; otherwise why not (a key of _ACCESS_MSG).
+    Checked again every minute: left the server, got kicked or banned, prompt access removed,
+    or account deleted on the dashboard all close the tutorials."""
+    now = time.monotonic()
+    hit = _ACCESS_CACHE.get(username)
+    if hit and hit[0] > now:
+        return hit[1]
+    why = await _member_access_check(username)
+    if len(_ACCESS_CACHE) > 5000:
+        _ACCESS_CACHE.clear()
+    _ACCESS_CACHE[username] = (now + (60 if not why else 15), why)
+    return why
+
+
 async def _login_with_device(request, handler):
     """Run the normal login/signup, then lock the account to this device (or refuse another one)."""
     resp = await handler(request)
     user = request.session.get("member")
     if not user or not resp.headers.get("location", "").endswith("/watch"):
         return resp
+    why = await _member_access(user)
+    if why:
+        request.session.pop("member", None)
+        flash(request, _ACCESS_MSG[why])
+        return redirect("/members/login")
     st, new = await _device_gate(request, user, "login")
     if st == "other":
         request.session.pop("member", None)
@@ -1845,6 +1920,11 @@ async def _watch_device_ok(request) -> tuple:
     user = request.session.get("member")
     if not user:
         return True, None
+    why = await _member_access(user)
+    if why:
+        request.session.pop("member", None)
+        flash(request, _ACCESS_MSG[why])
+        return False, None
     st, new = await _device_gate(request, user, "watch")
     if st in ("other", "reset"):
         request.session.pop("member", None)
@@ -2072,6 +2152,9 @@ async def magic_login_submit(request):
     u = await run(db.get_web_user, username)
     if u is None or not u.active:
         return JSONResponse({"ok": False, "msg": "Your website account is turned off. Contact the server owner."})
+    why = await _member_access(username)
+    if why:
+        return JSONResponse({"ok": False, "msg": _ACCESS_MSG[why]})
     new = None
     gate = globals().get("_device_gate")
     if gate is not None:
@@ -2192,6 +2275,8 @@ async def watch_feedback(request):
     if not member_authed(request):
         return JSONResponse({"ok": False}, status_code=401)
     username = request.session.get("member")
+    if await _member_access(username):
+        return JSONResponse({"ok": False}, status_code=401)
     if request.method == "GET":
         vid = parse_int(request.query_params.get("vid"))
         f = await run(db.get_feedback, username, vid) if vid else None
@@ -2250,6 +2335,7 @@ async def member_delete(request):
     mid = parse_int(form.get("id"))
     if mid:
         await run(db.delete_web_user, mid)
+        _ACCESS_CACHE.clear()
         flash(request, "Member account removed.")
     return redirect("/videos")
 
