@@ -134,6 +134,25 @@ a{color:inherit}
 .empty-page{grid-column:1/-1;padding:110px 20px;text-align:center;border:1px dashed var(--line2);border-radius:16px}
 .empty-page h1{margin:0 0 6px;font-size:24px}.empty-page p{margin:0;color:var(--muted)}
 
+.fb{margin:22px 4px 0;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.fb-q{margin:0 0 12px;font-weight:600;font-size:15px}
+.fb-row{display:flex;gap:10px;flex-wrap:wrap}
+.fb-btn{height:40px;padding:0 16px;border-radius:10px;border:1px solid var(--line2);background:transparent;cursor:pointer;
+  display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;color:var(--soft)}
+.fb-btn:hover{background:var(--raise)}
+.fb-btn[aria-pressed="true"][data-r="1"]{border-color:var(--done);color:var(--done);background:rgba(60,207,122,.1)}
+.fb-btn[aria-pressed="true"][data-r="-1"]{border-color:#e8a23a;color:#f0b65a;background:rgba(232,162,58,.1)}
+.fb-more{margin-top:14px}
+.fb-more label{display:block;font-size:13.5px;font-weight:600;margin-bottom:6px;color:var(--soft)}
+.fb-more label span{color:var(--faint);font-weight:500}
+.fb textarea{width:100%;min-height:84px;resize:vertical;border-radius:10px;border:1px solid var(--line2);background:var(--bg);
+  color:var(--ink);padding:10px 12px;font:inherit;font-size:14.5px;outline:none;-webkit-user-select:text;user-select:text}
+.fb textarea:focus{border-color:var(--brand)}
+.fb-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
+.fb-foot span{color:var(--faint);font-size:12.5px}
+.fb-msg{margin:10px 0 0;font-size:13.5px;color:var(--done)}
+.fb-msg.err{color:#ff8a8a}
+.fb-msg:empty{display:none}
 @media (max-width:1020px){
   .page{grid-template-columns:1fr;padding:16px 14px 56px;gap:18px}
   .course{position:static}.rail{max-height:none}
@@ -186,6 +205,19 @@ a{color:inherit}
         <button class="btn" type="button" id="fs">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Fullscreen</button>
       </div>
+    </section>
+    <section class="fb" id="fb" aria-labelledby="fb-q">
+      <p class="fb-q" id="fb-q">Was this lesson helpful?</p>
+      <div class="fb-row">
+        <button class="fb-btn" type="button" data-r="1" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 10v11H4V10h3zm0 0l4-7c1.7 0 2.6 1.3 2.2 3L12.6 9H19a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.8 20H7"/></svg>Yes</button>
+        <button class="fb-btn" type="button" data-r="-1" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 14V3h3v11h-3zm0 0l-4 7c-1.7 0-2.6-1.3-2.2-3l.6-3H5a2 2 0 0 1-2-2.3l1.2-7A2 2 0 0 1 6.2 4H17"/></svg>Not really</button>
+      </div>
+      <div class="fb-more" id="fb-more" hidden>
+        <label for="fb-text">Anything to add? <span>(optional)</span></label>
+        <textarea id="fb-text" maxlength="500" rows="3" placeholder="What should we add or fix in this lesson?"></textarea>
+        <div class="fb-foot"><span id="fb-left">500 left</span><button class="btn go" type="button" id="fb-send">Send feedback</button></div>
+      </div>
+      <p class="fb-msg" id="fb-msg" role="status"></p>
     </section>
   </main>
 
@@ -322,6 +354,38 @@ a{color:inherit}
     steps.forEach(function(s,i){var hit=!q||(btn(i).getAttribute('data-title')+' '+(btn(i).getAttribute('data-desc')||'')).toLowerCase().indexOf(q)>-1;s.hidden=!hit;if(hit)any=true;});
     $('none').style.display=any?'none':'block'; $('rail').classList.toggle('flat',!!q);
   });
+  /* ---- lesson feedback ---- */
+  var fb=$('fb'), fbRating=0;
+  function fbVid(){return btn(cur).getAttribute('data-vid');}
+  function fbLeft(){$('fb-left').textContent=(500-$('fb-text').value.length)+' left';}
+  function fbPaint(){Array.prototype.forEach.call(fb.querySelectorAll('.fb-btn'),function(b){b.setAttribute('aria-pressed',String(+b.getAttribute('data-r')===fbRating));});$('fb-more').hidden=!fbRating;}
+  function fbMsg(t,err){var m=$('fb-msg');m.textContent=t||'';m.className='fb-msg'+(err?' err':'');}
+  function fbSave(comment){
+    var body={vid:+fbVid(),rating:fbRating}; if(comment!==undefined)body.comment=comment;
+    return fetch('/watch/feedback',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+      .then(function(r){if(r.status===401){location.href='/members/login';throw 0;}return r.json();})
+      .then(function(j){fbMsg(j.msg,!j.ok);})
+      .catch(function(e){if(e!==0)fbMsg('Could not send. Check your connection and try again.',true);});
+  }
+  function fbLoad(){
+    fbRating=0;$('fb-text').value='';fbMsg('');fbPaint();fbLeft();
+    var vid=fbVid();
+    fetch('/watch/feedback?vid='+encodeURIComponent(vid),{credentials:'same-origin',cache:'no-store'})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(j){if(!j||vid!==fbVid())return;fbRating=j.rating||0;$('fb-text').value=j.comment||'';fbLeft();fbPaint();})
+      .catch(function(){});
+  }
+  if(fb){
+    Array.prototype.forEach.call(fb.querySelectorAll('.fb-btn'),function(b){b.addEventListener('click',function(){fbRating=+b.getAttribute('data-r');fbPaint();fbSave();});});
+    $('fb-text').addEventListener('input',fbLeft);
+    $('fb-text').addEventListener('contextmenu',function(e){e.stopPropagation();});
+    $('fb-send').addEventListener('click',function(){
+      var t=$('fb-text').value.trim(), s=this;
+      if(!t){fbMsg('Type something first, or just keep your rating.',true);return;}
+      s.disabled=true; fbSave(t).then(function(){s.disabled=false;});
+    });
+    var _show=show; show=function(i,load){_show(i,load);fbLoad();};
+  }
   var start=0,last=store('lastLesson');
   steps.forEach(function(s,i){if(btn(i).getAttribute('data-vid')===last)start=i;});
   paintProgress(); show(start,start!==0);

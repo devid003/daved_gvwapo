@@ -19,6 +19,26 @@
 
 <div class="vwrap" id="viewers-wrap">{% include "_watching.html" %}</div>
 
+{% set lf = lesson_feedback() %}
+<section class="panel" style="margin-top:18px">
+  <div class="panel-head"><div><h2>Lesson feedback</h2><p>What members say about each lesson, newest first.</p></div></div>
+  {% if lf.rows %}
+  <div class="scroll"><table>
+    <tr><th>Lesson</th><th>Member</th><th>Rating</th><th>Comment</th><th>When</th><th></th></tr>
+    {% for f in lf.rows %}
+    <tr>
+      <td><b>{{ f.title }}</b></td>
+      <td>{{ f.user }}</td>
+      <td class="nowrap">{% if f.rating > 0 %}<span class="badge live">Helpful</span>{% else %}<span class="badge pending">Not really</span>{% endif %}</td>
+      <td style="min-width:220px">{% if f.comment %}{{ f.comment }}{% else %}<span class="muted">No comment</span>{% endif %}</td>
+      <td class="nowrap muted">{{ f.when }}</td>
+      <td class="actions"><form method="post" action="/viewers/feedback/delete" class="inline" onsubmit="return confirm('Delete this feedback?')"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ f.id }}"><button class="btn sm bad">Delete</button></form></td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">No feedback yet. Members can rate each lesson right under the video.</div>{% endif %}
+</section>
+
 <script>
 (function(){
   function refresh(){

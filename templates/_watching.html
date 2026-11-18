@@ -1,3 +1,4 @@
+{% set fbc = feedback_counts() if feedback_counts is defined else {} %}
 <div class="strip">
   <div><div class="v row" style="gap:8px"><span class="dot {{ 'on' if watching }}"></span>{{ watching|length }}</div><div class="k">Watching now</div></div>
   <div><div class="v">{{ totals.views }}</div><div class="k">Total views</div></div>
@@ -9,13 +10,14 @@
   <div class="panel-head"><div><h2>Per lesson</h2><p>How many are on each lesson right now, and how many times it has been watched.</p></div></div>
   {% if lessons %}
   <div class="scroll"><table>
-    <tr><th>Lesson</th><th class="nowrap">Watching now</th><th class="nowrap">Views</th><th>Members</th></tr>
+    <tr><th>Lesson</th><th class="nowrap">Watching now</th><th class="nowrap">Views</th><th>Members</th><th>Feedback</th></tr>
     {% for l in lessons %}
     <tr>
       <td><span class="muted">{{ l.n }}.</span> <b>{{ l.title }}</b></td>
       <td class="nowrap">{% if l.now %}<span class="dot on"></span><b>{{ l.now }}</b>{% else %}<span class="muted">0</span>{% endif %}</td>
       <td class="nowrap"><span class="lbar"><i style="width:{{ l.pct }}%"></i></span>{{ l.views }}</td>
       <td>{{ l.members }}</td>
+      {% set fc = fbc.get(l.id) %}<td class="nowrap">{% if fc %}<span style="color:var(--live);font-weight:600">{{ fc.up }} yes</span><span class="muted">, {{ fc.down }} no</span>{% else %}<span class="muted">None yet</span>{% endif %}</td>
     </tr>
     {% endfor %}
   </table></div>

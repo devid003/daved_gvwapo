@@ -89,6 +89,8 @@ async def ensure_role(guild: discord.Guild) -> discord.Role:
 
 
 async def hide_channel(channel, role: discord.Role) -> bool:
+    if str(channel.id) == await run(db.get_setting, f"vpanel_ch:{channel.guild.id}", ""):
+        return True          # the verification panel channel stays visible to new members
     if channel.overwrites_for(role).view_channel is False:
         return True
     try:

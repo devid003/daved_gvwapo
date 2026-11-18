@@ -74,58 +74,37 @@ def _tap_view(label: str, url: str) -> discord.ui.View:
     return v
 
 
-@bot.tree.command(name="register", description="Get access to the prompt commands")
-@app_commands.guild_only()
-async def register_cmd(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    gid, user = interaction.guild_id, interaction.user
+async def _register_reply(gid: int, user) -> dict:
+    """What /register (or the panel button) answers. Returns kwargs for followup.send."""
     if not await _is_cleared(gid, user.id):
-        await interaction.followup.send(
-            "You need to be a verified member first. Finish the server verification, then run /register.",
-            ephemeral=True)
-        return
-
+        return {"content": "You need to be a verified member first. Finish the server verification, then try again."}
     reg, created = await run(db.register_user, gid, user.id, str(user))
     num = f"ID{reg.number:04d}"
     if reg.status == "approved":
-        await interaction.followup.send(f"You already have prompt access as **{user} {num}**. Use /prompt.", ephemeral=True)
-        return
+        return {"content": f"You already have prompt access as **{user} {num}**. Use /prompt."}
     if reg.status == "denied":
-        await interaction.followup.send("Your prompt access was declined. Contact the server owner.", ephemeral=True)
-        return
+        return {"content": "Your prompt access was declined. Contact the server owner."}
     if user.id in OWNER_IDS:
         await run(db.set_registration_status, reg.id, "approved")
-        await interaction.followup.send(f"You're the owner, so you're approved as **{user} {num}**.", ephemeral=True)
-        return
+        return {"content": f"You're the owner, so you're approved as **{user} {num}**."}
     if not security.PUBLIC_URL:
-        await interaction.followup.send(
-            f"Registered for **prompts** as **{user} {num}**. The owner will approve you, then you can use /prompt.",
-            ephemeral=True)
-        return
+        return {"content": f"Registered for **prompts** as **{user} {num}**. The owner will approve you, then you can use /prompt."}
     tok = await run(security.new_register_token_sync, reg.id)
     e = discord.Embed(
         title="Tap to verify",
         description=(f"You're **{user} {num}**. Tap the button, check your device once, and you can use "
                      "/prompt right away.\n\nThe link works for 24 hours and only for you. Don't share it."),
         color=0x2747C7)
-    await interaction.followup.send(embed=e, view=_tap_view("Tap to verify", f"{security.PUBLIC_URL}/v/r/{tok}"),
-                                    ephemeral=True)
+    return {"embed": e, "view": _tap_view("Tap to verify", f"{security.PUBLIC_URL}/v/r/{tok}")}
 
 
-@bot.tree.command(name="weblogin", description="Open the tutorials website (one tap, no password)")
-@app_commands.guild_only()
-async def weblogin_cmd(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    gid, user = interaction.guild_id, interaction.user
+async def _weblogin_reply(gid: int, user) -> dict:
+    """What /weblogin (or the panel button) answers."""
     if user.id not in OWNER_IDS and not await run(db.is_registered_approved, gid, user.id):
-        await interaction.followup.send(
-            "Only members with prompt access can watch the tutorials. Run /register first.", ephemeral=True)
-        return
+        return {"content": "Only members with prompt access can watch the tutorials. Get prompt access first."}
     if not security.PUBLIC_URL:
         code = await run(security.new_web_signup_code_sync, user.id, str(user))
-        await interaction.followup.send(f"Your signup code: **{code}**. Use it on the website's /join page.",
-                                        ephemeral=True)
-        return
+        return {"content": f"Your signup code: **{code}**. Use it on the website's /join page."}
     tok = await run(security.new_web_login_token_sync, user.id, str(user))
     e = discord.Embed(
         title="Open the tutorials",
@@ -133,8 +112,86 @@ async def weblogin_cmd(interaction: discord.Interaction):
                      "Use the device you'll watch on: your account stays on that one device. "
                      "The button works once, for 15 minutes. Don't share it."),
         color=0x2747C7)
-    await interaction.followup.send(embed=e, view=_tap_view("Open tutorials", f"{security.PUBLIC_URL}/watch/go/{tok}"),
-                                    ephemeral=True)
+    return {"embed": e, "view": _tap_view("Open tutorials", f"{security.PUBLIC_URL}/watch/go/{tok}")}
+
+
+async def _verify_reply(gid: int, user) -> dict:
+    """Panel 'Verify' button: the same personal device-check link the DM has."""
+    if not await run(security.gate_on_sync, gid):
+        return {"content": "You don't need to verify in this server. Welcome!"}
+    pending = [j for j in await run(db.member_joins, gid, user.id) if j.status == "pending"]
+    if not pending:
+        if await _is_cleared(gid, user.id):
+            return {"content": "You're already verified. Welcome!"}
+        return {"content": "I can't find your join request. Leave and rejoin the server, or contact the owner."}
+    j = pending[-1]
+    if not security.PUBLIC_URL:
+        return {"content": "Check your DMs from the bot for your verification code."}
+    tok = await run(security._new_token_sync, j.id)
+    await run(db.set_setting, f"dm:{j.id}", "ok")
+    e = discord.Embed(
+        title="Verify your access",
+        description=("**1.** Tap **Verify now** below.\n"
+                     "**2.** Your 6-character code will appear on the page.\n"
+                     "**3.** Tap **Send code to owner** on that page. Done!\n\n"
+                     "This link works only for you. Don't share it."),
+        color=0x2747C7)
+    return {"embed": e, "view": _tap_view("Verify now", f"{security.PUBLIC_URL}/v/{tok}")}
+
+
+@bot.tree.command(name="register", description="Get access to the prompt commands")
+@app_commands.guild_only()
+async def register_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    await interaction.followup.send(ephemeral=True, **await _register_reply(interaction.guild_id, interaction.user))
+
+
+@bot.tree.command(name="weblogin", description="Open the tutorials website (one tap, no password)")
+@app_commands.guild_only()
+async def weblogin_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    await interaction.followup.send(ephemeral=True, **await _weblogin_reply(interaction.guild_id, interaction.user))
+
+
+# ---------- verification panel: buttons in a channel the owner picks ----------
+PANEL_BUTTONS = {
+    "verify": ("Verify", discord.ButtonStyle.success, "**New here?** Tap **Verify** to check your device and get approved."),
+    "register": ("Get prompt access", discord.ButtonStyle.primary, "**Want the prompts?** Tap **Get prompt access**."),
+    "weblogin": ("Open tutorials", discord.ButtonStyle.secondary, "**Tutorials?** Tap **Open tutorials** to watch on the website."),
+}
+
+
+def panel_message(guild_name: str, keys: list) -> tuple:
+    """The embed and buttons for the verification panel."""
+    e = discord.Embed(title=f"Welcome to {guild_name}",
+                      description="\n".join(PANEL_BUTTONS[k][2] for k in keys) +
+                                  "\n\nOnly you can see the bot's answer.",
+                      color=0x2747C7)
+    v = discord.ui.View(timeout=None)
+    for k in keys:
+        label, style, _ = PANEL_BUTTONS[k]
+        v.add_item(discord.ui.Button(label=label, style=style, custom_id=f"syn:{k}"))
+    return e, v
+
+
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    if interaction.type != discord.InteractionType.component:
+        return
+    cid = str((interaction.data or {}).get("custom_id", ""))
+    if not cid.startswith("syn:") or cid[4:] not in PANEL_BUTTONS:
+        return
+    if interaction.guild_id is None or interaction.guild_id not in await run(db.allowed_guild_ids):
+        await interaction.response.send_message("This bot isn't available in this server.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    make = {"verify": _verify_reply, "register": _register_reply, "weblogin": _weblogin_reply}[cid[4:]]
+    try:
+        reply = await make(interaction.guild_id, interaction.user)
+    except Exception:
+        log.exception("Panel button %s failed", cid)
+        reply = {"content": "Something went wrong. Try again in a moment."}
+    await interaction.followup.send(ephemeral=True, **reply)
 
 
 @bot.tree.command(name="prompt", description="Get a random prompt for a niche")

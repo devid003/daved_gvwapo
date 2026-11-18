@@ -46,6 +46,36 @@
   </div>
 </section>
 
+{% set pi = panel_info() %}{% set cur = pi.current[0] if pi.current else none %}
+<style>.vp-form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 16px}.vp-form .field{min-width:240px;margin:0}
+.vp-chk{display:inline-flex;align-items:center;gap:7px;font-size:14px;height:40px;cursor:pointer}.vp-chk input{width:16px;height:16px;margin:0}</style>
+<section class="panel">
+  <div class="panel-head"><div><h2>Verification panel</h2><p>Post buttons in a channel you pick, so members don't need DMs or slash commands. Only the member who taps sees the bot's answer.</p></div>
+    {% if cur %}<form method="post" action="/security/panel/remove" class="inline" onsubmit="return confirm('Remove the panel message from Discord?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm bad">Remove panel</button></form>{% endif %}
+  </div>
+  <div class="panel-body">
+    {% for c in pi.current %}<p class="small" style="margin:0 0 12px"><span class="badge live">Live</span> Now in <b>#{{ c.channel }}</b>{% if pi.current|length > 1 %} ({{ c.server }}){% endif %}</p>{% endfor %}
+    {% if pi.servers %}
+    <form method="post" action="/security/panel" class="vp-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field">Channel
+        <select name="channel" required>
+          <option value="">Pick a channel</option>
+          {% for s in pi.servers %}{% for cat, chans in s.groups %}
+          <optgroup label="{{ s.name ~ ' / ' if pi.servers|length > 1 }}{{ cat }}">
+            {% for cid, name in chans %}<option value="{{ cid }}"{{ ' selected' if cur and cur.id == cid }}># {{ name }}</option>{% endfor %}
+          </optgroup>{% endfor %}{% endfor %}
+        </select></label>
+      {% for k, label in [('verify', 'Verify (new members)'), ('register', 'Get prompt access'), ('weblogin', 'Open tutorials')] %}
+      <label class="vp-chk"><input type="checkbox" name="{{ k }}" value="1"{{ ' checked' if not cur or k in cur.btns }}> {{ label }}</label>
+      {% endfor %}
+      <button class="btn primary">{{ 'Move or update panel' if cur else 'Post panel' }}</button>
+    </form>
+    <p class="muted small" style="margin:12px 0 0">If the join gate is on, the bot also lets new members see this channel so they can tap Verify.</p>
+    {% else %}<p class="muted small" style="margin:0">The bot is offline or can't post in any channel right now.</p>{% endif %}
+  </div>
+</section>
+
 <section class="panel">
   <div class="panel-head"><div><h2>Join gate</h2><p>When on, new members get the "Pending approval" role and see nothing until approved.</p></div></div>
   {% for s in servers %}

@@ -1521,7 +1521,7 @@ async def _watch_ctx() -> dict:
         live[r.video_id] = live.get(r.video_id, 0) + 1
     vids = list(reversed(await run(db.list_videos, True)))  # oldest first, same order as the tutorials page
     top = max([per.get(v.id, {}).get("views", 0) for v in vids] + [1])
-    lessons = [{"n": i + 1, "title": v.title, "now": live.get(v.id, 0),
+    lessons = [{"n": i + 1, "id": v.id, "title": v.title, "now": live.get(v.id, 0),
                 "views": per.get(v.id, {}).get("views", 0), "members": per.get(v.id, {}).get("viewers", 0),
                 "pct": round(100 * per.get(v.id, {}).get("views", 0) / top)} for i, v in enumerate(vids)]
     return {
@@ -2085,6 +2085,164 @@ async def magic_login_submit(request):
     return resp
 
 
+# ---------- verification panel (Security page) ----------
+def panel_info() -> dict:
+    """For the Security page: channels the bot can post in, and where the panel is now."""
+    import discord
+    b = discord_bot.bot
+    out = {"servers": [], "current": []}
+    if not b.is_ready():
+        return out
+    for gid in sorted(db.allowed_guild_ids()):
+        g = b.get_guild(gid)
+        if g is None:
+            continue
+        groups = []
+        for cat, chans in g.by_category():
+            ok = [(str(c.id), c.name) for c in chans
+                  if getattr(c, "type", None) in (discord.ChannelType.text, discord.ChannelType.news)
+                  and c.permissions_for(g.me).send_messages and c.permissions_for(g.me).embed_links]
+            if ok:
+                groups.append((cat.name if cat else "No category", ok))
+        if groups:
+            out["servers"].append({"name": g.name, "groups": groups})
+        ch = b.get_channel(int(db.get_setting(f"vpanel_ch:{gid}", "0") or 0))
+        if ch is not None:
+            out["current"].append({"server": g.name, "channel": ch.name, "id": str(ch.id),
+                                   "btns": db.get_setting(f"vpanel_keys:{gid}", "").split(",")})
+    return out
+
+
+templates.env.globals["panel_info"] = panel_info
+
+
+async def _remove_panel(gid: int) -> None:
+    b = discord_bot.bot
+    ch_id, _, msg_id = (await run(db.get_setting, f"vpanel_msg:{gid}", "")).partition("|")
+    if ch_id.isdigit() and msg_id.isdigit():
+        ch = b.get_channel(int(ch_id))
+        if ch is not None:
+            try:
+                await (await ch.fetch_message(int(msg_id))).delete()
+            except Exception:
+                pass
+    await run(db.set_setting, f"vpanel_msg:{gid}", "")
+    await run(db.set_setting, f"vpanel_ch:{gid}", "")
+
+
+async def security_panel_post(request):
+    """Post (or move) the verification panel to the chosen channel."""
+    import discord
+    import prompt_commands
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    b = discord_bot.bot
+    if not b.is_ready():
+        flash(request, "The bot is not connected to Discord yet. Try again in a moment.")
+        return redirect("/security")
+    cid = str(form.get("channel", "")).strip()
+    keys = [k for k in ("verify", "register", "weblogin") if form.get(k)]
+    ch = b.get_channel(int(cid)) if cid.isdigit() else None
+    if ch is None or getattr(ch, "guild", None) is None or ch.guild.id not in await run(db.allowed_guild_ids):
+        flash(request, "Pick a channel first.")
+        return redirect("/security")
+    if not keys:
+        flash(request, "Pick at least one button for the panel.")
+        return redirect("/security")
+    g = ch.guild
+    await _remove_panel(g.id)
+    e, v = prompt_commands.panel_message(g.name, keys)
+    try:
+        msg = await ch.send(embed=e, view=v)
+    except (discord.Forbidden, discord.HTTPException):
+        flash(request, f"The bot can't post in #{ch.name}. Give it Send Messages and Embed Links there.")
+        return redirect("/security")
+    await run(db.set_setting, f"vpanel_msg:{g.id}", f"{ch.id}|{msg.id}")
+    await run(db.set_setting, f"vpanel_ch:{g.id}", str(ch.id))
+    await run(db.set_setting, f"vpanel_keys:{g.id}", ",".join(keys))
+    note = ""
+    if "verify" in keys and await run(security.gate_on_sync, g.id):
+        role = await security.find_role(g)
+        if role is not None:
+            try:
+                await ch.set_permissions(role, view_channel=True, read_message_history=True, send_messages=False,
+                                         reason="Verification panel: new members can see it")
+                note = " New members waiting for approval can see that channel."
+            except (discord.Forbidden, discord.HTTPException):
+                note = (" Could not show the channel to new members: give the bot Manage Channels there, "
+                        "or let the Pending role view it.")
+    flash(request, f"Panel posted in #{ch.name}.{note}")
+    return redirect("/security")
+
+
+async def security_panel_remove(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    for gid in await run(db.allowed_guild_ids):
+        await _remove_panel(gid)
+    flash(request, "Verification panel removed.")
+    return redirect("/security")
+
+
+# ---------- lesson feedback (tutorials page) ----------
+async def watch_feedback(request):
+    """GET: this member's feedback for a lesson. POST (JSON): save it."""
+    if not member_authed(request):
+        return JSONResponse({"ok": False}, status_code=401)
+    username = request.session.get("member")
+    if request.method == "GET":
+        vid = parse_int(request.query_params.get("vid"))
+        f = await run(db.get_feedback, username, vid) if vid else None
+        return JSONResponse({"ok": True, "rating": f.rating if f else 0, "comment": f.comment if f else ""},
+                            headers={"Cache-Control": "no-store"})
+    if not _same_site_json(request):
+        return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
+    if _too_many("fb:" + username, limit=30):
+        return JSONResponse({"ok": False, "msg": "Slow down a little and try again."}, status_code=429)
+    body = await request.body()
+    if len(body) > 4000:
+        return JSONResponse({"ok": False, "msg": "That's too long."}, status_code=413)
+    try:
+        data = json.loads(body)
+        if not isinstance(data, dict):
+            raise ValueError
+    except ValueError:
+        return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
+    vid = parse_int(data.get("vid"))
+    v = next((x for x in await run(db.list_videos, True) if x.id == vid), None) if vid else None
+    rating = data.get("rating")
+    if v is None or rating not in (1, -1):
+        return JSONResponse({"ok": False, "msg": "Pick Yes or Not really first."}, status_code=400)
+    comment = data.get("comment")
+    comment = " ".join(str(comment).split())[:500] if comment is not None else None
+    await run(db.save_feedback, username, v.id, v.title, rating, comment)
+    return JSONResponse({"ok": True, "msg": "Thanks! Your feedback was sent." if comment else "Thanks for rating this lesson."})
+
+
+def lesson_feedback() -> dict:
+    """For the Viewers page."""
+    rows = db.list_feedback(60)
+    return {"rows": [{"id": f.id, "user": f.username, "title": f.title, "rating": f.rating, "comment": f.comment,
+                      "when": _ago(f.updated_at)} for f in rows],
+            "counts": db.feedback_counts()}
+
+
+templates.env.globals["lesson_feedback"] = lesson_feedback
+templates.env.globals["feedback_counts"] = db.feedback_counts
+
+
+async def feedback_delete(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    fid = parse_int(form.get("id"))
+    if fid:
+        await run(db.delete_feedback, fid)
+    return redirect("/viewers")
+
+
 async def member_delete(request):
     form, resp = await guarded_post(request)
     if resp:
@@ -2141,6 +2299,8 @@ app = Starlette(
         Route("/security/gate", security_gate, methods=["POST"]),
         Route("/security/log", security_log, methods=["POST"]),
         Route("/security/approve-web", security_approve_web, methods=["POST"]),
+        Route("/security/panel", security_panel_post, methods=["POST"]),
+        Route("/security/panel/remove", security_panel_remove, methods=["POST"]),
         Route("/security/decide", security_decide, methods=["POST"]),
         Route("/security/verify", security_verify, methods=["POST"]),
         Route("/security/resend", security_resend, methods=["POST"]),
@@ -2182,6 +2342,8 @@ app = Starlette(
         Route("/watch", watch_page_1dev),
         Route("/watch/go/{token}", magic_login_page),
         Route("/watch/go/{token}", magic_login_submit, methods=["POST"]),
+        Route("/watch/feedback", watch_feedback, methods=["GET", "POST"]),
+        Route("/viewers/feedback/delete", feedback_delete, methods=["POST"]),
         Route("/watch/ping", watch_ping_1dev, methods=["POST"]),
         Route("/viewers", viewers_page),
         Route("/api/viewers/live", viewers_live),

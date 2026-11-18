@@ -181,6 +181,19 @@ class MemberDevice(Base):
     blocked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class LessonFeedback(Base):
+    """A member's feedback on one tutorial lesson (one per member per lesson)."""
+    __tablename__ = "lesson_feedback"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(40), index=True)
+    video_id: Mapped[int] = mapped_column(Integer, index=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    rating: Mapped[int] = mapped_column(Integer, default=0)
+    comment: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class Niche(Base):
     """A prompt niche (slash dropdown option). Created/edited on the dashboard, no restart."""
     __tablename__ = "niches"
@@ -727,6 +740,50 @@ def get_web_user_by_discord(discord_user_id: int):
     with Session() as s:
         return s.scalars(select(WebUser).where(WebUser.discord_user_id == discord_user_id)
                          .order_by(WebUser.created_at)).first()
+
+
+# ---------- lesson feedback ----------
+def save_feedback(username: str, video_id: int, title: str, rating: int, comment: str | None) -> None:
+    """rating: 1 helpful, -1 not helpful. comment None keeps the old comment."""
+    now = utcnow()
+    with Session.begin() as s:
+        f = s.scalars(select(LessonFeedback).where(LessonFeedback.username == username,
+                                                   LessonFeedback.video_id == video_id)).first()
+        if f is None:
+            f = LessonFeedback(username=username[:40], video_id=video_id, created_at=now)
+            s.add(f)
+        f.title, f.rating, f.updated_at = (title or "")[:200], rating, now
+        if comment is not None:
+            f.comment = comment[:500]
+
+
+def get_feedback(username: str, video_id: int):
+    with Session() as s:
+        return s.scalars(select(LessonFeedback).where(LessonFeedback.username == username,
+                                                      LessonFeedback.video_id == video_id)).first()
+
+
+def list_feedback(limit: int = 60) -> list:
+    with Session() as s:
+        return list(s.scalars(select(LessonFeedback).order_by(LessonFeedback.updated_at.desc()).limit(limit)))
+
+
+def feedback_counts() -> dict:
+    with Session() as s:
+        rows = s.execute(select(LessonFeedback.video_id, LessonFeedback.rating, func.count())
+                         .group_by(LessonFeedback.video_id, LessonFeedback.rating)).all()
+    out: dict = {}
+    for vid, rating, n in rows:
+        d = out.setdefault(vid, {"up": 0, "down": 0})
+        d["up" if rating > 0 else "down"] += n
+    return out
+
+
+def delete_feedback(fid: int) -> None:
+    with Session.begin() as s:
+        f = s.get(LessonFeedback, fid)
+        if f:
+            s.delete(f)
 
 
 # ---------- niches (dynamic, dashboard-managed) ----------
