@@ -280,13 +280,7 @@ def prompt_panel_messages(niches: list) -> list:
 
 async def _prompt_reply(gid: int, user, niche_key: str) -> dict:
     """What a niche button answers (only the member who tapped sees it)."""
-    if user.id not in OWNER_IDS:
-        status = await run(db.member_status, user.id)
-        if status == "denied":
-            return {"content": "Your access to this bot was declined by the owner."}
-        if status != "approved":
-            await run(db.request_access, user.id, str(user), gid)
-            return {"content": "Your access is waiting for the owner's approval. Try again once you're approved."}
+    if user.id not in OWNER_IDS:     # prompt access = Get prompt access (device check), approved on the Prompts page
         reg = await run(db.get_registration, gid, user.id)
         if reg is None:
             return {"content": "You don't have prompt access yet. Tap **Get prompt access** below, then try again.",
