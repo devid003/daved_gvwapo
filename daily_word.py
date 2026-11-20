@@ -1,4 +1,4 @@
-"""Daily word: a short motivation, a Bible verse and a prayer, posted at 6:00 AM, 3:00 PM and 10:00 PM.
+"""Daily word: a short motivation, a Bible verse, a prayer and a fresh picture, posted at 6:00 AM, 3:00 PM and 10:00 PM.
 
 The owner picks the channel on the dashboard (Daily word page). Verses are fetched word for word from
 bible-api.com (World English Bible and/or Ang Dating Biblia, both public domain) so the text is never
@@ -6,6 +6,7 @@ typed from memory. If the Bible site can't be reached, the post still goes out w
 """
 import asyncio
 import datetime as dt
+import io
 import json
 import logging
 import os
@@ -25,6 +26,7 @@ log = logging.getLogger("daily_word")
 run = asyncio.to_thread
 TZ = ZoneInfo(os.getenv("DISPLAY_TZ", "Asia/Manila"))
 BIBLE_API = os.getenv("BIBLE_API_URL", "https://bible-api.com").rstrip("/")
+IMG_BASE = os.getenv("POLLINATIONS_URL", "https://gen.pollinations.ai").rstrip("/")
 GRACE = dt.timedelta(minutes=30)      # a post missed by a restart still goes out if the bot is back within this
 
 SLOTS = {
@@ -133,6 +135,42 @@ VERSES = {
               "Psalm 30:5", "Numbers 6:24-26"],
 }
 
+# Picture ideas for each time of day (the image generator paints a new one every post).
+SCENES = {
+    "morning": [
+        "sunrise over misty green mountains, golden rays breaking through the clouds",
+        "sunrise over a calm ocean, a simple wooden cross on a grassy hill, warm golden light",
+        "an open Bible on a wooden table beside a window with soft morning sunlight and a cup of coffee",
+        "golden sunrise over green rice terraces with morning fog",
+        "a quiet country road at dawn with light rays shining through tall trees",
+        "the sun rising behind a lone tree on a hill, sky in orange and pink",
+        "dew drops on green leaves glowing in early morning sunlight, close-up",
+        "a lighthouse on a rocky shore at sunrise, calm sea, soft pink sky",
+    ],
+    "afternoon": [
+        "bright afternoon sky with big white clouds over green rice fields",
+        "a mountain trail leading up to a summit under a clear blue sky",
+        "sunbeams breaking through clouds over a wide valley, golden afternoon light",
+        "a wooden cross on a mountain peak above the clouds, warm afternoon sun",
+        "a small boat sailing on a calm blue sea under the afternoon sun",
+        "a golden field swaying in the wind under a warm afternoon sky",
+        "a waterfall in a lush tropical forest with sunlight streaming through",
+        "a winding river through green hills seen from above, late afternoon light",
+    ],
+    "night": [
+        "a starry night sky over a calm lake that reflects the stars",
+        "a full moon over a quiet sea with silver light on the water",
+        "a small chapel on a hill under a sky full of stars, warm light in the window",
+        "a candle glowing beside an open Bible on a wooden table at night",
+        "the milky way over dark mountains, peaceful and still",
+        "a cozy window at night with soft rain outside and warm lamp light inside",
+        "a wooden cross silhouetted against a deep blue night sky full of stars",
+        "fireflies glowing in a quiet meadow at night under the moon",
+    ],
+}
+SCENE_STYLE = (", cinematic photograph, soft natural light, peaceful and hopeful mood, high detail, "
+               "no text, no letters, no words, no watermark, no people")
+
 TRANSLATIONS = {"en": [("web", "WEB")], "tl": [("tagalog", "ADB")], "both": [("web", "WEB"), ("tagalog", "ADB")]}
 STATE = {"last_error": ""}
 
@@ -150,6 +188,10 @@ def is_on(gid: int) -> bool:
 def language() -> str:
     v = db.get_setting("dw_lang", "both") or "both"
     return v if v in TRANSLATIONS else "both"
+
+
+def picture_on() -> bool:
+    return db.get_setting("dw_pic", "1") != "0"
 
 
 def history(limit: int = 12) -> list:
@@ -197,28 +239,71 @@ async def fetch_verse(ref: str, translation: str) -> tuple | None:
     return text[:900], str(data.get("reference") or ref)
 
 
-async def compose(slot: str, lang: str | None = None) -> discord.Embed:
+async def make_picture(slot: str) -> bytes | None:
+    """A new picture for this time of day from the image generator, as JPEG bytes, or None if it didn't work."""
+    scene = SCENES[slot][await run(_pick, f"scene:{slot}", SCENES[slot])]
+    model = (await run(db.get_setting, "img_model", "zimage")) or "zimage"
+    params = {"model": model, "width": "1280", "height": "720", "seed": str(random.randint(1, 2_000_000_000)),
+              "safe": "sexual"}             # same setting the website's image generator uses
+    key = os.getenv("POLLINATIONS_KEY", "").strip()
+    headers = {"Accept": "image/*", **({"Authorization": f"Bearer {key}"} if key else {})}
+    try:
+        timeout = aiohttp.ClientTimeout(total=float(os.getenv("DAILY_IMAGE_TIMEOUT", "120")))
+        async with aiohttp.ClientSession(timeout=timeout) as s:
+            async with s.get(f"{IMG_BASE}/image/{quote(scene + SCENE_STYLE, safe='')}", params=params, headers=headers) as r:
+                ctype = r.headers.get("Content-Type", "").split(";")[0].strip().lower()
+                data = await r.read()
+                if r.status != 200 or not ctype.startswith("image/") or not data:
+                    log.warning("Daily word picture failed: HTTP %s %s", r.status, data[:200])
+                    return None
+    except Exception as e:
+        log.warning("Daily word picture failed: %s", type(e).__name__)
+        return None
+    try:                                     # shrink to a light JPEG so Discord shows it fast
+        from PIL import Image
+        im = Image.open(io.BytesIO(data)).convert("RGB")
+        im.thumbnail((1600, 1600))
+        out = io.BytesIO()
+        im.save(out, "JPEG", quality=88, optimize=True)
+        return out.getvalue()
+    except Exception:
+        return data if len(data) < 8 * 1024 * 1024 else None
+
+
+async def compose(slot: str, lang: str | None = None, picture: bool | None = None) -> tuple:
+    """(embed, picture file or None) for this time of day."""
     s = SLOTS[slot]
     lang = lang or await run(language)
+    picture = (await run(picture_on)) if picture is None else picture
     line = LINES[slot][await run(_pick, f"line:{slot}", LINES[slot])]
     prayer = PRAYERS[slot][await run(_pick, f"prayer:{slot}", PRAYERS[slot])]
     ref = VERSES[slot][await run(_pick, f"verse:{slot}", VERSES[slot])]
+    jobs = [fetch_verse(ref, tid) for tid, _ in TRANSLATIONS[lang]]
+    if picture:
+        jobs.append(make_picture(slot))
+    got = await asyncio.gather(*jobs)                  # verse(s) and picture at the same time
+    verses, img = got[:len(TRANSLATIONS[lang])], (got[-1] if picture else None)
+    notes = []
     parts = [f"**{line}**", ""]
-    got_any = False
-    for tid, short in TRANSLATIONS[lang]:
-        v = await fetch_verse(ref, tid)
+    for (tid, short), v in zip(TRANSLATIONS[lang], verses):
         if v:
-            got_any = True
             parts.append(f"> *{v[0]}*")
-            parts.append(f"> — {v[1]} ({short})")
+            parts.append(f"> \u2014 {v[1]} ({short})")
             parts.append("")
-    if not got_any:
+    if not any(verses):
         parts += [f"\U0001F4D6 Basahin ngayon: **{ref}**", ""]
-        STATE["last_error"] = "Couldn't reach the Bible site, so the verse reference was posted instead."
+        notes.append("Couldn't reach the Bible site, so the verse reference was posted instead.")
+    if picture and img is None:
+        notes.append("The picture didn't come through in time, so this one went out without it.")
     parts.append(f"\U0001F64F {prayer}")
     e = discord.Embed(title=s["title"], description="\n".join(parts), color=s["color"])
-    e.set_footer(text=f"Daily word · {s['label']}")
-    return e
+    e.set_footer(text=f"Daily word \u00b7 {s['label']}")
+    file = None
+    if img:
+        file = discord.File(io.BytesIO(img), filename=f"daily-{slot}.jpg")
+        e.set_image(url=f"attachment://daily-{slot}.jpg")
+    STATE["last_error"] = " ".join(notes)
+    return e, file
 
 
 async def post(gid: int, slot: str, by_hand: bool = False) -> str:
@@ -227,16 +312,15 @@ async def post(gid: int, slot: str, by_hand: bool = False) -> str:
     ch = bot.get_channel(ch_id) if ch_id else None
     if ch is None:
         return "Pick a channel first."
-    STATE["last_error"] = ""
-    embed = await compose(slot)
+    embed, file = await compose(slot)
     try:
-        await ch.send(embed=embed)
+        await ch.send(embed=embed, **({"file": file} if file else {}))
     except (discord.Forbidden, discord.HTTPException):
         return f"The bot can't post in #{ch.name}. Give it Send Messages and Embed Links there."
     now = dt.datetime.now(TZ)
     await run(_log_sent, {"at": now.strftime("%b %d, %I:%M %p").replace(" 0", " "), "slot": SLOTS[slot]["label"],
                           "channel": ch.name, "line": embed.description.split("\n")[0].strip("*")[:120],
-                          "by_hand": by_hand})
+                          "by_hand": by_hand, "pic": file is not None})
     return ""
 
 

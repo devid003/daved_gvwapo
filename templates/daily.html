@@ -20,7 +20,7 @@
 {% endblock %}
 {% block content %}
 <div class="head">
-  <div><h1>Daily word</h1><p>A short motivation, a Bible verse and a prayer, posted by the bot every day at the times below ({{ tz }}).</p></div>
+  <div><h1>Daily word</h1><p>A short motivation, a Bible verse, a prayer and a picture, posted by the bot every day at the times below ({{ tz }}).</p></div>
 </div>
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
 
@@ -46,6 +46,7 @@
           <label><input type="radio" name="lang" value="tl"{{ ' checked' if lang == 'tl' }}> Tagalog</label>
           <label><input type="radio" name="lang" value="both"{{ ' checked' if lang == 'both' }}> Both</label>
         </div></div>
+      <label class="dw-chk"><input type="checkbox" name="pic" value="1"{{ ' checked' if pic }}> Add a new picture to every post (made by the image generator, takes up to a minute)</label>
       <label class="dw-chk"><input type="checkbox" name="on" value="1"{{ ' checked' if on }}> Post the daily word</label>
       <div class="row" style="gap:10px"><button class="btn primary">Save</button></div>
     </form>
@@ -58,7 +59,7 @@
     {% if current %}<form method="post" action="/daily/send" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn">Send one now</button></form>{% endif %}
   </div>
   <div class="panel-body">
-    {% if log %}<ul class="dw-log">{% for e in log %}<li><span class="when">{{ e.at }}</span><span class="what">{{ e.line }}<span class="muted small"> · #{{ e.channel }} · {{ 'sent by you' if e.by_hand else e.slot }}</span></span></li>{% endfor %}</ul>
+    {% if log %}<ul class="dw-log">{% for e in log %}<li><span class="when">{{ e.at }}</span><span class="what">{{ e.line }}<span class="muted small"> · #{{ e.channel }} · {{ 'sent by you' if e.by_hand else e.slot }}{% if e.pic %} · with picture{% endif %}</span></span></li>{% endfor %}</ul>
     {% else %}<p class="muted small" style="margin:0">Nothing sent yet.</p>{% endif %}
   </div>
 </section>

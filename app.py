@@ -2457,6 +2457,7 @@ async def daily_page(request):
         "csrf": csrf_token(request), "flash": request.session.pop("flash", None), "tz": TZ_LABEL,
         "servers": info["servers"], "current": ch.name if ch else "", "current_id": str(ch_id) if ch else "",
         "on": bool(gid) and await run(daily_word.is_on, gid), "lang": await run(daily_word.language),
+        "pic": await run(daily_word.picture_on),
         "times": [s["label"] for s in daily_word.SLOTS.values()], "log": await run(daily_word.history)})
 
 
@@ -2478,6 +2479,7 @@ async def daily_save(request):
     await run(db.set_setting, f"dw_ch:{ch.guild.id}", str(ch.id))
     await run(db.set_setting, f"dw_on:{ch.guild.id}", "1" if on else "0")
     await run(db.set_setting, "dw_lang", lang if lang in daily_word.TRANSLATIONS else "both")
+    await run(db.set_setting, "dw_pic", "1" if form.get("pic") == "1" else "0")
     times = ", ".join(s["label"] for s in daily_word.SLOTS.values())
     flash(request, f"Saved. The daily word posts in #{ch.name} every day at {times}." if on
           else "Saved. The daily word is off.")
