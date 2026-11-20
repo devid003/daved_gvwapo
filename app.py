@@ -622,6 +622,38 @@ def _join_stats(days: int = 14) -> dict:
     }
 
 
+def _tag_of(b, guild_id: int, user_id: int) -> dict | None:
+    """The server tag this person shows next to their name (Discord's Server Tags), from the bot's member list."""
+    g = b.get_guild(guild_id) if b.is_ready() else None
+    m = g.get_member(user_id) if g is not None else None
+    pg = getattr(m, "primary_guild", None) if m is not None else None
+    if pg is None or not getattr(pg, "tag", None) or getattr(pg, "identity_enabled", None) is False:
+        return None
+    try:
+        badge = pg.badge.url if pg.badge else ""
+    except Exception:
+        badge = ""
+    return {"tag": str(pg.tag), "gid": pg.id or 0, "badge": badge}
+
+
+def _tag_groups(b, pending: list, our_ids: set) -> list:
+    """People waiting, grouped by the server tag they wear: your server's tag first, then other tags A to Z,
+    then people with no tag."""
+    groups = {}
+    for j in pending:
+        t = _tag_of(b, j.guild_id, j.user_id)
+        if t:
+            ours = t["gid"] in our_ids
+            key = (0 if ours else 1, t["tag"].casefold(), t["gid"])
+        else:
+            ours, key = False, (2, "", 0)
+        if key not in groups:
+            other = b.get_guild(t["gid"]) if t and t["gid"] and not ours and b.is_ready() else None
+            groups[key] = {"tag": t, "ours": ours, "server": other.name if other else "", "rows": []}
+        groups[key]["rows"].append(j)
+    return [groups[k] for k in sorted(groups)]
+
+
 async def _security_lists(request) -> dict:
     b = discord_bot.bot
     data = await run(db.overview)
@@ -633,8 +665,10 @@ async def _security_lists(request) -> dict:
     history = [j for j in await run(db.list_joins, None, False, 80) if j.status != "pending"][:50]
     codes = {j.id: await run(security.panel_status_sync, j.id) for j in pending}
     stats = await run(_join_stats)
+    tag_groups = _tag_groups(b, pending, set(names))
     return {"csrf": csrf_token(request), "pending": pending, "history": history, "codes": codes,
-            "names": names, "multi": len(names) > 1, "tz": TZ_LABEL, "stats": stats}
+            "names": names, "multi": len(names) > 1, "tz": TZ_LABEL, "stats": stats,
+            "tag_groups": tag_groups, "tag_count": sum(len(g["rows"]) for g in tag_groups if g["tag"])}
 
 
 async def security_page_v2(request):

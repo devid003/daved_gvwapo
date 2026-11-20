@@ -1,10 +1,28 @@
+<style>
+.tgsum{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0;padding:14px 20px 12px;font-size:13.5px;color:var(--muted)}
+.tgsum b{color:var(--ink)}
+.stag{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border:1px solid var(--line2,var(--line));border-radius:6px;
+  font-size:12.5px;font-weight:700;letter-spacing:.02em;color:var(--ink);background:var(--raise,transparent);white-space:nowrap;vertical-align:middle}
+.stag img{width:14px;height:14px;border-radius:3px}
+.stag.ours{border-color:var(--live);color:var(--live)}
+.stag.none{font-weight:600;color:var(--muted)}
+tr.tgrp td{padding-top:16px;padding-bottom:8px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--muted)}
+tr.tgrp:first-child td{padding-top:8px}
+tr.tgrp b{color:var(--ink)}
+</style>
 {% if pending %}
+<div class="tgsum"><span><b>{{ tag_count }}</b> with a server tag</span><span>&middot;</span><span><b>{{ pending|length - tag_count }}</b> without</span>
+  {% for g in tag_groups if g.tag %}<span class="stag{{ ' ours' if g.ours }}">{% if g.tag.badge %}<img src="{{ g.tag.badge }}" alt="">{% endif %}{{ g.tag.tag }} <span style="font-weight:600">{{ g.rows|length }}</span></span>{% endfor %}</div>
 <div class="scroll"><table>
   <tr><th>Member</th><th>Flags</th><th>Code</th><th>Joined ({{ tz }})</th>{% if multi %}<th>Server</th>{% endif %}<th></th></tr>
-  {% for j in pending %}
+  {% for g in tag_groups %}
+  <tr class="tgrp"><td colspan="{{ 6 if multi else 5 }}">{% if g.tag %}<span class="stag{{ ' ours' if g.ours }}">{% if g.tag.badge %}<img src="{{ g.tag.badge }}" alt="">{% endif %}{{ g.tag.tag }}</span>
+    <b>{{ g.rows|length }}</b> {{ 'person wears' if g.rows|length == 1 else 'people wear' }} {{ "your server's tag" if g.ours else "this tag" }}{% if not g.ours and g.server %} from {{ g.server }}{% endif %}
+    {% else %}<span class="stag none">No server tag</span> <b>{{ g.rows|length }}</b> {{ 'person' if g.rows|length == 1 else 'people' }}{% endif %}</td></tr>
+  {% for j in g.rows %}
   <tr>
     <td><div class="who">{% if j.avatar_url %}<img src="{{ j.avatar_url }}" alt="" loading="lazy">{% else %}<span class="ph"></span>{% endif %}
-      <div><b>{{ j.username }}</b><div class="mono small">{{ j.user_id }}</div>
+      <div><b>{{ j.username }}</b>{% if g.tag %} <span class="stag{{ ' ours' if g.ours }}" title="Server tag">{{ g.tag.tag }}</span>{% endif %}<div class="mono small">{{ j.user_id }}</div>
         <div class="muted small nowrap" style="white-space:nowrap">Account made {{ j.account_created.strftime("%b %d, %Y") if j.account_created else "?" }}</div></div></div></td>
     <td><div class="flags">{% for f in (j.flags or '').split(', ') if f %}<span class="badge {{ 'off' if f.startswith(('Same device','Same browser')) else 'pending' }}">{{ f }}</span>{% else %}<span class="muted small">None</span>{% endfor %}</div></td>
     <td>{% set c = codes.get(j.id, {}) %}{% set st = c.get('state', '') %}
@@ -35,6 +53,7 @@
       {% endfor %}
     </td>
   </tr>
+  {% endfor %}
   {% endfor %}
 </table></div>
 {% else %}
