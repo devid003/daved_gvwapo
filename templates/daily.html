@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Daily word{% endblock %}
+{% block head %}
+<style>
+.dw-chk{display:inline-flex;align-items:center;gap:8px;font-size:14px;height:40px;cursor:pointer}
+.dw-chk input{width:16px;height:16px;margin:0}
+.dw-times{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 4px}
+.dw-times span{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;font-size:14px;font-weight:600}
+.dw-langs{display:flex;gap:8px;flex-wrap:wrap}
+.dw-langs label{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px;cursor:pointer}
+.dw-langs input{margin:0}
+.dw-log{list-style:none;margin:0;padding:0}
+.dw-log li{display:flex;gap:12px;align-items:baseline;padding:10px 0;border-top:1px solid var(--line);font-size:14px}
+.dw-log li:first-child{border-top:0}
+.dw-log .when{white-space:nowrap;color:var(--muted);font-size:13px;min-width:120px}
+.dw-log .what{min-width:0}
+.dw-form{display:grid;gap:18px;max-width:640px}
+.dw-form .lbl{font-size:13px;font-weight:600;color:var(--muted);margin:0 0 8px}
+</style>
+{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Daily word</h1><p>A short motivation, a Bible verse and a prayer, posted by the bot every day at the times below ({{ tz }}).</p></div>
+</div>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Settings</h2><p>{% if on and current %}<span class="badge live">On</span> Posting in <b>#{{ current }}</b>{% elif on %}<span class="badge off">Needs a channel</span> Pick a channel below{% else %}<span class="badge">Off</span> Turn it on and pick a channel{% endif %}</p></div></div>
+  <div class="panel-body">
+    {% if servers %}
+    <form method="post" action="/daily/save" class="dw-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div><p class="lbl">Posts every day at</p>
+        <div class="dw-times">{% for label in times %}<span>{{ label }}</span>{% endfor %}</div></div>
+      <label class="field" style="margin:0">Channel
+        <select name="channel" required>
+          <option value="">Pick a channel</option>
+          {% for s in servers %}{% for cat, chans in s.groups %}
+          <optgroup label="{{ s.name ~ ' / ' if servers|length > 1 }}{{ cat }}">
+            {% for cid, name in chans %}<option value="{{ cid }}"{{ ' selected' if cid == current_id }}># {{ name }}</option>{% endfor %}
+          </optgroup>{% endfor %}{% endfor %}
+        </select></label>
+      <div><p class="lbl">Bible verse in</p>
+        <div class="dw-langs" role="radiogroup" aria-label="Bible verse language">
+          <label><input type="radio" name="lang" value="en"{{ ' checked' if lang == 'en' }}> English</label>
+          <label><input type="radio" name="lang" value="tl"{{ ' checked' if lang == 'tl' }}> Tagalog</label>
+          <label><input type="radio" name="lang" value="both"{{ ' checked' if lang == 'both' }}> Both</label>
+        </div></div>
+      <label class="dw-chk"><input type="checkbox" name="on" value="1"{{ ' checked' if on }}> Post the daily word</label>
+      <div class="row" style="gap:10px"><button class="btn primary">Save</button></div>
+    </form>
+    {% else %}<p class="muted small" style="margin:0">The bot is offline or can't post in any channel right now.</p>{% endif %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Try it now</h2><p>Sends one message right away to the channel above, so you can see how it looks. It picks the message for the current time of day.</p></div>
+    {% if current %}<form method="post" action="/daily/send" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn">Send one now</button></form>{% endif %}
+  </div>
+  <div class="panel-body">
+    {% if log %}<ul class="dw-log">{% for e in log %}<li><span class="when">{{ e.at }}</span><span class="what">{{ e.line }}<span class="muted small"> · #{{ e.channel }} · {{ 'sent by you' if e.by_hand else e.slot }}</span></span></li>{% endfor %}</ul>
+    {% else %}<p class="muted small" style="margin:0">Nothing sent yet.</p>{% endif %}
+  </div>
+</section>
+<p class="muted small" style="margin:14px 2px 0;line-height:1.55">Verses come word for word from bible-api.com: World English Bible (English) and Ang Dating Biblia (Tagalog), both free to share. The bot never repeats a message until it has used the others.</p>
+{% endblock %}

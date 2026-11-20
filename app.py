@@ -33,6 +33,7 @@ import upload_reports  # noqa: E402  (adds upload-time reports + commands to the
 import security  # noqa: E402  (join gate: new members need approval)
 import prompt_commands  # noqa: E402,F401  (adds /ghibli, /cooking, ... commands)
 import prompts as promptlib  # noqa: E402
+import daily_word  # noqa: E402  (motivation + Bible verse at 6 AM, 3 PM, 10 PM)
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 if not ADMIN_PASSWORD:
@@ -2430,6 +2431,71 @@ async def _remove_prompt_panel(gid: int) -> None:
     await run(db.set_setting, f"ppanel_ch:{gid}", "")
 
 
+# ---------- daily word (motivation + verse at 6 AM, 3 PM, 10 PM) ----------
+def _dw_guild() -> int:
+    """The server whose daily word settings to show: the one with a channel set, else the first server."""
+    for gid in sorted(db.allowed_guild_ids()):
+        if daily_word.channel_id(gid):
+            return gid
+    return _one_guild_id()
+
+
+def _dw_slot_now() -> str:
+    h = dt.datetime.now(daily_word.TZ).hour
+    return "morning" if 4 <= h < 12 else "afternoon" if 12 <= h < 19 else "night"
+
+
+async def daily_page(request):
+    if not authed(request):
+        return redirect("/login")
+    info = await run(panel_info)
+    gid = await run(_dw_guild)
+    ch_id = await run(daily_word.channel_id, gid) if gid else 0
+    b = discord_bot.bot
+    ch = b.get_channel(ch_id) if ch_id and b.is_ready() else None
+    return templates.TemplateResponse(request=request, name="daily.html", context={
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None), "tz": TZ_LABEL,
+        "servers": info["servers"], "current": ch.name if ch else "", "current_id": str(ch_id) if ch else "",
+        "on": bool(gid) and await run(daily_word.is_on, gid), "lang": await run(daily_word.language),
+        "times": [s["label"] for s in daily_word.SLOTS.values()], "log": await run(daily_word.history)})
+
+
+async def daily_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    b = discord_bot.bot
+    cid = str(form.get("channel", "")).strip()
+    ch = b.get_channel(int(cid)) if cid.isdigit() and b.is_ready() else None
+    if ch is None or getattr(ch, "guild", None) is None or ch.guild.id not in await run(db.allowed_guild_ids):
+        flash(request, "Pick a channel first.")
+        return redirect("/daily")
+    lang = str(form.get("lang", "both"))
+    on = form.get("on") == "1"
+    for other in await run(db.allowed_guild_ids):          # one channel at a time
+        if other != ch.guild.id:
+            await run(db.set_setting, f"dw_on:{other}", "0")
+    await run(db.set_setting, f"dw_ch:{ch.guild.id}", str(ch.id))
+    await run(db.set_setting, f"dw_on:{ch.guild.id}", "1" if on else "0")
+    await run(db.set_setting, "dw_lang", lang if lang in daily_word.TRANSLATIONS else "both")
+    times = ", ".join(s["label"] for s in daily_word.SLOTS.values())
+    flash(request, f"Saved. The daily word posts in #{ch.name} every day at {times}." if on
+          else "Saved. The daily word is off.")
+    return redirect("/daily")
+
+
+async def daily_send(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    if not discord_bot.bot.is_ready():
+        flash(request, "The bot is not connected to Discord yet. Try again in a moment.")
+        return redirect("/daily")
+    problem = await daily_word.post(await run(_dw_guild), _dw_slot_now(), by_hand=True)
+    flash(request, problem or ("Sent. Check the channel." + (" " + daily_word.STATE["last_error"] if daily_word.STATE["last_error"] else "")))
+    return redirect("/daily")
+
+
 async def prompts_panel_post(request):
     """Post (or move) the prompt panel to the chosen channel."""
     import discord
@@ -2808,6 +2874,9 @@ app = Starlette(
         Route("/prompts/niche/delete", niche_delete, methods=["POST"]),
         Route("/prompts/panel", prompts_panel_post, methods=["POST"]),
         Route("/prompts/panel/remove", prompts_panel_remove, methods=["POST"]),
+        Route("/daily", daily_page),
+        Route("/daily/save", daily_save, methods=["POST"]),
+        Route("/daily/send", daily_send, methods=["POST"]),
         Route("/api/prompts/live", prompts_live),
         Route("/api/overview/live", overview_live),
         Route("/api/security/live", security_live),
