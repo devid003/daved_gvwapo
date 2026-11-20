@@ -2366,8 +2366,30 @@ def prompt_panel_info() -> dict:
 templates.env.globals["prompt_panel_info"] = prompt_panel_info
 
 
-async def _prompt_panel_parts() -> tuple:
-    return prompt_commands.prompt_panel_message(await run(db.list_niches, True))
+async def _prompt_panel_parts() -> list:
+    return prompt_commands.prompt_panel_messages(await run(db.list_niches, True))
+
+
+def _panel_ids(raw: str) -> tuple:
+    """'channel|msg1,msg2' -> ('channel', ['msg1', 'msg2'])"""
+    ch_id, _, ids = (raw or "").partition("|")
+    return ch_id, [m for m in ids.split(",") if m.isdigit()]
+
+
+async def _send_prompt_panel(ch) -> list:
+    """Post the panel (one message per 25 buttons). Returns the message ids."""
+    ids = []
+    try:
+        for content, e, v in await _prompt_panel_parts():
+            ids.append(str((await ch.send(content=content, embed=e, view=v)).id))
+    except Exception:
+        for mid in ids:                                 # don't leave half a panel behind
+            try:
+                await (await ch.fetch_message(int(mid))).delete()
+            except Exception:
+                pass
+        raise
+    return ids
 
 
 async def refresh_prompt_panel() -> None:
@@ -2376,25 +2398,32 @@ async def refresh_prompt_panel() -> None:
     if not b.is_ready():
         return
     for gid in await run(db.allowed_guild_ids):
-        ch_id, _, msg_id = (await run(db.get_setting, f"ppanel_msg:{gid}", "")).partition("|")
+        ch_id, ids = _panel_ids(await run(db.get_setting, f"ppanel_msg:{gid}", ""))
         ch = b.get_channel(int(ch_id)) if ch_id.isdigit() else None
-        if ch is None or not msg_id.isdigit():
+        if ch is None or not ids:
             continue
         try:
-            e, v = await _prompt_panel_parts()
-            await (await ch.fetch_message(int(msg_id))).edit(embed=e, view=v)
+            parts = await _prompt_panel_parts()
+            if len(parts) == len(ids):
+                for (content, e, v), mid in zip(parts, ids):
+                    await (await ch.fetch_message(int(mid))).edit(content=content, embed=e, view=v)
+            else:                                       # it needs more or fewer messages now: post it again
+                await _remove_prompt_panel(gid)
+                new = await _send_prompt_panel(ch)
+                await run(db.set_setting, f"ppanel_msg:{gid}", f"{ch.id}|{','.join(new)}")
+                await run(db.set_setting, f"ppanel_ch:{gid}", str(ch.id))
         except Exception:
             log.warning("Could not update the prompt panel in #%s", getattr(ch, "name", ch_id))
 
 
 async def _remove_prompt_panel(gid: int) -> None:
     b = discord_bot.bot
-    ch_id, _, msg_id = (await run(db.get_setting, f"ppanel_msg:{gid}", "")).partition("|")
-    if ch_id.isdigit() and msg_id.isdigit():
-        ch = b.get_channel(int(ch_id))
-        if ch is not None:
+    ch_id, ids = _panel_ids(await run(db.get_setting, f"ppanel_msg:{gid}", ""))
+    ch = b.get_channel(int(ch_id)) if ch_id.isdigit() else None
+    if ch is not None:
+        for mid in ids:
             try:
-                await (await ch.fetch_message(int(msg_id))).delete()
+                await (await ch.fetch_message(int(mid))).delete()
             except Exception:
                 pass
     await run(db.set_setting, f"ppanel_msg:{gid}", "")
@@ -2418,13 +2447,12 @@ async def prompts_panel_post(request):
         return redirect("/prompts")
     g = ch.guild
     await _remove_prompt_panel(g.id)
-    e, v = await _prompt_panel_parts()
     try:
-        msg = await ch.send(embed=e, view=v)
+        ids = await _send_prompt_panel(ch)
     except (discord.Forbidden, discord.HTTPException):
         flash(request, f"The bot can't post in #{ch.name}. Give it Send Messages and Embed Links there.")
         return redirect("/prompts")
-    await run(db.set_setting, f"ppanel_msg:{g.id}", f"{ch.id}|{msg.id}")
+    await run(db.set_setting, f"ppanel_msg:{g.id}", f"{ch.id}|{','.join(ids)}")
     await run(db.set_setting, f"ppanel_ch:{g.id}", str(ch.id))
     flash(request, f"Prompt panel posted in #{ch.name}. Members tap a niche to get a prompt.")
     return redirect("/prompts")

@@ -854,7 +854,7 @@ def list_niches(active_only: bool = False) -> list:
         q = select(Niche)
         if active_only:
             q = q.where(Niche.active.is_(True))
-        return list(s.scalars(q.order_by(Niche.created_at)))
+        return list(s.scalars(q.order_by(func.lower(Niche.label), Niche.key)))   # A to Z
 
 
 def get_niche(key: str):

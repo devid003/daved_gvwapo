@@ -242,7 +242,7 @@ async def _niche_autocomplete(interaction: discord.Interaction, current: str):
 
 
 # ---------- prompt panel: one button per niche, no slash command needed ----------
-MAX_NICHE_BUTTONS = 24          # Discord allows 25 buttons per message; the last one is "Get prompt access"
+BUTTONS_PER_MESSAGE = 25        # Discord's limit for one message
 
 
 def _access_view() -> discord.ui.View:
@@ -251,23 +251,31 @@ def _access_view() -> discord.ui.View:
     return v
 
 
-def prompt_panel_message(niches: list) -> tuple:
-    """The embed and buttons for the prompt panel. niches: active niches, in order."""
-    shown = niches[:MAX_NICHE_BUTTONS]
-    if shown:
+def prompt_panel_messages(niches: list) -> list:
+    """The prompt panel as [(content, embed, view), ...]: one button per niche, A to Z, 25 per message
+    (a long list continues in the next message), and "Get prompt access" last."""
+    if niches:
         text = "Tap a niche to get a random prompt. Only you can see it."
     else:
         text = "No niches yet. They show up here as soon as the owner adds them."
     e = discord.Embed(title="Get a prompt", description=text + "\n\nNo access yet? Tap **Get prompt access** first.",
                       color=0x2747C7)
-    v = discord.ui.View(timeout=None)
-    for n in shown:
-        v.add_item(discord.ui.Button(label=(f"{n.emoji} {n.label}".strip() or n.key)[:80],
-                                     style=discord.ButtonStyle.primary, custom_id=f"synp:{n.key}"[:100]))
-    row = (len(shown) + 4) // 5
-    v.add_item(discord.ui.Button(label="Get prompt access", style=discord.ButtonStyle.secondary,
-                                 custom_id="syn:register", row=row if row <= 4 else None))
-    return e, v
+    order = sorted(niches, key=lambda n: ((n.label or n.key).casefold(), n.key))
+    buttons = [discord.ui.Button(label=(f"{n.emoji} {n.label}".strip() or n.key)[:80],
+                                 style=discord.ButtonStyle.primary, custom_id=f"synp:{n.key}"[:100]) for n in order]
+    chunks = [buttons[i:i + BUTTONS_PER_MESSAGE] for i in range(0, len(buttons), BUTTONS_PER_MESSAGE)] or [[]]
+    if len(chunks[-1]) == BUTTONS_PER_MESSAGE:
+        chunks.append([])
+    row = (len(chunks[-1]) + 4) // 5                    # "Get prompt access" on its own row when there's room
+    chunks[-1].append(discord.ui.Button(label="Get prompt access", style=discord.ButtonStyle.secondary,
+                                        custom_id="syn:register", row=row if row <= 4 else None))
+    out = []
+    for i, chunk in enumerate(chunks):
+        v = discord.ui.View(timeout=None)
+        for btn in chunk:
+            v.add_item(btn)
+        out.append((None, e, v) if i == 0 else ("**More niches**", None, v))
+    return out
 
 
 async def _prompt_reply(gid: int, user, niche_key: str) -> dict:
