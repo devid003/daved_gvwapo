@@ -31,6 +31,14 @@
 .dlg .chk{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;cursor:pointer}
 .dlg .chk input{margin:2px 0 0;width:16px;height:16px;flex:none}
 .dlg .act{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:4px}
+.dlg textarea{min-height:110px;max-height:55vh}
+.rsn-box{margin-top:5px;max-width:300px;white-space:pre-line;overflow-wrap:anywhere}
+.rsn summary{cursor:pointer;list-style:none}
+.rsn summary::-webkit-details-marker{display:none}
+.rsn .more::after{content:"Show all";color:var(--accent);font-weight:600;white-space:nowrap}
+.rsn[open] .more::after{content:"Show less"}
+.rsn[open] .pv{display:none}
+.rsn .full{margin-top:4px;max-height:320px;overflow-y:auto}
 .btn.bad.fill{background:var(--bad);border-color:var(--bad);color:var(--surface)}
 .btn.bad.fill:hover{background:color-mix(in srgb,var(--bad) 88%,var(--ink))}
 </style>
@@ -162,8 +170,8 @@
     <input type="hidden" name="action" value="deny">
     <h2 id="deny-title">Deny <span id="deny-name"></span>?</h2>
     <p>They'll be removed from the server. They can still join again later.</p>
-    <label class="lbl" for="deny-reason">Reason <span id="deny-left">400 left</span></label>
-    <textarea id="deny-reason" name="reason" maxlength="400" placeholder="Why aren't you approving them?"></textarea>
+    <label class="lbl" for="deny-reason">Reason <span id="deny-left"></span></label>
+    <textarea id="deny-reason" name="reason" placeholder="Why aren't you approving them?"></textarea>
     <div class="quick" aria-label="Quick reasons">
       {% for r in ["No profile picture", "Account is too new", "You didn't send your code", "Same device as another account", "Looks like a fake or spam account"] %}<button type="button" data-r="{{ r }}">{{ r }}</button>{% endfor %}
     </div>
@@ -194,7 +202,13 @@
       })
       .then(function (j) {
         $('pending-wrap').innerHTML = j.pending_html;
+        var opened = [], ds = $('history-wrap').querySelectorAll('details[open][data-id]');   // keep "Show all" open
+        for (var k = 0; k < ds.length; k++) opened.push(ds[k].getAttribute('data-id'));
         $('history-wrap').innerHTML = j.history_html;
+        for (k = 0; k < opened.length; k++) {
+          var o = $('history-wrap').querySelector('details[data-id="' + opened[k] + '"]');
+          if (o) o.open = true;
+        }
         if (j.stats_html) $('stats-wrap').innerHTML = j.stats_html;
         var c = $('pending-count');
         c.textContent = j.pending_count; c.style.display = j.pending_count ? '' : 'none';
@@ -214,8 +228,11 @@
   if (!box) return;
   document.body.appendChild(box);                    // on top of everything, whatever the page layout
   var t = document.getElementById('deny-reason'), left = document.getElementById('deny-left');
-  var go = document.getElementById('deny-go'), MAX = 400, back = null;
-  function count() { left.textContent = (MAX - t.value.length) + ' left'; }
+  var go = document.getElementById('deny-go'), PART = 3800, back = null;   // no limit; long ones go in more DMs
+  function count() {
+    var n = t.value.length, m = Math.ceil(n / PART);
+    left.textContent = !n ? '' : n.toLocaleString() + ' characters' + (m > 1 ? ', sent in ' + m + ' messages' : '');
+  }
   function denyForm(el) {                            // the Deny form a click landed in, if any
     while (el && el !== document) {
       if (el.tagName === 'FORM') return el.getAttribute('data-deny') ? el : null;
@@ -253,7 +270,7 @@
   for (var i = 0; i < quick.length; i++) {
     quick[i].addEventListener('click', function () {
       var r = this.getAttribute('data-r'), v = t.value.replace(/[\s.;,]+$/, '');
-      t.value = (v ? v + '. ' + r : r).slice(0, MAX); count(); t.focus();
+      t.value = v ? v + '. ' + r : r; count(); t.focus();
     });
   }
   document.getElementById('deny-cancel').addEventListener('click', close);

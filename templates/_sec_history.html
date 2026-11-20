@@ -5,7 +5,7 @@
   <tr>
     <td><b>{{ j.username }}</b><div class="mono small">{{ j.user_id }}</div></td>
     <td><span class="badge {{ {'approved':'live','allowed':'live','denied':'off','banned':'off','left':''}.get(j.status,'') }}">{{ {'allowed':'Joined (gate off)'}.get(j.status, j.status|capitalize) }}</span>
-      {% set r = reasons.get(j.id) if reasons else none %}{% if r %}<div class="small" style="margin-top:5px;max-width:280px;white-space:normal;overflow-wrap:anywhere">{% if r.text %}{{ r.text }}{% else %}<span class="muted">No reason given</span>{% endif %}</div>
+      {% set r = reasons.get(j.id) if reasons else none %}{% if r %}<div class="small rsn-box">{% if r.text|length > 180 %}<details class="rsn" data-id="{{ j.id }}"><summary><span class="pv">{{ r.text[:160] }}&hellip; </span><span class="more"></span></summary><div class="full">{{ r.text }}</div></details>{% elif r.text %}{{ r.text }}{% else %}<span class="muted">No reason given</span>{% endif %}</div>
       <div class="muted small" style="margin-top:2px">{{ 'Told them by DM' if r.dm else 'Not sent to them' }}</div>{% endif %}</td>
     <td class="small muted">{{ j.flags or '' }}</td>
     <td class="nowrap">{{ j.joined_at|local }}</td>

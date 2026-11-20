@@ -671,31 +671,61 @@ async def send_welcome(guild: discord.Guild, member: discord.Member) -> bool:
 
 
 # ------------------------- deny reason -------------------------
-DENY_REASON_MAX = 400
 NO_PERMISSION = ("The bot is missing permission. Give its role Manage Roles, Kick Members and "
                  "Ban Members, and drag it above the \u201cPending approval\u201d role.")
+REASON_PART = 3800        # Discord fits about 4000 characters in one message box; longer reasons go in more messages
 
 
 def deny_reason_key(join_id: int) -> str:
-    """Settings key for the reason a join request was denied. Value: "1" or "0" (told them by DM) + the reason."""
+    """Settings key where the first deny reasons were kept (up to 400 characters). New ones go in db.DenyReason."""
     return f"deny_reason:{join_id}"
+
+
+def _chunks(text: str, size: int) -> list:
+    """Split text into pieces of at most `size` characters, at a line break or space where possible."""
+    out = []
+    while len(text) > size:
+        cut = text.rfind("\n", 0, size)
+        if cut < size // 2:
+            cut = text.rfind(" ", 0, size)
+        if cut < size // 2:
+            cut = size
+        out.append(text[:cut].rstrip())
+        text = text[cut:].lstrip()
+    if text:
+        out.append(text)
+    return out
+
+
+def _reason_embeds(head: str, reason: str, title: str = "") -> list:
+    """One embed per message: the first has the head and the start of the reason, the rest carry on with it."""
+    parts = _chunks(reason, REASON_PART) if reason else [""]
+    embeds = []
+    for i, part in enumerate(parts):
+        text = (head + (f"\n\n**Reason:** {part}" if part else "")) if i == 0 else part
+        e = discord.Embed(description=text, color=0xB42318)
+        if i == 0 and title:
+            e.title = title
+        embeds.append(e)
+    return embeds
 
 
 async def send_denied(guild: discord.Guild, member: discord.Member, reason: str) -> bool:
     """Tell the member they weren't approved and why, before they're removed. Fails quietly if their DMs are closed."""
-    text = f"Your request to join **{guild.name}** was not approved, so you've been removed from the server."
-    if reason:
-        text += f"\n\n**Reason:** {reason}"
-    e = discord.Embed(title="\U0001f6ab Not approved", description=text, color=0xB42318,
-                      timestamp=discord.utils.utcnow())
+    head = f"Your request to join **{guild.name}** was not approved, so you've been removed from the server."
+    embeds = _reason_embeds(head, reason, "\U0001f6ab Not approved")
     if guild.icon:
-        e.set_thumbnail(url=guild.icon.url)
-    e.set_footer(text=f"{guild.name} \u2022 Member verification")
+        embeds[0].set_thumbnail(url=guild.icon.url)
+    embeds[-1].set_footer(text=f"{guild.name} \u2022 Member verification")
+    embeds[-1].timestamp = discord.utils.utcnow()
+    sent = False
     try:
-        await member.send(embed=e)
-        return True
+        for e in embeds:
+            await member.send(embed=e)
+            sent = True
     except (discord.Forbidden, discord.HTTPException):
-        return False
+        pass
+    return sent
 
 
 def _can_kick(guild: discord.Guild, member: discord.Member) -> bool:
@@ -742,7 +772,7 @@ async def decide(join_id: int, action: str, reason: str = "", dm: bool = False) 
             return f"\u2705 {name} approved. They can see the server now.{extra}"
 
         if action == "deny":
-            reason = (reason or "").strip()[:DENY_REASON_MAX]
+            reason = (reason or "").strip()
             sent = False
             if member is not None:
                 if not _can_kick(guild, member):      # check first, so they never get a DM and then stay
@@ -754,11 +784,9 @@ async def decide(join_id: int, action: str, reason: str = "", dm: bool = False) 
             await run(db.set_setting, _held_key(guild.id, req.user_id), "")
             await run(db.set_join_status, join_id, "denied")
             if reason or sent:
-                await run(db.set_setting, deny_reason_key(join_id), ("1" if sent else "0") + reason)
-            e = discord.Embed(description=f"\U0001f6ab **{name}** was denied and removed.", color=0xB42318)
-            if reason:
-                e.add_field(name="Reason", value=reason[:1024], inline=False)
-            await notify(guild, e)
+                await run(db.save_deny_reason, join_id, reason, sent)
+            for e in _reason_embeds(f"\U0001f6ab **{name}** was denied and removed.", reason):
+                await notify(guild, e)
             told = ""
             if dm and member is not None:
                 told = (" They got the reason by DM." if sent and reason else " They got a DM." if sent

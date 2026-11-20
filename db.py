@@ -273,6 +273,15 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(String(500), default="")
 
 
+class DenyReason(Base):
+    """Why a join request was denied, in full (no length limit), and whether the member got it by DM."""
+    __tablename__ = "deny_reasons"
+    join_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    dm: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
 def init() -> None:
     Base.metadata.create_all(engine)
 
@@ -1034,6 +1043,25 @@ def set_join_status(join_id: int, status: str) -> None:
         if row:
             row.status = status
             row.decided_at = utcnow()
+
+
+def save_deny_reason(join_id: int, reason: str, dm: bool) -> None:
+    with Session.begin() as s:
+        row = s.get(DenyReason, join_id)
+        if row is None:
+            row = DenyReason(join_id=join_id)
+            s.add(row)
+        row.reason, row.dm = reason or "", 1 if dm else 0
+
+
+def deny_reasons(ids) -> dict:
+    """{join_id: {"text": reason, "dm": told them by DM}} for these join requests."""
+    ids = list(ids)
+    if not ids:
+        return {}
+    with Session() as s:
+        rows = s.scalars(select(DenyReason).where(DenyReason.join_id.in_(ids)))
+        return {r.join_id: {"text": r.reason or "", "dm": bool(r.dm)} for r in rows}
 
 
 def mark_join_left(guild_id: int, user_id: int) -> None:

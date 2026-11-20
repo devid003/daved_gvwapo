@@ -551,10 +551,12 @@ def _deny_reasons_sync(ids: list) -> dict:
     """Saved deny reasons for these join requests: {join_id: {"text": reason, "dm": told them by DM}}."""
     if not ids:
         return {}
-    keys = {security.deny_reason_key(i): i for i in ids}
+    keys = {security.deny_reason_key(i): i for i in ids}       # the first ones were kept in settings
     with db.Session() as s:
         rows = s.scalars(db.select(db.Setting).where(db.Setting.key.in_(list(keys))))
-        return {keys[r.key]: {"text": r.value[1:], "dm": r.value[:1] == "1"} for r in rows if r.value}
+        out = {keys[r.key]: {"text": r.value[1:], "dm": r.value[:1] == "1"} for r in rows if r.value}
+    out.update(db.deny_reasons(ids))                            # full-length reasons
+    return out
 
 
 # ---------- security v2: codes + live ----------
