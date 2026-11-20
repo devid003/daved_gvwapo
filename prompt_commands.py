@@ -39,6 +39,18 @@ async def _delete_later(msg, delay: int) -> None:
         pass
 
 
+# Replies to panel buttons vanish after 5 minutes so channels stay tidy (0 = keep).
+# Discord only lets the bot delete these private replies for 15 minutes, so keep it under 900.
+PANEL_DELETE_AFTER = min(_int_env("PANEL_DELETE_SECONDS", 300), 840)
+
+
+def _delete_reply_later(msg) -> None:
+    if PANEL_DELETE_AFTER and msg is not None:
+        t = asyncio.create_task(_delete_later(msg, PANEL_DELETE_AFTER))
+        _DELETE_TASKS.add(t)
+        t.add_done_callback(_DELETE_TASKS.discard)
+
+
 async def _is_cleared(guild_id: int, user_id: int) -> bool:
     if user_id in OWNER_IDS:
         return True
@@ -194,7 +206,7 @@ async def on_interaction(interaction: discord.Interaction):
     except Exception:
         log.exception("Panel button %s failed", cid)
         reply = {"content": "Something went wrong. Try again in a moment."}
-    await interaction.followup.send(ephemeral=True, **reply)
+    _delete_reply_later(await interaction.followup.send(ephemeral=True, wait=True, **reply))
 
 
 @bot.tree.command(name="prompt", description="Get a random prompt for a niche")
@@ -300,7 +312,9 @@ async def _prompt_reply(gid: int, user, niche_key: str) -> dict:
     index = next((i + 1 for i, r in enumerate(rows) if r.id == p.id), 0)
     data = await run(render_txt, niche_key, p.text, index, len(rows), n.label)
     await run(db.log_prompt_use, gid, user.id, niche_key)
-    return {"content": f"Here's a **{n.label}** prompt:",
+    note = (f"\n-# Download it now. This message disappears in {PANEL_DELETE_AFTER // 60} min."
+            if PANEL_DELETE_AFTER >= 60 else "")
+    return {"content": f"Here's a **{n.label}** prompt:{note}",
             "file": discord.File(io.BytesIO(data), filename=f"{niche_key}-prompt.txt")}
 
 
@@ -314,7 +328,7 @@ async def _prompt_button(interaction: discord.Interaction, niche_key: str) -> No
     except Exception:
         log.exception("Prompt button %s failed", niche_key)
         reply = {"content": "Something went wrong. Try again in a moment."}
-    await interaction.followup.send(ephemeral=True, **reply)
+    _delete_reply_later(await interaction.followup.send(ephemeral=True, wait=True, **reply))
 
 
 # Buttons replace the slash commands: members tap the welcome panel and the prompt panel instead.
