@@ -541,8 +541,20 @@ async def security_decide(request):
     if not discord_bot.bot.is_ready():
         flash(request, "The bot is not connected to Discord yet. Try again in a moment.")
         return redirect("/security")
-    flash(request, await security.decide(jid, action))
+    reason = str(form.get("reason", "")).strip()          # Deny box: why, and whether to DM it to them
+    dm = str(form.get("dm", "")) == "1"
+    flash(request, await security.decide(jid, action, reason=reason, dm=dm))
     return redirect("/security")
+
+
+def _deny_reasons_sync(ids: list) -> dict:
+    """Saved deny reasons for these join requests: {join_id: {"text": reason, "dm": told them by DM}}."""
+    if not ids:
+        return {}
+    keys = {security.deny_reason_key(i): i for i in ids}
+    with db.Session() as s:
+        rows = s.scalars(db.select(db.Setting).where(db.Setting.key.in_(list(keys))))
+        return {keys[r.key]: {"text": r.value[1:], "dm": r.value[:1] == "1"} for r in rows if r.value}
 
 
 # ---------- security v2: codes + live ----------
@@ -666,7 +678,8 @@ async def _security_lists(request) -> dict:
     codes = {j.id: await run(security.panel_status_sync, j.id) for j in pending}
     stats = await run(_join_stats)
     tag_groups = _tag_groups(b, pending, set(names))
-    return {"csrf": csrf_token(request), "pending": pending, "history": history, "codes": codes,
+    reasons = await run(_deny_reasons_sync, [j.id for j in history if j.status == "denied"])
+    return {"csrf": csrf_token(request), "pending": pending, "history": history, "codes": codes, "reasons": reasons,
             "names": names, "multi": len(names) > 1, "tz": TZ_LABEL, "stats": stats,
             "tag_groups": tag_groups, "tag_count": sum(len(g["rows"]) for g in tag_groups if g["tag"])}
 

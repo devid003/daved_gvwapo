@@ -670,9 +670,43 @@ async def send_welcome(guild: discord.Guild, member: discord.Member) -> bool:
         return False
 
 
+# ------------------------- deny reason -------------------------
+DENY_REASON_MAX = 400
+NO_PERMISSION = ("The bot is missing permission. Give its role Manage Roles, Kick Members and "
+                 "Ban Members, and drag it above the \u201cPending approval\u201d role.")
+
+
+def deny_reason_key(join_id: int) -> str:
+    """Settings key for the reason a join request was denied. Value: "1" or "0" (told them by DM) + the reason."""
+    return f"deny_reason:{join_id}"
+
+
+async def send_denied(guild: discord.Guild, member: discord.Member, reason: str) -> bool:
+    """Tell the member they weren't approved and why, before they're removed. Fails quietly if their DMs are closed."""
+    text = f"Your request to join **{guild.name}** was not approved, so you've been removed from the server."
+    if reason:
+        text += f"\n\n**Reason:** {reason}"
+    e = discord.Embed(title="\U0001f6ab Not approved", description=text, color=0xB42318,
+                      timestamp=discord.utils.utcnow())
+    if guild.icon:
+        e.set_thumbnail(url=guild.icon.url)
+    e.set_footer(text=f"{guild.name} \u2022 Member verification")
+    try:
+        await member.send(embed=e)
+        return True
+    except (discord.Forbidden, discord.HTTPException):
+        return False
+
+
+def _can_kick(guild: discord.Guild, member: discord.Member) -> bool:
+    me = guild.me
+    return bool(me and me.guild_permissions.kick_members and me.top_role > member.top_role)
+
+
 # ------------------------- decisions -------------------------
-async def decide(join_id: int, action: str) -> str:
-    """action: approve | deny | ban. Returns a message for the panel."""
+async def decide(join_id: int, action: str, reason: str = "", dm: bool = False) -> str:
+    """action: approve | deny | ban. For deny: an optional reason, and dm=True sends it to them first.
+    Returns a message for the panel."""
     req = await run(db.get_join, join_id)
     if req is None:
         return "That request no longer exists."
@@ -708,12 +742,28 @@ async def decide(join_id: int, action: str) -> str:
             return f"\u2705 {name} approved. They can see the server now.{extra}"
 
         if action == "deny":
+            reason = (reason or "").strip()[:DENY_REASON_MAX]
+            sent = False
             if member is not None:
-                await member.kick(reason="Join gate: denied in panel")
+                if not _can_kick(guild, member):      # check first, so they never get a DM and then stay
+                    return NO_PERMISSION
+                if dm:
+                    sent = await send_denied(guild, member, reason)
+                audit = "Join gate: denied in panel" + (": " + " ".join(reason.split()) if reason else "")
+                await member.kick(reason=audit[:500])
             await run(db.set_setting, _held_key(guild.id, req.user_id), "")
             await run(db.set_join_status, join_id, "denied")
-            await notify(guild, discord.Embed(description=f"\U0001f6ab **{name}** was denied and removed.", color=0xB42318))
-            return f"\U0001f6ab {name} denied and removed from the server."
+            if reason or sent:
+                await run(db.set_setting, deny_reason_key(join_id), ("1" if sent else "0") + reason)
+            e = discord.Embed(description=f"\U0001f6ab **{name}** was denied and removed.", color=0xB42318)
+            if reason:
+                e.add_field(name="Reason", value=reason[:1024], inline=False)
+            await notify(guild, e)
+            told = ""
+            if dm and member is not None:
+                told = (" They got the reason by DM." if sent and reason else " They got a DM." if sent
+                        else " Their DMs are closed, so they didn't get the message.")
+            return f"\U0001f6ab {name} denied and removed from the server.{told}"
 
         if action == "ban":
             await guild.ban(discord.Object(id=req.user_id), reason="Join gate: banned in panel",
@@ -723,8 +773,7 @@ async def decide(join_id: int, action: str) -> str:
             await notify(guild, discord.Embed(description=f"\u26d4 **{name}** was banned.", color=0xB42318))
             return f"\u26d4 {name} banned."
     except discord.Forbidden:
-        return ("The bot is missing permission. Give its role Manage Roles, Kick Members and "
-                "Ban Members, and drag it above the \u201cPending approval\u201d role.")
+        return NO_PERMISSION
     except discord.HTTPException as e:
         return f"Discord error: {e.status}. Try again."
     return "Unknown action."

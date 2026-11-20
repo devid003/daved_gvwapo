@@ -15,6 +15,23 @@
 .live-pill.stale .dot{background:var(--warn);box-shadow:none}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .live-pill .dot{animation:pulse 2s ease-in-out infinite}
+dialog.dlg{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--ink);padding:0;width:min(480px,calc(100vw - 32px));box-shadow:0 18px 48px rgba(0,0,0,.28)}
+dialog.dlg::backdrop{background:rgba(10,14,20,.55)}
+.dlg form{padding:20px 22px 18px;display:grid;gap:12px}
+.dlg h2{margin:0;font-size:18px;overflow-wrap:anywhere}
+.dlg p{margin:-6px 0 0;color:var(--muted);font-size:13.5px}
+.dlg textarea{width:100%;box-sizing:border-box;min-height:88px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font:inherit;font-size:14px;line-height:1.45;resize:vertical}
+.dlg textarea:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.dlg .lbl{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:-6px}
+.dlg .lbl span{font-weight:500;font-size:12.5px;color:var(--faint)}
+.dlg .quick{display:flex;flex-wrap:wrap;gap:6px}
+.dlg .quick button{border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:999px;padding:5px 11px;font:inherit;font-size:13px;cursor:pointer}
+.dlg .quick button:hover{border-color:var(--accent)}
+.dlg .chk{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;cursor:pointer}
+.dlg .chk input{margin:2px 0 0;width:16px;height:16px;flex:none}
+.dlg .act{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:4px}
+.btn.bad.fill{background:var(--bad);border-color:var(--bad);color:var(--surface)}
+.btn.bad.fill:hover{background:color-mix(in srgb,var(--bad) 88%,var(--ink))}
 </style>
 {% endblock %}
 {% block content %}
@@ -126,7 +143,7 @@
 <section class="panel">
   <div class="panel-head">
     <div><h2>Waiting for approval <span class="badge pending" id="pending-count" style="margin-left:6px{{ ';display:none' if not pending }}">{{ pending|length }}</span></h2>
-      <p>Approve by typing their code above. Deny removes them. Ban removes them and blocks them from coming back.</p></div>
+      <p>Approve by typing their code above. Deny removes them, and you can tell them why. Ban removes them and blocks them from coming back.</p></div>
     <span class="live-pill" id="live-pill"><span class="dot on"></span>Live <span class="muted" id="live-age">just now</span></span>
   </div>
   <div id="pending-wrap">{% include "_sec_pending.html" %}</div>
@@ -136,6 +153,22 @@
   <div class="panel-head"><div><h2>Recent joins</h2><p>Everyone who joined, and what happened.</p></div></div>
   <div id="history-wrap">{% include "_sec_history.html" %}</div>
 </section>
+
+<dialog id="deny-dlg" class="dlg" aria-labelledby="deny-title">
+  <form method="post" action="/security/decide">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" id="deny-id" value="">
+    <input type="hidden" name="action" value="deny">
+    <h2 id="deny-title">Deny <span id="deny-name"></span>?</h2>
+    <p>They'll be removed from the server. They can still join again later.</p>
+    <label class="lbl" for="deny-reason">Reason <span id="deny-left">400 left</span></label>
+    <textarea id="deny-reason" name="reason" maxlength="400" placeholder="Why aren't you approving them?"></textarea>
+    <div class="quick" aria-label="Quick reasons">
+      {% for r in ["No profile picture", "Account is too new", "You didn't send your code", "Same device as another account", "Looks like a fake or spam account"] %}<button type="button" data-r="{{ r }}">{{ r }}</button>{% endfor %}
+    </div>
+    <label class="chk"><input type="checkbox" name="dm" value="1" checked> Send this to them by DM before removing them</label>
+    <div class="act"><button type="button" class="btn" id="deny-cancel">Cancel</button><button class="btn bad fill" id="deny-go">Deny and remove</button></div>
+  </form>
+</dialog>
 
 <script>
 (function () {
@@ -172,6 +205,32 @@
   setInterval(age, 1000);
   setInterval(function () { if (!document.hidden) refresh(); }, 10000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+})();
+(function () {   // Deny opens a box for the reason
+  var d = document.getElementById('deny-dlg');
+  if (!d || typeof d.showModal !== 'function') return;   // very old browser: Deny works without a reason
+  var t = document.getElementById('deny-reason'), left = document.getElementById('deny-left'), MAX = 400;
+  function count() { left.textContent = (MAX - t.value.length) + ' left'; }
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!f.getAttribute || !f.hasAttribute('data-deny')) return;
+    e.preventDefault();
+    document.getElementById('deny-id').value = f.getAttribute('data-deny');
+    document.getElementById('deny-name').textContent = f.getAttribute('data-name') || 'this member';
+    document.getElementById('deny-go').disabled = false;
+    t.value = ''; count();
+    d.showModal(); t.focus();
+  });
+  t.addEventListener('input', count);
+  Array.prototype.forEach.call(d.querySelectorAll('[data-r]'), function (b) {
+    b.addEventListener('click', function () {
+      var r = b.getAttribute('data-r'), v = t.value.replace(/[\s.;,]+$/, '');
+      t.value = (v ? v + '. ' + r : r).slice(0, MAX); count(); t.focus();
+    });
+  });
+  document.getElementById('deny-cancel').addEventListener('click', function () { d.close(); });
+  d.addEventListener('click', function (e) { if (e.target === d) d.close(); });   // click outside closes
+  d.querySelector('form').addEventListener('submit', function () { document.getElementById('deny-go').disabled = true; });
 })();
 </script>
 {% endblock %}
