@@ -736,6 +736,97 @@ def _can_kick(guild: discord.Guild, member: discord.Member) -> bool:
     return bool(me and me.guild_permissions.kick_members and me.top_role > member.top_role)
 
 
+# ------------------------- report channels (Deny reasons / Ban reasons / Recent joins pages) -------------------------
+REPORT_KINDS = ("deny", "ban", "join")
+_JOIN_REPORT_LOCK = asyncio.Lock()
+JOIN_LOOK = {
+    "pending": ("\u23f3 Waiting for approval", 0xA35C00),
+    "approved": ("\u2705 Approved", 0x12805A),
+    "allowed": ("\u2705 Joined (gate off)", 0x12805A),
+    "denied": ("\U0001f6ab Denied", 0xB42318),
+    "banned": ("\u26d4 Banned", 0xB42318),
+    "left": ("\U0001f6aa Left before a decision", 0x5E6878),
+}
+
+
+def report_key(kind: str, guild_id: int) -> str:
+    """Settings key for the channel a report goes to: kind is deny, ban or join."""
+    return f"rep_ch:{kind}:{guild_id}"
+
+
+async def _report_channel(guild: discord.Guild, kind: str):
+    raw = await run(db.get_setting, report_key(kind, guild.id), "")
+    return guild.get_channel(int(raw)) if raw.isdigit() else None
+
+
+def _aware(t):
+    return t.replace(tzinfo=dt.timezone.utc) if t else None
+
+
+async def post_decision_report(guild: discord.Guild, kind: str, req, reason: str, sent: bool) -> None:
+    """Deny / Ban report: one post per decision in the chosen channel, with the full reason."""
+    try:
+        ch = await _report_channel(guild, kind)
+        if ch is None:
+            return
+        name = req.username or str(req.user_id)
+        icon, verb, foot = ("\u26d4", "banned", "Ban report") if kind == "ban" else ("\U0001f6ab", "denied", "Deny report")
+        head = (f"{icon} **{name}** was {verb}.\nMember: <@{req.user_id}> (`{req.user_id}`)\n"
+                f"Told them by DM: {'Yes' if sent else 'No'}")
+        if not reason:
+            head += "\nReason: none given"
+        embeds = _reason_embeds(head, reason)
+        if req.avatar_url:
+            embeds[0].set_thumbnail(url=req.avatar_url)
+        embeds[-1].set_footer(text=foot)
+        embeds[-1].timestamp = discord.utils.utcnow()
+        for e in embeds:
+            await ch.send(embed=e, allowed_mentions=discord.AllowedMentions.none())
+    except Exception as e:  # noqa: BLE001 - a report must never break the decision itself
+        log.warning("%s report failed in %s: %s", kind, guild.id, e)
+
+
+async def sync_join_report(join_id: int) -> None:
+    """Join report: one post per person who joins, edited as their status changes."""
+    try:
+        async with _JOIN_REPORT_LOCK:
+            req = await run(db.get_join, join_id)
+            guild = bot.get_guild(req.guild_id) if req else None
+            ch = await _report_channel(guild, "join") if guild else None
+            if ch is None:
+                return
+            label, color = JOIN_LOOK.get(req.status, (req.status.capitalize(), 0x5E6878))
+            name = req.username or str(req.user_id)
+            e = discord.Embed(description=f"<@{req.user_id}> (`{req.user_id}`)", color=color)
+            e.set_author(name=f"{name} joined", icon_url=req.avatar_url or None)
+            e.add_field(name="Status", value=label, inline=True)
+            e.add_field(name="Joined", value=discord.utils.format_dt(_aware(req.joined_at), "f")
+                        if req.joined_at else "?", inline=True)
+            e.add_field(name="Account created", value=discord.utils.format_dt(_aware(req.account_created), "R")
+                        if req.account_created else "?", inline=True)
+            if req.flags:
+                e.add_field(name="Flags", value=req.flags[:1024], inline=False)
+            if req.status in ("denied", "banned"):
+                text = ((await run(db.deny_reasons, [join_id])).get(join_id) or {}).get("text", "")
+                if text:
+                    e.add_field(name="Reason", inline=False,
+                                value=text if len(text) <= 1000 else text[:990].rstrip() + "\u2026")
+            if req.decided_at and req.status != "pending":
+                e.add_field(name="Decided", value=discord.utils.format_dt(_aware(req.decided_at), "f"), inline=True)
+            e.set_footer(text="Join report")
+            ch_id, _, msg_id = (await run(db.get_setting, f"jrep:{join_id}", "")).partition(":")
+            if ch_id == str(ch.id) and msg_id.isdigit():      # same channel: update their post
+                try:
+                    await ch.get_partial_message(int(msg_id)).edit(embed=e)
+                    return
+                except discord.NotFound:
+                    pass                                         # post was deleted: post it again
+            m = await ch.send(embed=e, allowed_mentions=discord.AllowedMentions.none())
+            await run(db.set_setting, f"jrep:{join_id}", f"{ch.id}:{m.id}")
+    except Exception as e:  # noqa: BLE001
+        log.warning("Join report failed for #%s: %s", join_id, e)
+
+
 # ------------------------- decisions -------------------------
 async def decide(join_id: int, action: str, reason: str = "", dm: bool = False) -> str:
     """action: approve | deny | ban. For deny: an optional reason, and dm=True sends it to them first.
@@ -763,6 +854,7 @@ async def decide(join_id: int, action: str, reason: str = "", dm: bool = False) 
         if action == "approve":
             if member is None:
                 await run(db.set_join_status, join_id, "left")
+                await sync_join_report(join_id)
                 return f"{name} already left the server."
             role = await find_role(guild)
             if role and role in member.roles:
@@ -771,6 +863,7 @@ async def decide(join_id: int, action: str, reason: str = "", dm: bool = False) 
             await send_welcome(guild, member)
             await run(db.set_join_status, join_id, "approved")
             await notify(guild, discord.Embed(description=f"\u2705 **{name}** was approved.", color=0x12805A))
+            await sync_join_report(join_id)
             extra = f" Gave back: {', '.join(back)}." if back else ""
             return f"\u2705 {name} approved. They can see the server now.{extra}"
 
@@ -790,6 +883,8 @@ async def decide(join_id: int, action: str, reason: str = "", dm: bool = False) 
                 await run(db.save_deny_reason, join_id, reason, sent)
             for e in _reason_embeds(f"\U0001f6ab **{name}** was denied and removed.", reason):
                 await notify(guild, e)
+            await post_decision_report(guild, "deny", req, reason, sent)
+            await sync_join_report(join_id)
             told = ""
             if dm and member is not None:
                 told = (" They got the reason by DM." if sent and reason else " They got a DM." if sent
@@ -812,6 +907,8 @@ async def decide(join_id: int, action: str, reason: str = "", dm: bool = False) 
                 await run(db.save_deny_reason, join_id, reason, sent)
             for e in _reason_embeds(f"\u26d4 **{name}** was banned.", reason):
                 await notify(guild, e)
+            await post_decision_report(guild, "ban", req, reason, sent)
+            await sync_join_report(join_id)
             told = ""
             if dm and member is not None:
                 told = (" They got the reason by DM." if sent and reason else " They got a DM." if sent
@@ -836,9 +933,10 @@ async def on_member_join(member: discord.Member):
     gate = await run(gate_on_sync, guild.id)
 
     if not gate or member.bot:
-        await run(db.add_join, guild.id, member.id, str(member), avatar, created,
-                  ", ".join(flags), "allowed")
+        join_id = await run(db.add_join, guild.id, member.id, str(member), avatar, created,
+                            ", ".join(flags), "allowed")
         log.info("Join logged (gate %s): %s in %s", "off" if not gate else "bot", member, guild.name)
+        await sync_join_report(join_id)
         return
 
     if await run(db.was_approved_before, guild.id, member.id):
@@ -868,6 +966,7 @@ async def on_member_join(member: discord.Member):
     e.set_thumbnail(url=avatar or None)
     e.set_footer(text="Verify the code or decide in the bot panel \u2192 Security")
     await notify(guild, e)
+    await sync_join_report(join_id)
 
     if role is not None:              # other bots often add roles a few seconds later
         await asyncio.sleep(4)
@@ -893,7 +992,8 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 
 @bot.event
 async def on_member_remove(member: discord.Member):
-    await run(db.mark_join_left, member.guild.id, member.id)
+    for join_id in await run(db.mark_join_left, member.guild.id, member.id) or []:
+        await sync_join_report(join_id)
 
 
 @bot.event

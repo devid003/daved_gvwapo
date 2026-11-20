@@ -700,6 +700,8 @@ async def _reason_page(request, status: str):
     return templates.TemplateResponse(request=request, name="reasons.html", context={
         "rows": rows, "reasons": await run(_deny_reasons_sync, [j.id for j in rows]),
         "names": names, "multi": len(names) > 1, "tz": TZ_LABEL,
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+        "report": await run(_report_info, "ban" if ban else "deny"),
         "title": "Ban reasons" if ban else "Deny reasons",
         "lead": ("Everyone you banned on the Security page, newest first, with the reason you gave." if ban
                  else "Everyone you denied on the Security page, newest first, with the reason you gave."),
@@ -724,7 +726,54 @@ async def joins_page(request):
     history = [j for j in await run(db.list_joins, None, False, 300) if j.status != "pending"][:200]
     reasons = await run(_deny_reasons_sync, [j.id for j in history if j.status in ("denied", "banned")])
     return templates.TemplateResponse(request=request, name="joins.html", context={
-        "history": history, "reasons": reasons, "names": names, "multi": len(names) > 1, "tz": TZ_LABEL})
+        "history": history, "reasons": reasons, "names": names, "multi": len(names) > 1, "tz": TZ_LABEL,
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+        "report": await run(_report_info, "join")})
+
+
+REPORT_PAGES = {"deny": "/denied", "ban": "/banned", "join": "/joins"}
+REPORT_LABELS = {"deny": "Post each deny in", "ban": "Post each ban in", "join": "Post each new member in"}
+
+
+def _report_info(kind: str) -> dict:
+    """Channel picker for a report page: channels the bot can post in (by category), and where it posts now."""
+    b = discord_bot.bot
+    cur = []
+    for gid in sorted(db.allowed_guild_ids()):
+        raw = db.get_setting(security.report_key(kind, gid), "")
+        ch = b.get_channel(int(raw)) if raw.isdigit() and b.is_ready() else None
+        if ch is not None:
+            cur.append({"id": str(ch.id), "name": ch.name, "server": ch.guild.name})
+    return {"kind": kind, "label": REPORT_LABELS[kind], "servers": panel_info()["servers"],
+            "current": cur, "ids": [c["id"] for c in cur]}
+
+
+async def report_channel_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    kind = str(form.get("kind", ""))
+    if kind not in REPORT_PAGES:
+        flash(request, "Invalid request.")
+        return redirect("/security")
+    back = REPORT_PAGES[kind]
+    allowed = await run(db.allowed_guild_ids)
+    cid = str(form.get("channel", "")).strip()
+    if not cid:
+        for gid in allowed:
+            await run(db.set_setting, security.report_key(kind, gid), "")
+        flash(request, "Saved. The bot won't post these in Discord anymore.")
+        return redirect(back)
+    b = discord_bot.bot
+    ch = b.get_channel(int(cid)) if cid.isdigit() and b.is_ready() else None
+    if ch is None or getattr(ch, "guild", None) is None or ch.guild.id not in allowed:
+        flash(request, "Pick a channel first.")
+        return redirect(back)
+    await run(db.set_setting, security.report_key(kind, ch.guild.id), str(ch.id))
+    what = {"deny": "every deny, with the reason,", "ban": "every ban, with the reason,",
+            "join": "every new member, and update it when you decide,"}[kind]
+    flash(request, f"Saved. The bot will post {what} in #{ch.name}.")
+    return redirect(back)
 
 
 async def security_page_v2(request):
@@ -3001,6 +3050,7 @@ app = Starlette(
         Route("/denied", denied_page),
         Route("/banned", banned_page),
         Route("/joins", joins_page),
+        Route("/reports/channel", report_channel_save, methods=["POST"]),
         Route("/api/viewers/live", viewers_live),
         Route("/videos", videos_page),
         Route("/videos/add", video_add_and_announce, methods=["POST"]),

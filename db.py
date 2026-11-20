@@ -1072,7 +1072,9 @@ def deny_reasons(ids) -> dict:
         return {r.join_id: {"text": r.reason or "", "dm": bool(r.dm)} for r in rows}
 
 
-def mark_join_left(guild_id: int, user_id: int) -> None:
+def mark_join_left(guild_id: int, user_id: int) -> list:
+    """Pending requests of someone who left become "left". Returns their ids."""
+    ids = []
     with Session.begin() as s:
         rows = s.scalars(select(JoinRequest).where(
             JoinRequest.guild_id == guild_id, JoinRequest.user_id == user_id,
@@ -1080,6 +1082,8 @@ def mark_join_left(guild_id: int, user_id: int) -> None:
         for row in rows:
             row.status = "left"
             row.decided_at = utcnow()
+            ids.append(row.id)
+    return ids
 
 
 def was_approved_before(guild_id: int, user_id: int) -> bool:
