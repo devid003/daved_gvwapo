@@ -33,18 +33,57 @@
   function setRadio(name, v) { var r = form.querySelector('input[name=' + name + '][value="' + v + '"]'); if (r) r.checked = true; }
   function remember() {
     store('aeForm', JSON.stringify({ niche: $('ae-niche').value, minutes: radio('ae-min'), ratio: radio('ae-ratio'),
-      language: $('ae-lang').value, voice: $('ae-voice').value }));
+      fmt: radio('ae-fmt'), sec: radio('ae-sec'), language: $('ae-lang').value, voice: $('ae-voice').value }));
+  }
+  function format() {
+    var shorts = radio('ae-fmt') !== 'long';
+    $('ae-len-short').hidden = !shorts; $('ae-len-long').hidden = shorts; $('ae-shape').hidden = shorts;
   }
   try {
     var saved = JSON.parse(store('aeForm') || '{}');
     if (saved.niche && $('ae-niche').querySelector('option[value="' + saved.niche + '"]')) $('ae-niche').value = saved.niche;
     if (saved.minutes) setRadio('ae-min', saved.minutes);
     if (saved.ratio) setRadio('ae-ratio', saved.ratio);
+    if (saved.fmt) setRadio('ae-fmt', saved.fmt);
+    if (saved.sec) setRadio('ae-sec', saved.sec);
     if (saved.language) $('ae-lang').value = saved.language;
     if (saved.voice) $('ae-voice').value = saved.voice;
   } catch (e) {}
   ['ae-niche', 'ae-lang', 'ae-voice'].forEach(function (id) { $(id).addEventListener('change', remember); });
-  Array.prototype.forEach.call(form.querySelectorAll('input[type=radio]'), function (r) { r.addEventListener('change', remember); });
+  Array.prototype.forEach.call(form.querySelectorAll('input[type=radio]'), function (r) { r.addEventListener('change', function () { remember(); format(); }); });
+  format();
+
+  /* ---------------- the member's own Monid key (kept on this device only) ---------------- */
+  var monid = !!$('ae-key'), key = monid ? (store('aeMonidKey') || '') : '';
+  function keyState(ok, bal) {
+    if (!monid) return;
+    $('ae-key-ask').hidden = ok; $('ae-key-ok').hidden = !ok; $('ae-fields').hidden = !ok;
+    $('ae-key-bal').textContent = ok ? (bal ? 'Balance: ' + bal : 'Ready to use') : '';
+  }
+  function checkKey(k, quiet) {
+    $('ae-key-msg').textContent = quiet ? '' : 'Checking...'; $('ae-key-save').disabled = true;
+    return api('/watch/autoedit/key', { key: k }).then(function (r) {
+      key = k; store('aeMonidKey', k); $('ae-key-msg').textContent = ''; keyState(true, r.balance);
+    }).catch(function (e) {
+      if (e === 0) return;
+      if (quiet && /reach|connection/i.test(errText(e))) { keyState(true, ''); return; }   // offline for a moment: keep it
+      key = ''; keyState(false); $('ae-key-msg').textContent = errText(e);
+    }).then(function () { $('ae-key-save').disabled = false; });
+  }
+  if (monid) {
+    keyState(false);
+    if (key) { $('ae-key-in').value = key; checkKey(key, true); }
+    $('ae-key-save').addEventListener('click', function () {
+      var k = $('ae-key-in').value.trim();
+      if (!k) { $('ae-key-msg').textContent = 'Paste your Monid key first.'; $('ae-key-in').focus(); return; }
+      checkKey(k, false);
+    });
+    $('ae-key-in').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('ae-key-save').click(); } });
+    $('ae-key-in').addEventListener('contextmenu', function (e) { e.stopPropagation(); });
+    $('ae-key-change').addEventListener('click', function () {
+      keyState(false); $('ae-key-in').value = ''; $('ae-key-in').focus();
+    });
+  }
   ['ae-concept', 'ae-script'].forEach(function (id) {
     var t = $(id); t.value = store(id) || ''; t.addEventListener('input', function () { store(id, t.value); });
     t.addEventListener('contextmenu', function (e) { e.stopPropagation(); });
@@ -76,7 +115,7 @@
   function showJob(j) {
     cur = j; card.hidden = false; $('ae-empty').hidden = true;
     $('ae-title').textContent = j.title || 'Your video';
-    $('ae-meta').textContent = [j.niche, j.minutes + ' min', j.ratio, j.language].join(', ');
+    $('ae-meta').textContent = [j.niche, j.shorts ? j.length + ' Short' : j.length, j.ratio, j.language].join(', ');
     $('ae-cancel').hidden = !j.active;
     $('ae-build').hidden = true; $('ae-again').hidden = true;
     if (j.active) {
@@ -104,7 +143,7 @@
       var li = document.createElement('li'), b = document.createElement('button');
       b.type = 'button'; b.className = 'ae-item' + (cur && cur.id === j.id ? ' on' : '');
       var t = document.createElement('b'); t.textContent = j.title || j.niche;
-      var s = document.createElement('span'); s.textContent = j.niche + ', ' + j.minutes + ' min, ' + j.when;
+      var s = document.createElement('span'); s.textContent = j.niche + ', ' + j.length + (j.shorts ? ' Short' : '') + ', ' + j.when;
       var st = document.createElement('em'); st.className = 'st ' + (j.status === 'ready' ? 'ok' : j.active ? 'run' : 'off');
       st.textContent = j.active ? (j.status === 'queued' ? 'In line' : 'Making') : j.label;
       b.appendChild(t); b.appendChild(s); b.appendChild(st);
@@ -138,8 +177,10 @@
     e.preventDefault();
     if (busy) return;
     say('');
-    var body = { niche: $('ae-niche').value, minutes: radio('ae-min'), ratio: radio('ae-ratio'), language: $('ae-lang').value,
-                 voice: $('ae-voice').value, concept: $('ae-concept').value.trim(), script: $('ae-script').value.trim() };
+    if (monid && !key) { say('Save your Monid key first.'); return; }
+    var body = { niche: $('ae-niche').value, format: radio('ae-fmt') || 'shorts', seconds: radio('ae-sec'), minutes: radio('ae-min'),
+                 ratio: radio('ae-ratio'), language: $('ae-lang').value, voice: $('ae-voice').value,
+                 concept: $('ae-concept').value.trim(), script: $('ae-script').value.trim(), key: key };
     busy = true; go.disabled = true; go.textContent = 'Starting...';
     api('/watch/autoedit/start', body).then(function (r) {
       autoBuild[r.job.id] = true; cur = r.job; showJob(r.job); refresh();
@@ -153,7 +194,8 @@
   });
   $('ae-again').addEventListener('click', function () {
     if (!cur) return;
-    api('/watch/autoedit/act', { id: cur.id, action: 'again' }).then(function (r) { autoBuild[r.job.id] = true; showJob(r.job); refresh(); })
+    if (monid && !key) { note('Save your Monid key at the top first.'); return; }
+    api('/watch/autoedit/act', { id: cur.id, action: 'again', key: key }).then(function (r) { autoBuild[r.job.id] = true; showJob(r.job); refresh(); })
       .catch(function (e) { if (e !== 0) note(errText(e)); });
   });
   $('ae-build').addEventListener('click', function () { if (cur) build(cur.id); });
@@ -165,6 +207,9 @@
 
   /* ---------------- putting the video together ---------------- */
   var FPS = 30, XF = 0.6, GAP = 0.35, LEAD = 0.3, TAIL = 1.2, building = false, lastUrl = '';
+  function pace(shorts) {
+    if (shorts) { XF = 0.3; GAP = 0.12; LEAD = 0.15; TAIL = 0.5; } else { XF = 0.6; GAP = 0.35; LEAD = 0.3; TAIL = 1.2; }
+  }
   function loadMuxer() {
     if (window.Mp4Muxer) return Promise.resolve();
     return new Promise(function (ok, bad) {
@@ -261,6 +306,7 @@
     api('/watch/autoedit/jobs?id=' + id).then(function (r) {
       r.jobs.forEach(function (x) { if (x.id === id) job = x; });
       if (!job || job.status !== 'ready' || !job.scenes) throw new Error('This video isn\'t ready anymore. Refresh and try again.');
+      pace(job.shorts);
       return loadMuxer();
     }).then(function () {
       var W = job.ratio === '9:16' ? 1080 : 1920, H = job.ratio === '9:16' ? 1920 : 1080;
@@ -292,7 +338,7 @@
       sc.forEach(function (s, i) {
         s.vs = i === 0 ? 0 : s.start - XF / 2;
         s.ve = i === n - 1 ? total : sc[i + 1].start + XF / 2;
-        var parts = chunksOf(job.scenes[i].text, tall ? 6 : 9), lens = parts.map(function (p) { return p.length + 6; });
+        var parts = chunksOf(job.scenes[i].text, job.shorts ? 3 : tall ? 6 : 9), lens = parts.map(function (p) { return p.length + 6; });
         var sum = lens.reduce(function (a, b) { return a + b; }, 0), at = s.start;
         s.subs = parts.map(function (p, j) { var d = s.dur * lens[j] / sum, o = { a: at, b: at + d, text: p }; at += d; return o; });
       });
@@ -319,7 +365,7 @@
         venc.configure(vcfg);
         aenc = new AudioEncoder({ output: function (c, m) { muxer.addAudioChunk(c, m); }, error: function (e) { failed = e; } });
         aenc.configure(acfg);
-        var bitmaps = {}, voiceCache = {}, fontPx = Math.round((tall ? 0.034 : 0.05) * H), started = performance.now();
+        var bitmaps = {}, voiceCache = {}, fontPx = Math.round((job.shorts ? 0.05 : tall ? 0.034 : 0.05) * H), started = performance.now();
         ctx.font = '800 ' + fontPx + 'px "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif';
         function bitmap(i) {
           if (bitmaps[i]) return Promise.resolve(bitmaps[i]);
@@ -347,7 +393,7 @@
             var s = sc[i]; if (tt < s.start - 0.05 || tt > s.start + s.dur + 0.05) continue;
             for (var j = 0; j < s.subs.length; j++) {
               var c = s.subs[j]; if (tt < c.a || tt >= c.b) continue;
-              var lines = wrap(ctx, c.text, W * (tall ? 0.84 : 0.8)), lh = fontPx * 1.22, y0 = H * (tall ? 0.7 : 0.86) - (lines.length - 1) * lh;
+              var lines = wrap(ctx, c.text, W * (tall ? 0.84 : 0.8)), lh = fontPx * 1.22, y0 = H * (job.shorts ? 0.62 : tall ? 0.7 : 0.86) - (lines.length - 1) * lh;
               ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
               ctx.lineWidth = Math.max(4, fontPx * 0.16); ctx.strokeStyle = 'rgba(0,0,0,0.92)'; ctx.fillStyle = '#fff';
               lines.forEach(function (ln, k) { ctx.strokeText(ln, W / 2, y0 + k * lh); ctx.fillText(ln, W / 2, y0 + k * lh); });

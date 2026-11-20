@@ -288,6 +288,21 @@ a.btn{text-decoration:none}
 .ae-item .st{grid-column:2;grid-row:1/3;align-self:center;font-style:normal;font-size:12.5px;font-weight:700;padding:3px 10px;border-radius:99px;background:var(--raise);color:var(--muted);white-space:nowrap}
 .ae-item .st.ok{background:rgba(60,207,122,.14);color:var(--done)}
 .ae-item .st.run{background:rgba(122,133,255,.16);color:var(--brand2)}
+.seg.two{grid-template-columns:1fr 1fr}
+.ae-hint{margin:8px 0 0;color:var(--faint);font-size:12.5px;line-height:1.45}
+.ae-hint a{color:var(--brand2)}
+.ae-key{border:1px solid var(--line2);border-radius:12px;padding:14px;margin:0 0 18px;background:var(--bg)}
+.ae-key .ae-hint{margin:0 0 10px}
+.ae-key-row{display:flex;gap:8px}
+.ae-key-row input{flex:1;min-width:0;height:44px;border-radius:10px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);padding:0 12px;font:inherit;font-size:14.5px;outline:none;-webkit-user-select:text;user-select:text}
+.ae-key-row input:focus{border-color:var(--brand)}
+.ae-key-msg{margin:8px 0 0;font-size:13.5px;color:#ff8a8a}
+.ae-key-msg:empty{display:none}
+.ae-key-ok{display:flex;align-items:center;gap:10px}
+.ae-key-ok .grow{display:flex;flex-direction:column}
+.ae-key-ok small{color:var(--faint);font-size:12.5px}
+.ok-dot{flex:0 0 10px;height:10px;border-radius:50%;background:var(--done);box-shadow:0 0 0 4px rgba(60,207,122,.15)}
+.ae-link{border:0;background:transparent;color:var(--brand2);font-weight:600;cursor:pointer;padding:6px}
 @media (max-width:520px){.ae-two{grid-template-columns:1fr}.ae-card,.ae-empty{padding:16px}}
 @media (prefers-reduced-motion:reduce){.ae-steps li.now::before{animation:none}}
 
@@ -446,12 +461,37 @@ a.btn{text-decoration:none}
     <form class="gen-ctl" id="ae-form" autocomplete="off">
       <h1>Auto edit</h1>
       <p class="gen-sub">Pick a niche and the bot makes the whole video: story, voice, pictures, subtitles and music.</p>
+      {% if ae.monid %}
+      <div class="ae-key" id="ae-key" data-monid="1">
+        <div id="ae-key-ask">
+          <label class="gl" for="ae-key-in">Your Monid key</label>
+          <p class="ae-hint">The voice, pictures and music are paid from your own Monid balance. Get a key at
+            <a href="https://monid.ai" target="_blank" rel="noopener noreferrer">monid.ai</a>. It starts with monid_.</p>
+          <div class="ae-key-row"><input type="password" id="ae-key-in" placeholder="monid_live_..." autocomplete="off" spellcheck="false" aria-label="Monid key">
+            <button class="btn go" type="button" id="ae-key-save">Save</button></div>
+          <p class="ae-key-msg" id="ae-key-msg" role="status"></p>
+        </div>
+        <div class="ae-key-ok" id="ae-key-ok" hidden>
+          <span class="ok-dot" aria-hidden="true"></span>
+          <span class="grow"><b>Monid key saved</b><small id="ae-key-bal"></small></span>
+          <button class="ae-link" type="button" id="ae-key-change">Change</button>
+        </div>
+      </div>
+      {% endif %}
+      <div id="ae-fields"{{ ' hidden' if ae.monid }}>
       <label class="gl" for="ae-niche">Niche</label>
       <select id="ae-niche">{% for n in ae.niches %}<option value="{{ n.key }}">{{ n.label }}</option>{% endfor %}</select>
-      <fieldset class="ae-len"><legend class="gl">Length</legend>
+      <fieldset class="ae-len"><legend class="gl">Video</legend>
+        <div class="seg two"><label><input type="radio" name="ae-fmt" value="shorts" checked><span>Shorts / Reels</span></label><label><input type="radio" name="ae-fmt" value="long"><span>Long video</span></label></div>
+      </fieldset>
+      <fieldset class="ae-len" id="ae-len-short"><legend class="gl">Length</legend>
+        <div class="seg">{% for t in ae.shorts %}<label><input type="radio" name="ae-sec" value="{{ t }}"{{ ' checked' if loop.last }}><span>{{ t }} sec</span></label>{% endfor %}</div>
+        <p class="ae-hint">9:16, ready for YouTube Shorts and Facebook Reels.</p>
+      </fieldset>
+      <fieldset class="ae-len" id="ae-len-long" hidden><legend class="gl">Length</legend>
         <div class="seg">{% for m in ae.lengths %}<label><input type="radio" name="ae-min" value="{{ m }}"{{ ' checked' if loop.first }}><span>{{ m }} min</span></label>{% endfor %}</div>
       </fieldset>
-      <fieldset class="ratio"><legend class="gl">Shape</legend>
+      <fieldset class="ratio" id="ae-shape" hidden><legend class="gl">Shape</legend>
         <div class="ratio-row">
           <label><input type="radio" name="ae-ratio" value="16:9" checked><span class="rc"><i class="rshape wide"></i><span><b>16:9</b><small>YouTube, Facebook</small></span></span></label>
           <label><input type="radio" name="ae-ratio" value="9:16"><span class="rc"><i class="rshape tall"></i><span><b>9:16</b><small>Reels, TikTok, Shorts</small></span></span></label>
@@ -473,6 +513,7 @@ a.btn{text-decoration:none}
       </details>
       <button class="btn go gen-go" id="ae-go" type="submit">Make my video</button>
       <p class="gen-left" id="ae-left"></p>
+      </div>
       <p class="gen-msg" id="ae-msg" role="alert"></p>
     </form>
     <div class="gen-out">

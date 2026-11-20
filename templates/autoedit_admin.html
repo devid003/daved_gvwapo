@@ -16,17 +16,18 @@ input[type=time]{padding:7px 10px;border:1px solid var(--line);border-radius:var
 .ae-test input[type=text]{flex:1;min-width:220px}
 .ae-test audio{height:36px}
 .ae-hint{color:var(--muted);font-size:13px;margin:10px 0 0;line-height:1.5}
+.ae-sub{margin:18px 0 8px;font-size:13.5px;color:var(--muted);font-weight:600}
 .bar-mini{display:inline-block;width:70px;height:6px;border-radius:99px;background:var(--sunk);vertical-align:middle;margin-right:8px;overflow:hidden}
 .bar-mini i{display:block;height:100%;background:var(--accent)}
 </style>
 {% endblock %}
 {% block content %}
 <div class="head">
-  <div><h1>Auto edit</h1><p>Members you choose make whole videos from a niche: the story, voice, pictures and music come from your Pollinations account, and their browser puts the MP4 together. One video is made at a time.</p></div>
+  <div><h1>Auto edit</h1><p>Members you choose make whole videos from a niche: YouTube Shorts and Facebook Reels (up to 60 seconds) or long videos (5 to 10 minutes). Their browser puts the MP4 together, and one video is made at a time.</p></div>
   {% if not ae.key %}<span class="badge pending">Needs key</span>{% elif ae.on %}<span class="badge live">On</span>{% else %}<span class="badge off">Off</span>{% endif %}
 </div>
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
-{% if not ae.key %}<div class="ae-note"><b>One step left:</b> add <code>POLLINATIONS_KEY</code> on Render (the same secret key the image generator uses).</div>{% endif %}
+{% if not ae.key %}<div class="ae-note"><b>One step left:</b> add <code>POLLINATIONS_KEY</code> on Render (the same secret key the image generator uses). The story is always written with it, for free.</div>{% endif %}
 {% if ae.err %}<div class="ae-note" style="border-color:var(--bad);background:var(--bad-soft)"><b>Last problem{{ ' (' ~ ae.err_when ~ ')' if ae.err_when }}:</b> {{ ae.err }}
   <form method="post" action="/autoedit/save" class="inline" style="margin-left:8px"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="clear-error"><button class="btn sm">Clear</button></form></div>{% endif %}
 
@@ -87,24 +88,39 @@ input[type=time]{padding:7px 10px;border:1px solid var(--line);border-radius:var
 </section>
 
 <section class="panel">
-  <div class="panel-head"><div><h2>Settings</h2><p>Each video uses your pollen: about one picture every 11 seconds, the voice for the whole story, and one music track.</p></div></div>
+  <div class="panel-head"><div><h2>Settings</h2><p>{% if ae.provider == 'monid' %}Each member puts in their own Monid key, so the voice, pictures and music are paid from their Monid balance. The story uses your Pollinations key for free.{% else %}Each video uses your pollen: about one picture every 11 seconds (every 4 in a Short), the voice for the whole story, and one music track.{% endif %}</p></div></div>
   <div class="panel-body">
-    <form method="post" action="/autoedit/save" class="ae-form">
+    <form method="post" action="/autoedit/save">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="settings">
-      <label class="ae-chk"><input type="checkbox" name="on" value="1"{{ ' checked' if ae.on }}> Open for members with access</label>
-      <label class="field">Videos per member per day<input type="number" name="limit" min="1" max="50" value="{{ ae.limit }}" style="width:110px"></label>
-      <label class="field">Picture model
-        <select name="image_model">{% for k, label in img_models %}<option value="{{ k }}"{{ ' selected' if k == ae.image_model }}>{{ label }}</option>{% endfor %}</select></label>
-      <label class="field">Story model<input type="text" name="text_model" value="{{ ae.text_model }}" style="width:150px"></label>
-      <label class="field">Voice model<input type="text" name="voice_model" value="{{ ae.voice_model }}" style="width:170px"></label>
-      <label class="ae-chk"><input type="checkbox" name="music" value="1"{{ ' checked' if ae.music }}> Background music</label>
-      <label class="field">Music model<input type="text" name="music_model" value="{{ ae.music_model }}" style="width:150px"></label>
-      <button class="btn primary">Save</button>
+      <div class="ae-form">
+        <label class="ae-chk"><input type="checkbox" name="on" value="1"{{ ' checked' if ae.on }}> Open for members with access</label>
+        <label class="field">Videos per member per day<input type="number" name="limit" min="1" max="50" value="{{ ae.limit }}" style="width:110px"></label>
+        <label class="field">Who pays for the voice, pictures and music
+          <select name="provider">{% for k, label in ae.providers %}<option value="{{ k }}"{{ ' selected' if k == ae.provider }}>{{ label }}</option>{% endfor %}</select></label>
+        <label class="ae-chk"><input type="checkbox" name="music" value="1"{{ ' checked' if ae.music }}> Background music</label>
+        <label class="field">Story model (Pollinations, free)<input type="text" name="text_model" value="{{ ae.text_model }}" style="width:150px"></label>
+      </div>
+      <h3 class="ae-sub">With members' Monid keys</h3>
+      <div class="ae-form">
+        <label class="field">Pictures
+          <select name="monid_image">{% for k, label in ae.monid_images %}<option value="{{ k }}"{{ ' selected' if k == ae.monid_image }}>{{ label }}</option>{% endfor %}</select></label>
+        <label class="field">Voice
+          <select name="monid_voice">{% for k, label in ae.monid_voices %}<option value="{{ k }}"{{ ' selected' if k == ae.monid_voice }}>{{ label }}</option>{% endfor %}</select></label>
+      </div>
+      <h3 class="ae-sub">With your Pollinations key</h3>
+      <div class="ae-form">
+        <label class="field">Picture model
+          <select name="image_model">{% for k, label in img_models %}<option value="{{ k }}"{{ ' selected' if k == ae.image_model }}>{{ label }}</option>{% endfor %}</select></label>
+        <label class="field">Voice model<input type="text" name="voice_model" value="{{ ae.voice_model }}" style="width:170px"></label>
+        <label class="field">Music model<input type="text" name="music_model" value="{{ ae.music_model }}" style="width:150px"></label>
+      </div>
+      <button class="btn primary" style="margin-top:16px">Save</button>
     </form>
-    <p class="ae-hint">Model names are the ones on enter.pollinations.ai. Voice: <b>elevenflash</b> costs about half of <b>elevenlabs</b> and speaks many languages. Story: <b>openai</b> works well; try another if stories come back wrong.</p>
+    <p class="ae-hint">Monid prices go to the member: MiniMax pictures about $0.004 each, MiniMax music about $0.15 a song, and the ElevenLabs voice by the character. Pollinations model names are the ones on enter.pollinations.ai.</p>
   </div>
 </section>
 
+{% if ae.provider != 'monid' %}
 <section class="panel">
   <div class="panel-head"><div><h2>Hear the voice</h2><p>Try the voice model before members use it. Each try uses a little pollen.</p></div></div>
   <div class="panel-body">
@@ -117,10 +133,12 @@ input[type=time]{padding:7px 10px;border:1px solid var(--line);border-radius:var
     <p class="ae-hint" id="vt-msg" role="status"></p>
   </div>
 </section>
+{% endif %}
 
 <script>
 (function () {
-  var f = document.getElementById('voice-test'), go = document.getElementById('vt-go'), msg = document.getElementById('vt-msg'),
+  var f = document.getElementById('voice-test'); if (!f) return;
+  var go = document.getElementById('vt-go'), msg = document.getElementById('vt-msg'),
       au = document.getElementById('vt-audio'), last = '';
   f.addEventListener('submit', function (e) {
     e.preventDefault(); go.disabled = true; msg.textContent = 'Making the sample...';
