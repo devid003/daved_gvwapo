@@ -1054,6 +1054,14 @@ def save_deny_reason(join_id: int, reason: str, dm: bool) -> None:
         row.reason, row.dm = reason or "", 1 if dm else 0
 
 
+def decided_joins(status: str, limit: int = 300) -> list:
+    """Join requests with this status (denied, banned...), newest decision first."""
+    with Session() as s:
+        q = (select(JoinRequest).where(JoinRequest.status == status)
+             .order_by(JoinRequest.decided_at.desc(), JoinRequest.id.desc()).limit(limit))
+        return list(s.scalars(q))
+
+
 def deny_reasons(ids) -> dict:
     """{join_id: {"text": reason, "dm": told them by DM}} for these join requests."""
     ids = list(ids)

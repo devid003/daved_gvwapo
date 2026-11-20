@@ -668,22 +668,63 @@ def _tag_groups(b, pending: list, our_ids: set) -> list:
     return [groups[k] for k in sorted(groups)]
 
 
-async def _security_lists(request) -> dict:
+async def _guild_names() -> dict:
     b = discord_bot.bot
     data = await run(db.overview)
     names = {}
     for s in data["servers"]:
         g = b.get_guild(s.guild_id) if b.is_ready() else None
         names[s.guild_id] = (g.name if g else s.name) or "Unnamed server"
+    return names
+
+
+async def _security_lists(request) -> dict:
+    b = discord_bot.bot
+    names = await _guild_names()
     pending = await run(db.list_joins, None, True, 200)
-    history = [j for j in await run(db.list_joins, None, False, 80) if j.status != "pending"][:50]
     codes = {j.id: await run(security.panel_status_sync, j.id) for j in pending}
     stats = await run(_join_stats)
     tag_groups = _tag_groups(b, pending, set(names))
-    reasons = await run(_deny_reasons_sync, [j.id for j in history if j.status == "denied"])
-    return {"csrf": csrf_token(request), "pending": pending, "history": history, "codes": codes, "reasons": reasons,
+    return {"csrf": csrf_token(request), "pending": pending, "codes": codes,
             "names": names, "multi": len(names) > 1, "tz": TZ_LABEL, "stats": stats,
             "tag_groups": tag_groups, "tag_count": sum(len(g["rows"]) for g in tag_groups if g["tag"])}
+
+
+async def _reason_page(request, status: str):
+    """Deny reasons / Ban reasons pages: everyone denied or banned, newest first, with the reason given."""
+    if not authed(request):
+        return redirect("/login")
+    names = await _guild_names()
+    rows = await run(db.decided_joins, status, 300)
+    ban = status == "banned"
+    return templates.TemplateResponse(request=request, name="reasons.html", context={
+        "rows": rows, "reasons": await run(_deny_reasons_sync, [j.id for j in rows]),
+        "names": names, "multi": len(names) > 1, "tz": TZ_LABEL,
+        "title": "Ban reasons" if ban else "Deny reasons",
+        "lead": ("Everyone you banned on the Security page, newest first, with the reason you gave." if ban
+                 else "Everyone you denied on the Security page, newest first, with the reason you gave."),
+        "when": "Banned" if ban else "Denied",
+        "empty": ("Nobody banned yet. When you press Ban on the Security page, they show up here." if ban else
+                  "Nobody denied yet. When you press Deny on the Security page, they show up here.")})
+
+
+async def denied_page(request):
+    return await _reason_page(request, "denied")
+
+
+async def banned_page(request):
+    return await _reason_page(request, "banned")
+
+
+async def joins_page(request):
+    """Recent joins: everyone who joined and what happened (its own page, out of Security)."""
+    if not authed(request):
+        return redirect("/login")
+    names = await _guild_names()
+    history = [j for j in await run(db.list_joins, None, False, 300) if j.status != "pending"][:200]
+    reasons = await run(_deny_reasons_sync, [j.id for j in history if j.status in ("denied", "banned")])
+    return templates.TemplateResponse(request=request, name="joins.html", context={
+        "history": history, "reasons": reasons, "names": names, "multi": len(names) > 1, "tz": TZ_LABEL})
 
 
 async def security_page_v2(request):
@@ -724,7 +765,6 @@ async def security_live(request):
     env = templates.env
     return JSONResponse({
         "pending_html": env.get_template("_sec_pending.html").render(**ctx),
-        "history_html": env.get_template("_sec_history.html").render(**ctx),
         "pending_count": len(ctx["pending"]),
         "stats_html": env.get_template("_sec_stats.html").render(**ctx),
     }, headers={"Cache-Control": "no-store"})
@@ -2958,6 +2998,9 @@ app = Starlette(
         Route("/videos/imagine", imagine_settings_save, methods=["POST"]),
         Route("/watch/ping", watch_ping_1dev, methods=["POST"]),
         Route("/viewers", viewers_page),
+        Route("/denied", denied_page),
+        Route("/banned", banned_page),
+        Route("/joins", joins_page),
         Route("/api/viewers/live", viewers_live),
         Route("/videos", videos_page),
         Route("/videos/add", video_add_and_announce, methods=["POST"]),

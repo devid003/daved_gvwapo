@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Recent joins{% endblock %}
+{% block head %}{% include "_reason_style.html" %}{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Recent joins</h1><p>Everyone who joined, and what happened, newest first. People still waiting are on the Security page.</p></div>
+</div>
+
+<section class="panel">
+  {% include "_sec_history.html" %}
+</section>
+{% endblock %}

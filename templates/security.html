@@ -32,13 +32,6 @@
 .dlg .chk input{margin:2px 0 0;width:16px;height:16px;flex:none}
 .dlg .act{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:4px}
 .dlg textarea{min-height:110px;max-height:55vh}
-.rsn-box{margin-top:5px;max-width:300px;white-space:pre-line;overflow-wrap:anywhere}
-.rsn summary{cursor:pointer;list-style:none}
-.rsn summary::-webkit-details-marker{display:none}
-.rsn .more::after{content:"Show all";color:var(--accent);font-weight:600;white-space:nowrap}
-.rsn[open] .more::after{content:"Show less"}
-.rsn[open] .pv{display:none}
-.rsn .full{margin-top:4px;max-height:320px;overflow-y:auto}
 .btn.bad.fill{background:var(--bad);border-color:var(--bad);color:var(--surface)}
 .btn.bad.fill:hover{background:color-mix(in srgb,var(--bad) 88%,var(--ink))}
 </style>
@@ -152,24 +145,19 @@
 <section class="panel">
   <div class="panel-head">
     <div><h2>Waiting for approval <span class="badge pending" id="pending-count" style="margin-left:6px{{ ';display:none' if not pending }}">{{ pending|length }}</span></h2>
-      <p>Approve by typing their code above. Deny removes them, and you can tell them why. Ban removes them and blocks them from coming back.</p></div>
+      <p>Approve by typing their code above. Deny removes them. Ban removes them and blocks them from coming back. Both ask for a reason, and you'll find it later under Deny reasons or Ban reasons.</p></div>
     <span class="live-pill" id="live-pill"><span class="dot on"></span>Live <span class="muted" id="live-age">just now</span></span>
   </div>
   <div id="pending-wrap">{% include "_sec_pending.html" %}</div>
-</section>
-
-<section class="panel">
-  <div class="panel-head"><div><h2>Recent joins</h2><p>Everyone who joined, and what happened.</p></div></div>
-  <div id="history-wrap">{% include "_sec_history.html" %}</div>
 </section>
 
 <div id="deny-dlg" class="dlg-wrap" hidden>
  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="deny-title">
   <form method="post" action="/security/decide">
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" id="deny-id" value="">
-    <input type="hidden" name="action" value="deny">
-    <h2 id="deny-title">Deny <span id="deny-name"></span>?</h2>
-    <p>They'll be removed from the server. They can still join again later.</p>
+    <input type="hidden" name="action" id="deny-act" value="deny">
+    <h2 id="deny-title"><span id="deny-verb">Deny</span> <span id="deny-name"></span>?</h2>
+    <p id="deny-what">They'll be removed from the server. They can still join again later.</p>
     <label class="lbl" for="deny-reason">Reason <span id="deny-left"></span></label>
     <textarea id="deny-reason" name="reason" placeholder="Why aren't you approving them?"></textarea>
     <div class="quick" aria-label="Quick reasons">
@@ -202,13 +190,6 @@
       })
       .then(function (j) {
         $('pending-wrap').innerHTML = j.pending_html;
-        var opened = [], ds = $('history-wrap').querySelectorAll('details[open][data-id]');   // keep "Show all" open
-        for (var k = 0; k < ds.length; k++) opened.push(ds[k].getAttribute('data-id'));
-        $('history-wrap').innerHTML = j.history_html;
-        for (k = 0; k < opened.length; k++) {
-          var o = $('history-wrap').querySelector('details[data-id="' + opened[k] + '"]');
-          if (o) o.open = true;
-        }
         if (j.stats_html) $('stats-wrap').innerHTML = j.stats_html;
         var c = $('pending-count');
         c.textContent = j.pending_count; c.style.display = j.pending_count ? '' : 'none';
@@ -223,7 +204,7 @@
   setInterval(function () { if (!document.hidden) refresh(); }, 10000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
 })();
-(function () {   // Deny opens a box for the reason (deny-box v2)
+(function () {   // Deny and Ban open a box for the reason (deny-box v3)
   var box = document.getElementById('deny-dlg');
   if (!box) return;
   document.body.appendChild(box);                    // on top of everything, whatever the page layout
@@ -233,16 +214,23 @@
     var n = t.value.length, m = Math.ceil(n / PART);
     left.textContent = !n ? '' : n.toLocaleString() + ' characters' + (m > 1 ? ', sent in ' + m + ' messages' : '');
   }
-  function denyForm(el) {                            // the Deny form a click landed in, if any
+  function denyForm(el) {                            // the Deny or Ban form a click landed in, if any
     while (el && el !== document) {
-      if (el.tagName === 'FORM') return el.getAttribute('data-deny') ? el : null;
+      if (el.tagName === 'FORM') return el.getAttribute('data-decide') ? el : null;
       el = el.parentNode;
     }
     return null;
   }
   function open(f, btn) {
-    document.getElementById('deny-id').value = f.getAttribute('data-deny');
+    var ban = f.getAttribute('data-act') === 'ban';
+    document.getElementById('deny-id').value = f.getAttribute('data-decide');
+    document.getElementById('deny-act').value = ban ? 'ban' : 'deny';
+    document.getElementById('deny-verb').textContent = ban ? 'Ban' : 'Deny';
     document.getElementById('deny-name').textContent = f.getAttribute('data-name') || 'this member';
+    document.getElementById('deny-what').textContent = ban
+      ? "They'll be removed from the server and won't be able to join again."
+      : "They'll be removed from the server. They can still join again later.";
+    go.textContent = ban ? 'Ban' : 'Deny and remove';
     go.disabled = false; t.value = ''; count(); back = btn;
     box.hidden = false; box.style.display = 'flex';
     document.documentElement.style.overflow = 'hidden';
@@ -261,9 +249,9 @@
     e.preventDefault(); e.stopPropagation();
     open(f, b);
   }, true);
-  document.addEventListener('submit', function (e) { // any other way a Deny form gets sent
+  document.addEventListener('submit', function (e) { // any other way a Deny or Ban form gets sent
     var f = e.target;
-    if (f && f.getAttribute && f.getAttribute('data-deny')) { e.preventDefault(); open(f, null); }
+    if (f && f.getAttribute && f.getAttribute('data-decide')) { e.preventDefault(); open(f, null); }
   }, true);
   t.addEventListener('input', count);
   var quick = box.querySelectorAll('[data-r]');

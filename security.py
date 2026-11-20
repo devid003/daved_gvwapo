@@ -710,10 +710,13 @@ def _reason_embeds(head: str, reason: str, title: str = "") -> list:
     return embeds
 
 
-async def send_denied(guild: discord.Guild, member: discord.Member, reason: str) -> bool:
+async def send_denied(guild: discord.Guild, member: discord.Member, reason: str, banned: bool = False) -> bool:
     """Tell the member they weren't approved and why, before they're removed. Fails quietly if their DMs are closed."""
-    head = f"Your request to join **{guild.name}** was not approved, so you've been removed from the server."
-    embeds = _reason_embeds(head, reason, "\U0001f6ab Not approved")
+    if banned:
+        head = f"Your request to join **{guild.name}** was not approved, and you've been banned from the server."
+    else:
+        head = f"Your request to join **{guild.name}** was not approved, so you've been removed from the server."
+    embeds = _reason_embeds(head, reason, "\u26d4 Banned" if banned else "\U0001f6ab Not approved")
     if guild.icon:
         embeds[0].set_thumbnail(url=guild.icon.url)
     embeds[-1].set_footer(text=f"{guild.name} \u2022 Member verification")
@@ -794,12 +797,26 @@ async def decide(join_id: int, action: str, reason: str = "", dm: bool = False) 
             return f"\U0001f6ab {name} denied and removed from the server.{told}"
 
         if action == "ban":
-            await guild.ban(discord.Object(id=req.user_id), reason="Join gate: banned in panel",
-                            delete_message_seconds=0)
+            reason = (reason or "").strip()
+            sent = False
+            if member is not None and dm:
+                me = guild.me                     # check first, so they never get a DM and then stay
+                if not (me and me.guild_permissions.ban_members and me.top_role > member.top_role):
+                    return NO_PERMISSION
+                sent = await send_denied(guild, member, reason, banned=True)   # before: banned people can't get DMs
+            audit = "Join gate: banned in panel" + (": " + " ".join(reason.split()) if reason else "")
+            await guild.ban(discord.Object(id=req.user_id), reason=audit[:500], delete_message_seconds=0)
             await run(db.set_setting, _held_key(guild.id, req.user_id), "")
             await run(db.set_join_status, join_id, "banned")
-            await notify(guild, discord.Embed(description=f"\u26d4 **{name}** was banned.", color=0xB42318))
-            return f"\u26d4 {name} banned."
+            if reason or sent:
+                await run(db.save_deny_reason, join_id, reason, sent)
+            for e in _reason_embeds(f"\u26d4 **{name}** was banned.", reason):
+                await notify(guild, e)
+            told = ""
+            if dm and member is not None:
+                told = (" They got the reason by DM." if sent and reason else " They got a DM." if sent
+                        else " Their DMs are closed, so they didn't get the message.")
+            return f"\u26d4 {name} banned.{told}"
     except discord.Forbidden:
         return NO_PERMISSION
     except discord.HTTPException as e:

@@ -1,0 +1,12 @@
+<style>
+.mem{display:flex;align-items:center;gap:10px}
+.mem img,.mem .ph{width:32px;height:32px;border-radius:50%;flex:none;background:var(--sunk);object-fit:cover}
+.rcell{min-width:240px;max-width:620px;white-space:pre-line;overflow-wrap:anywhere;line-height:1.5}
+.rsn-box{margin-top:5px;max-width:300px;white-space:pre-line;overflow-wrap:anywhere}
+.rsn summary{cursor:pointer;list-style:none}
+.rsn summary::-webkit-details-marker{display:none}
+.rsn .more::after{content:"Show all";color:var(--accent);font-weight:600;white-space:nowrap}
+.rsn[open] .more::after{content:"Show less"}
+.rsn[open] .pv{display:none}
+.rsn .full{margin-top:4px;max-height:360px;overflow-y:auto}
+</style>
