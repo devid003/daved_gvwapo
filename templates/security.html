@@ -15,8 +15,9 @@
 .live-pill.stale .dot{background:var(--warn);box-shadow:none}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .live-pill .dot{animation:pulse 2s ease-in-out infinite}
-dialog.dlg{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--ink);padding:0;width:min(480px,calc(100vw - 32px));box-shadow:0 18px 48px rgba(0,0,0,.28)}
-dialog.dlg::backdrop{background:rgba(10,14,20,.55)}
+.dlg-wrap{position:fixed;top:0;right:0;bottom:0;left:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(10,14,20,.55);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.dlg-wrap[hidden]{display:none!important}
+.dlg{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--ink);width:100%;max-width:480px;margin:auto;box-shadow:0 18px 48px rgba(0,0,0,.28)}
 .dlg form{padding:20px 22px 18px;display:grid;gap:12px}
 .dlg h2{margin:0;font-size:18px;overflow-wrap:anywhere}
 .dlg p{margin:-6px 0 0;color:var(--muted);font-size:13.5px}
@@ -154,7 +155,8 @@ dialog.dlg::backdrop{background:rgba(10,14,20,.55)}
   <div id="history-wrap">{% include "_sec_history.html" %}</div>
 </section>
 
-<dialog id="deny-dlg" class="dlg" aria-labelledby="deny-title">
+<div id="deny-dlg" class="dlg-wrap" hidden>
+ <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="deny-title">
   <form method="post" action="/security/decide">
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" id="deny-id" value="">
     <input type="hidden" name="action" value="deny">
@@ -168,7 +170,8 @@ dialog.dlg::backdrop{background:rgba(10,14,20,.55)}
     <label class="chk"><input type="checkbox" name="dm" value="1" checked> Send this to them by DM before removing them</label>
     <div class="act"><button type="button" class="btn" id="deny-cancel">Cancel</button><button class="btn bad fill" id="deny-go">Deny and remove</button></div>
   </form>
-</dialog>
+ </div>
+</div>
 
 <script>
 (function () {
@@ -206,31 +209,59 @@ dialog.dlg::backdrop{background:rgba(10,14,20,.55)}
   setInterval(function () { if (!document.hidden) refresh(); }, 10000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
 })();
-(function () {   // Deny opens a box for the reason
-  var d = document.getElementById('deny-dlg');
-  if (!d || typeof d.showModal !== 'function') return;   // very old browser: Deny works without a reason
-  var t = document.getElementById('deny-reason'), left = document.getElementById('deny-left'), MAX = 400;
+(function () {   // Deny opens a box for the reason (deny-box v2)
+  var box = document.getElementById('deny-dlg');
+  if (!box) return;
+  document.body.appendChild(box);                    // on top of everything, whatever the page layout
+  var t = document.getElementById('deny-reason'), left = document.getElementById('deny-left');
+  var go = document.getElementById('deny-go'), MAX = 400, back = null;
   function count() { left.textContent = (MAX - t.value.length) + ' left'; }
-  document.addEventListener('submit', function (e) {
-    var f = e.target;
-    if (!f.getAttribute || !f.hasAttribute('data-deny')) return;
-    e.preventDefault();
+  function denyForm(el) {                            // the Deny form a click landed in, if any
+    while (el && el !== document) {
+      if (el.tagName === 'FORM') return el.getAttribute('data-deny') ? el : null;
+      el = el.parentNode;
+    }
+    return null;
+  }
+  function open(f, btn) {
     document.getElementById('deny-id').value = f.getAttribute('data-deny');
     document.getElementById('deny-name').textContent = f.getAttribute('data-name') || 'this member';
-    document.getElementById('deny-go').disabled = false;
-    t.value = ''; count();
-    d.showModal(); t.focus();
-  });
+    go.disabled = false; t.value = ''; count(); back = btn;
+    box.hidden = false; box.style.display = 'flex';
+    document.documentElement.style.overflow = 'hidden';
+    try { t.focus(); } catch (x) {}
+  }
+  function close() {
+    box.hidden = true; box.style.display = 'none';
+    document.documentElement.style.overflow = '';
+    try { if (back) back.focus(); } catch (x) {}
+  }
+  document.addEventListener('click', function (e) {  // catch the click before the form can send
+    var f = denyForm(e.target);
+    if (!f) return;
+    var b = e.target; while (b && b.tagName !== 'BUTTON' && b !== f) b = b.parentNode;
+    if (!b || b.tagName !== 'BUTTON') return;
+    e.preventDefault(); e.stopPropagation();
+    open(f, b);
+  }, true);
+  document.addEventListener('submit', function (e) { // any other way a Deny form gets sent
+    var f = e.target;
+    if (f && f.getAttribute && f.getAttribute('data-deny')) { e.preventDefault(); open(f, null); }
+  }, true);
   t.addEventListener('input', count);
-  Array.prototype.forEach.call(d.querySelectorAll('[data-r]'), function (b) {
-    b.addEventListener('click', function () {
-      var r = b.getAttribute('data-r'), v = t.value.replace(/[\s.;,]+$/, '');
+  var quick = box.querySelectorAll('[data-r]');
+  for (var i = 0; i < quick.length; i++) {
+    quick[i].addEventListener('click', function () {
+      var r = this.getAttribute('data-r'), v = t.value.replace(/[\s.;,]+$/, '');
       t.value = (v ? v + '. ' + r : r).slice(0, MAX); count(); t.focus();
     });
+  }
+  document.getElementById('deny-cancel').addEventListener('click', close);
+  box.addEventListener('mousedown', function (e) { if (e.target === box) close(); });   // press outside closes
+  document.addEventListener('keydown', function (e) {
+    if (!box.hidden && (e.key === 'Escape' || e.keyCode === 27)) close();
   });
-  document.getElementById('deny-cancel').addEventListener('click', function () { d.close(); });
-  d.addEventListener('click', function (e) { if (e.target === d) d.close(); });   // click outside closes
-  d.querySelector('form').addEventListener('submit', function () { document.getElementById('deny-go').disabled = true; });
+  box.querySelector('form').addEventListener('submit', function () { go.disabled = true; });
 })();
 </script>
 {% endblock %}
