@@ -155,8 +155,9 @@ a{color:inherit}
 .fb-msg:empty{display:none}
 /* ---------- tabs: Lessons / Create images ---------- */
 .views{border-bottom:1px solid var(--line);background:var(--bg)}
-.views-in{max-width:1320px;margin:0 auto;padding:0 22px;display:flex;gap:6px}
-.vt{position:relative;height:48px;padding:0 14px;border:0;background:transparent;cursor:pointer;display:inline-flex;align-items:center;gap:8px;
+.views-in{max-width:1320px;margin:0 auto;padding:0 22px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.views-in::-webkit-scrollbar{display:none}
+.vt{position:relative;flex:0 0 auto;white-space:nowrap;height:48px;padding:0 14px;border:0;background:transparent;cursor:pointer;display:inline-flex;align-items:center;gap:8px;
   font-weight:600;font-size:14.5px;color:var(--muted)}
 .vt:hover{color:var(--ink)}
 .vt[aria-selected="true"]{color:var(--ink)}
@@ -224,8 +225,71 @@ a.btn{text-decoration:none}
   .stagebox{padding:14px;min-height:0}
   .canvas.tall{height:auto;width:min(100%,420px)}
 }
-@media (max-width:520px){.views-in{padding:0 8px}.vt{padding:0 12px}.gen-act .btn{flex:1;justify-content:center}.gen-act .info{flex-basis:100%;margin:0;text-align:center}}
+@media (max-width:520px){.views-in{padding:0 8px;gap:2px}.vt{padding:0 9px;gap:6px;font-size:14px}.gen-act .btn{flex:1;justify-content:center}.gen-act .info{flex-basis:100%;margin:0;text-align:center}}
 @media (prefers-reduced-motion:reduce){.busy,.spin{animation:none}}
+
+/* ---------- auto edit ---------- */
+.ae{display:none}
+.v-auto .ae{display:block}
+.v-auto .page{display:none}
+.ae [hidden]{display:none!important}
+.ae textarea,.ae select{width:100%;border-radius:12px;border:1px solid var(--line2);background:var(--bg);color:var(--ink);font:inherit;font-size:15px;outline:none}
+.ae textarea{min-height:96px;resize:vertical;padding:12px 13px;line-height:1.5;-webkit-user-select:text;user-select:text;margin:0 0 4px}
+.ae select{height:46px;padding:0 12px;margin:0 0 16px}
+.ae textarea:focus,.ae select:focus{border-color:var(--brand)}
+.ae textarea::placeholder{color:var(--faint)}
+.ae .opt{font-weight:500;color:var(--faint)}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.seg label{position:relative}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg span{display:flex;align-items:center;justify-content:center;height:44px;border:1px solid var(--line2);border-radius:12px;cursor:pointer;font-weight:600}
+.seg span:hover{background:var(--raise)}
+.seg input:checked+span{border-color:var(--brand2);background:rgba(88,101,242,.12)}
+.seg input:focus-visible+span{outline:2px solid #fff;outline-offset:2px}
+.ae-len{border:0;margin:0 0 18px;padding:0}
+.ae-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ae-two label{display:block}
+.ae-more{margin:14px 0 18px;border:1px solid var(--line);border-radius:12px;padding:0 14px}
+.ae-more summary{cursor:pointer;font-weight:600;font-size:14px;color:var(--soft);padding:12px 0}
+.ae-more[open]{padding-bottom:14px}
+.ae-more input[type=file]{width:100%;font-size:13.5px;color:var(--muted)}
+.ae-cliplist{margin:6px 0 0;color:var(--faint);font-size:12.5px}
+.ae-cliplist:empty{display:none}
+.ae-card,.ae-empty{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px}
+.ae-empty h2{margin:0 0 6px;font-size:19px;letter-spacing:-.01em}
+.ae-empty>p{margin:0 0 16px;color:var(--muted)}
+.ae-how{margin:0;padding:0;list-style:none;display:grid;gap:12px;counter-reset:s}
+.ae-how li{display:grid;grid-template-columns:30px 1fr;gap:12px;align-items:start;color:var(--soft);font-size:14.5px}
+.ae-how li::before{counter-increment:s;content:counter(s);width:30px;height:30px;border-radius:50%;background:var(--raise);border:1px solid var(--line2);display:grid;place-items:center;font-weight:700;font-size:13px;color:var(--ink)}
+.ae-how b{display:block;color:var(--ink)}
+.ae-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
+.ae-head b{display:block;font-size:18px;line-height:1.3}
+.ae-head span{display:block;color:var(--faint);font-size:13px;margin-top:2px}
+.ae-steps{list-style:none;margin:0 0 14px;padding:0;display:grid;gap:9px}
+.ae-steps li{display:flex;align-items:center;gap:10px;color:var(--faint);font-size:14.5px}
+.ae-steps li::before{content:"";flex:0 0 18px;height:18px;border-radius:50%;border:2px solid var(--line2);box-sizing:border-box}
+.ae-steps li.now{color:var(--ink);font-weight:600}
+.ae-steps li.now::before{border-color:var(--brand2);border-top-color:transparent;animation:rot .8s linear infinite}
+.ae-steps li.done{color:var(--soft)}
+.ae-steps li.done::before{background:var(--done);border-color:var(--done)}
+.ae-bar{height:8px;border-radius:99px;background:var(--raise);overflow:hidden}
+.ae-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brand),var(--brand2));border-radius:99px;transition:width .4s ease}
+.ae-note{margin:12px 0 0;color:var(--muted);font-size:14px}
+.ae-note:empty{display:none}
+.ae-result{margin-top:16px}
+.ae-result video{display:block;width:100%;max-height:70vh;background:#000;border-radius:12px}
+#ae-build,#ae-again{margin-top:14px}
+.ae-list{margin-top:18px}
+.ae-list ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.ae-item{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;text-align:left;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);cursor:pointer}
+.ae-item:hover,.ae-item.on{border-color:var(--line2);background:var(--raise)}
+.ae-item b{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ae-item span{grid-column:1;color:var(--faint);font-size:12.5px}
+.ae-item .st{grid-column:2;grid-row:1/3;align-self:center;font-style:normal;font-size:12.5px;font-weight:700;padding:3px 10px;border-radius:99px;background:var(--raise);color:var(--muted);white-space:nowrap}
+.ae-item .st.ok{background:rgba(60,207,122,.14);color:var(--done)}
+.ae-item .st.run{background:rgba(122,133,255,.16);color:var(--brand2)}
+@media (max-width:520px){.ae-two{grid-template-columns:1fr}.ae-card,.ae-empty{padding:16px}}
+@media (prefers-reduced-motion:reduce){.ae-steps li.now::before{animation:none}}
 
 @media (max-width:1020px){
   .page{grid-template-columns:1fr;padding:16px 14px 56px;gap:18px}
@@ -258,12 +322,15 @@ a.btn{text-decoration:none}
   <form method="post" action="/members/logout" style="margin:0"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="tbtn out">Log out</button></form>
 </div></header>
 {% set ig = imagine_member(username) if imagine_member is defined else {} %}
-{% if ig.show %}
+{% set ae = autoedit_member(username) if autoedit_member is defined else {} %}
+{% if ig.show or ae.show %}
 <nav class="views" aria-label="Sections"><div class="views-in" role="tablist">
   <button class="vt" type="button" role="tab" id="tab-lessons" aria-selected="true" aria-controls="lessons-view">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg>Lessons</button>
-  <button class="vt" type="button" role="tab" id="tab-create" aria-selected="false" aria-controls="gen">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>Create images</button>
+  {% if ig.show %}<button class="vt" type="button" role="tab" id="tab-create" aria-selected="false" aria-controls="gen">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>Create images</button>{% endif %}
+  {% if ae.show %}<button class="vt" type="button" role="tab" id="tab-auto" aria-selected="false" aria-controls="ae">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h11a3 3 0 0 1 3 3v7H7a3 3 0 0 1-3-3V7z"/><path d="M18 11l3-2v8l-3-2"/><path d="M8 3.5l.7 1.6 1.6.7-1.6.7L8 8.1l-.7-1.6-1.6-.7 1.6-.7z" fill="currentColor"/></svg>Auto edit</button>{% endif %}
 </div></nav>
 {% endif %}
 
@@ -373,6 +440,81 @@ a.btn{text-decoration:none}
 </section>
 {% endif %}
 
+{% if ae.show %}
+<section class="ae" id="ae" role="tabpanel" aria-labelledby="tab-auto" data-left="{{ ae.left }}" data-limit="{{ ae.limit }}" data-open="{{ '1' if ae.open else '0' }}" data-window="{{ ae.window }}">
+  <div class="gen-in">
+    <form class="gen-ctl" id="ae-form" autocomplete="off">
+      <h1>Auto edit</h1>
+      <p class="gen-sub">Pick a niche and the bot makes the whole video: story, voice, pictures, subtitles and music.</p>
+      <label class="gl" for="ae-niche">Niche</label>
+      <select id="ae-niche">{% for n in ae.niches %}<option value="{{ n.key }}">{{ n.label }}</option>{% endfor %}</select>
+      <fieldset class="ae-len"><legend class="gl">Length</legend>
+        <div class="seg">{% for m in ae.lengths %}<label><input type="radio" name="ae-min" value="{{ m }}"{{ ' checked' if loop.first }}><span>{{ m }} min</span></label>{% endfor %}</div>
+      </fieldset>
+      <fieldset class="ratio"><legend class="gl">Shape</legend>
+        <div class="ratio-row">
+          <label><input type="radio" name="ae-ratio" value="16:9" checked><span class="rc"><i class="rshape wide"></i><span><b>16:9</b><small>YouTube, Facebook</small></span></span></label>
+          <label><input type="radio" name="ae-ratio" value="9:16"><span class="rc"><i class="rshape tall"></i><span><b>9:16</b><small>Reels, TikTok, Shorts</small></span></span></label>
+        </div>
+      </fieldset>
+      <div class="ae-two">
+        <label><span class="gl">Language</span><select id="ae-lang">{% for l in ae.langs %}<option{{ ' selected' if l == 'English' }}>{{ l }}</option>{% endfor %}</select></label>
+        <label><span class="gl">Voice</span><select id="ae-voice">{% for v, label in ae.voices %}<option value="{{ v }}">{{ label }}</option>{% endfor %}</select></label>
+      </div>
+      <label class="gl" for="ae-concept">What happens? <span class="opt">optional</span></label>
+      <textarea id="ae-concept" maxlength="3000" rows="4" placeholder="Leave it empty and the bot comes up with the story. Or write the idea: who it's about, what happens, how it ends."></textarea>
+      <details class="ae-more">
+        <summary>Use my own script or clips</summary>
+        <label class="gl" for="ae-script">My own script <span class="opt">optional, read word for word</span></label>
+        <textarea id="ae-script" rows="6" maxlength="20000" placeholder="Paste the narration here. The bot makes the voice and pictures for it."></textarea>
+        <label class="gl" for="ae-clips" style="margin-top:12px">My own clips <span class="opt">up to 3, they stay on your device</span></label>
+        <input type="file" id="ae-clips" accept="video/*" multiple>
+        <p class="ae-cliplist" id="ae-cliplist"></p>
+      </details>
+      <button class="btn go gen-go" id="ae-go" type="submit">Make my video</button>
+      <p class="gen-left" id="ae-left"></p>
+      <p class="gen-msg" id="ae-msg" role="alert"></p>
+    </form>
+    <div class="gen-out">
+      <div class="ae-empty" id="ae-empty">
+        <h2>Your video shows up here</h2>
+        <p>It takes a few minutes. You can leave this tab open and do something else.</p>
+        <ol class="ae-how">
+          <li><span><b>The bot writes the story</b>From your concept, your script, or its own idea for the niche.</span></li>
+          <li><span><b>It records the voice and makes the pictures</b>One picture for every part of the story, plus background music.</span></li>
+          <li><span><b>Your browser puts it together</b>Subtitles and motion are added, then you download the MP4. Works best in Chrome or Edge on a computer.</span></li>
+        </ol>
+      </div>
+      <div class="ae-card" id="ae-card" hidden aria-live="polite">
+        <div class="ae-head"><div><b id="ae-title">Your video</b><span id="ae-meta"></span></div>
+          <button class="btn" type="button" id="ae-cancel">Cancel</button></div>
+        <ol class="ae-steps" id="ae-steps">
+          <li data-s="writing">Writing the story</li>
+          <li data-s="voicing">Recording the voice</li>
+          <li data-s="drawing">Making the pictures</li>
+          <li data-s="music">Making the music</li>
+          <li data-s="build">Putting the video together</li>
+        </ol>
+        <div class="ae-bar"><i id="ae-bar"></i></div>
+        <p class="ae-note" id="ae-note"></p>
+        <button class="btn go" type="button" id="ae-build" hidden>Put the video together</button>
+        <button class="btn" type="button" id="ae-again" hidden>Make it again</button>
+        <div class="ae-result" id="ae-result" hidden>
+          <video id="ae-video" controls playsinline></video>
+          <div class="gen-act">
+            <a class="btn go" id="ae-dl" href="#" download="video.mp4">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>Download MP4</a>
+            <button class="btn" type="button" id="ae-new">Make another</button>
+          </div>
+        </div>
+      </div>
+      <div class="ae-list" id="ae-list-wrap" hidden><p class="gl">Your videos</p><ul id="ae-list"></ul></div>
+    </div>
+  </div>
+</section>
+<script src="/static/autoedit.js" defer></script>
+{% endif %}
+
 <div id="res" class="">
   <div class="veil" id="veil"></div>
   <section class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="res-h" aria-hidden="true">
@@ -448,7 +590,7 @@ a.btn{text-decoration:none}
     timer=setTimeout(function(){seen[vid]=1;store('watched',JSON.stringify(Object.keys(seen)));paintProgress();},30000);
   }
   function ping(){
-    var vid=btn(cur).getAttribute('data-vid'); if(document.hidden||document.body.classList.contains('v-create'))return;
+    var vid=btn(cur).getAttribute('data-vid'); if(document.hidden||/\bv-(create|auto)\b/.test(document.body.className))return;
     var f=new FormData(); f.append('csrf',csrf); f.append('vid',vid);
     fetch('/watch/ping',{method:'POST',body:f,credentials:'same-origin',cache:'no-store'})
       .then(function(r){if(r.status===401)location.href='/members/login';}).catch(function(){});
@@ -521,22 +663,31 @@ a.btn{text-decoration:none}
 </script>
 <script>
 (function(){
+  var tabs=[].slice.call(document.querySelectorAll('.views .vt')); if(!tabs.length)return;
+  var body=document.body, vid=document.getElementById('vid'), vidSrc='', names={'tab-lessons':'','tab-create':'create','tab-auto':'auto'};
+  function view(name,push){
+    body.classList.toggle('v-create',name==='create'); body.classList.toggle('v-auto',name==='auto');
+    tabs.forEach(function(t){t.setAttribute('aria-selected',String(names[t.id]===name));});
+    if(vid){ if(name){ if(vid.getAttribute('src')){vidSrc=vid.getAttribute('src');vid.removeAttribute('src');} }
+             else if(vidSrc&&!vid.getAttribute('src')){vid.setAttribute('src',vidSrc);} }
+    if(push!==false){try{history.replaceState(null,'',name?'#'+name:location.pathname+location.search);}catch(e){}}
+    window.scrollTo(0,0);
+    try{document.dispatchEvent(new CustomEvent('viewchange',{detail:name}));}catch(e){}
+  }
+  tabs.forEach(function(t,i){
+    t.addEventListener('click',function(){view(names[t.id]);});
+    t.addEventListener('keydown',function(e){if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();
+      var o=tabs[(i+(e.key==='ArrowRight'?1:tabs.length-1))%tabs.length];o.focus();o.click();}});
+  });
+  function fromHash(){var h=location.hash.slice(1);return (h==='create'&&document.getElementById('gen'))||(h==='auto'&&document.getElementById('ae'))?h:'';}
+  if(fromHash())view(fromHash(),false);
+  window.addEventListener('hashchange',function(){view(fromHash(),false);});
+})();
+</script>
+<script>
+(function(){
   var $=function(id){return document.getElementById(id);};
   var gen=$('gen'); if(!gen)return;
-  var body=document.body, tabL=$('tab-lessons'), tabC=$('tab-create'), vid=$('vid'), vidSrc='';
-  function view(create,push){
-    body.classList.toggle('v-create',create);
-    tabL.setAttribute('aria-selected',String(!create)); tabC.setAttribute('aria-selected',String(create));
-    if(vid){ if(create){ if(vid.getAttribute('src')){vidSrc=vid.getAttribute('src');vid.removeAttribute('src');} }
-             else if(vidSrc&&!vid.getAttribute('src')){vid.setAttribute('src',vidSrc);} }
-    if(push!==false){try{history.replaceState(null,'',create?'#create':location.pathname+location.search);}catch(e){}}
-    window.scrollTo(0,0);
-  }
-  tabL.addEventListener('click',function(){view(false);});
-  tabC.addEventListener('click',function(){view(true);});
-  [tabL,tabC].forEach(function(t){t.addEventListener('keydown',function(e){if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();var o=t===tabL?tabC:tabL;o.focus();o.click();}});});
-  if(location.hash==='#create')view(true,false);
-  window.addEventListener('hashchange',function(){view(location.hash==='#create',false);});
 
   var form=$('gen-form'), ta=$('gen-prompt'), go=$('gen-go'), msg=$('gen-msg'), canvas=$('gen-canvas'), img=$('gen-img'),
       ph=$('gen-ph'), busy=$('gen-busy'), act=$('gen-act'), dl=$('gen-dl'), left=$('gen-left'), thumbs=$('gen-thumbs');

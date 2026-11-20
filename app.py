@@ -34,6 +34,7 @@ import security  # noqa: E402  (join gate: new members need approval)
 import prompt_commands  # noqa: E402,F401  (adds /ghibli, /cooking, ... commands)
 import prompts as promptlib  # noqa: E402
 import daily_word  # noqa: E402  (motivation + Bible verse at 6 AM, 3 PM, 10 PM)
+import autoedit  # noqa: E402  (Auto edit: whole videos from a niche, for members the owner picks)
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 if not ADMIN_PASSWORD:
@@ -937,7 +938,7 @@ class AdminPath:
 
 class SecurityHeaders:
     """Browser security headers on every response: no framing, no sniffing, strict CSP."""
-    CSP = ("default-src 'self'; img-src 'self' data: https://cdn.discordapp.com; "
+    CSP = ("default-src 'self'; img-src 'self' data: https://cdn.discordapp.com; media-src 'self' blob:; "
            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
            "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src https://drive.google.com; frame-ancestors 'none'; "
            "base-uri 'none'; form-action 'self'; object-src 'none'")
@@ -2780,6 +2781,7 @@ def imagine_admin() -> dict:
 
 templates.env.globals["imagine_member"] = imagine_member
 templates.env.globals["imagine_admin"] = imagine_admin
+templates.env.globals["autoedit_member"] = autoedit.member_info
 
 
 def _img_finish(data: bytes, ratio: str) -> tuple:
@@ -3044,6 +3046,7 @@ app = Starlette(
         Route("/watch/feedback", watch_feedback, methods=["GET", "POST"]),
         Route("/viewers/feedback/delete", feedback_delete, methods=["POST"]),
         Route("/watch/imagine", watch_imagine, methods=["POST"]),
+        *autoedit.routes(),
         Route("/videos/imagine", imagine_settings_save, methods=["POST"]),
         Route("/watch/ping", watch_ping_1dev, methods=["POST"]),
         Route("/viewers", viewers_page),
