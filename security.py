@@ -355,10 +355,10 @@ async def check_register_device(token: str, cookie_id: str, fp: dict, ip: str, u
     key = "r:" + token
     _TOKEN_TRIES[key] = _TOKEN_TRIES.get(key, 0) + 1
     if _TOKEN_TRIES[key] > 10:
-        return {"ok": False, "msg": "Too many tries. Run /register again in Discord for a new link."}
+        return {"ok": False, "msg": "Too many tries. Tap Get prompt access in Discord again for a new link."}
     reg = await run(reg_for_token_sync, token)
     if reg is None:
-        return {"ok": False, "msg": "This link has expired or was already used. Run /register again in Discord."}
+        return {"ok": False, "msg": "This link has expired or was already used. Tap Get prompt access in Discord again."}
     keys = ("platform", "tz", "langs", "screen", "depth", "ratio", "cores", "mem", "touch", "canvas", "gpu")
     fp_h = _h("|".join(str(fp.get(k, ""))[:300] for k in keys))
     cookie_h, ip_h = _h(cookie_id or ""), _h(ip or "")
@@ -388,7 +388,7 @@ async def check_register_device(token: str, cookie_id: str, fp: dict, ip: str, u
     await set_member_number_nick(reg.guild_id, reg.user_id, base, reg.number)
     if guild is not None:
         e = discord.Embed(title="Prompt access approved", color=0x2E7D32,
-                          description=f"**{base} ID{reg.number:04d}** verified their device and can now use /prompt.")
+                          description=f"**{base} ID{reg.number:04d}** verified their device and can now get prompts.")
         await notify(guild, e)
     return {"ok": True, "name": f"{base} ID{reg.number:04d}"}
 

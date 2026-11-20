@@ -81,19 +81,19 @@ async def _register_reply(gid: int, user) -> dict:
     reg, created = await run(db.register_user, gid, user.id, str(user))
     num = f"ID{reg.number:04d}"
     if reg.status == "approved":
-        return {"content": f"You already have prompt access as **{user} {num}**. Use /prompt."}
+        return {"content": f"You already have prompt access as **{user} {num}**. Tap a niche on the prompt panel."}
     if reg.status == "denied":
         return {"content": "Your prompt access was declined. Contact the server owner."}
     if user.id in OWNER_IDS:
         await run(db.set_registration_status, reg.id, "approved")
         return {"content": f"You're the owner, so you're approved as **{user} {num}**."}
     if not security.PUBLIC_URL:
-        return {"content": f"Registered for **prompts** as **{user} {num}**. The owner will approve you, then you can use /prompt."}
+        return {"content": f"Registered for **prompts** as **{user} {num}**. The owner will approve you, then you can get prompts from the prompt panel."}
     tok = await run(security.new_register_token_sync, reg.id)
     e = discord.Embed(
         title="Tap to verify",
         description=(f"You're **{user} {num}**. Tap the button, check your device once, and you can use "
-                     "/prompt right away.\n\nThe link works for 24 hours and only for you. Don't share it."),
+                     "get prompts right away.\n\nThe link works for 24 hours and only for you. Don't share it."),
         color=0x2747C7)
     return {"embed": e, "view": _tap_view("Tap to verify", f"{security.PUBLIC_URL}/v/r/{tok}")}
 
@@ -179,6 +179,9 @@ async def on_interaction(interaction: discord.Interaction):
     if interaction.type != discord.InteractionType.component:
         return
     cid = str((interaction.data or {}).get("custom_id", ""))
+    if cid.startswith("synp:"):
+        await _prompt_button(interaction, cid[5:])
+        return
     if not cid.startswith("syn:") or cid[4:] not in PANEL_BUTTONS:
         return
     if interaction.guild_id is None or interaction.guild_id not in await run(db.allowed_guild_ids):
@@ -236,3 +239,82 @@ async def _niche_autocomplete(interaction: discord.Interaction, current: str):
         if len(out) >= 25:
             break
     return out
+
+
+# ---------- prompt panel: one button per niche, no slash command needed ----------
+MAX_NICHE_BUTTONS = 24          # Discord allows 25 buttons per message; the last one is "Get prompt access"
+
+
+def _access_view() -> discord.ui.View:
+    v = discord.ui.View(timeout=None)
+    v.add_item(discord.ui.Button(label="Get prompt access", style=discord.ButtonStyle.secondary, custom_id="syn:register"))
+    return v
+
+
+def prompt_panel_message(niches: list) -> tuple:
+    """The embed and buttons for the prompt panel. niches: active niches, in order."""
+    shown = niches[:MAX_NICHE_BUTTONS]
+    if shown:
+        text = "Tap a niche to get a random prompt. Only you can see it."
+    else:
+        text = "No niches yet. They show up here as soon as the owner adds them."
+    e = discord.Embed(title="Get a prompt", description=text + "\n\nNo access yet? Tap **Get prompt access** first.",
+                      color=0x2747C7)
+    v = discord.ui.View(timeout=None)
+    for n in shown:
+        v.add_item(discord.ui.Button(label=(f"{n.emoji} {n.label}".strip() or n.key)[:80],
+                                     style=discord.ButtonStyle.primary, custom_id=f"synp:{n.key}"[:100]))
+    row = (len(shown) + 4) // 5
+    v.add_item(discord.ui.Button(label="Get prompt access", style=discord.ButtonStyle.secondary,
+                                 custom_id="syn:register", row=row if row <= 4 else None))
+    return e, v
+
+
+async def _prompt_reply(gid: int, user, niche_key: str) -> dict:
+    """What a niche button answers (only the member who tapped sees it)."""
+    if user.id not in OWNER_IDS:
+        status = await run(db.member_status, user.id)
+        if status == "denied":
+            return {"content": "Your access to this bot was declined by the owner."}
+        if status != "approved":
+            await run(db.request_access, user.id, str(user), gid)
+            return {"content": "Your access is waiting for the owner's approval. Try again once you're approved."}
+        reg = await run(db.get_registration, gid, user.id)
+        if reg is None:
+            return {"content": "You don't have prompt access yet. Tap **Get prompt access** below, then try again.",
+                    "view": _access_view()}
+        if reg.status == "pending":
+            return {"content": f"Your prompt access (ID{reg.number:04d}) is still waiting. Tap **Get prompt access** "
+                               "to finish the device check.", "view": _access_view()}
+        if reg.status != "approved":
+            return {"content": "Your prompt access was declined. Contact the server owner."}
+    n = await run(db.get_niche, niche_key)
+    if n is None or not n.active:
+        return {"content": "That niche isn't available anymore."}
+    p = await run(db.random_prompt, niche_key)
+    if p is None:
+        return {"content": f"No **{n.label}** prompts yet. Check back soon."}
+    rows = await run(db.list_prompts, niche_key, True)
+    index = next((i + 1 for i, r in enumerate(rows) if r.id == p.id), 0)
+    data = await run(render_txt, niche_key, p.text, index, len(rows), n.label)
+    await run(db.log_prompt_use, gid, user.id, niche_key)
+    return {"content": f"Here's a **{n.label}** prompt:",
+            "file": discord.File(io.BytesIO(data), filename=f"{niche_key}-prompt.txt")}
+
+
+async def _prompt_button(interaction: discord.Interaction, niche_key: str) -> None:
+    if interaction.guild_id is None or interaction.guild_id not in await run(db.allowed_guild_ids):
+        await interaction.response.send_message("This bot isn't available in this server.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    try:
+        reply = await _prompt_reply(interaction.guild_id, interaction.user, niche_key)
+    except Exception:
+        log.exception("Prompt button %s failed", niche_key)
+        reply = {"content": "Something went wrong. Try again in a moment."}
+    await interaction.followup.send(ephemeral=True, **reply)
+
+
+# Buttons replace the slash commands: members tap the welcome panel and the prompt panel instead.
+for _name in ("prompt", "register", "weblogin"):
+    bot.tree.remove_command(_name)

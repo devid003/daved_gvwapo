@@ -171,7 +171,7 @@
 </section>
 
 <section class="panel">
-  <div class="panel-head"><div><h2>Member accounts</h2><p>People who created a website account with /weblogin. {{ members|length }} total.{% if one_device %} Each account works on one device only.{% endif %}</p></div>
+  <div class="panel-head"><div><h2>Member accounts</h2><p>People who created a website account with Open tutorials. {{ members|length }} total.{% if one_device %} Each account works on one device only.{% endif %}</p></div>
     <form method="post" action="/videos/one-device" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><span class="badge {{ 'live' if one_device else 'off' }}" style="margin-right:8px">1 device per account {{ 'on' if one_device else 'off' }}</span><button class="btn sm">{{ 'Turn off' if one_device else 'Turn on' }}</button></form>
   </div>
   {% if members %}

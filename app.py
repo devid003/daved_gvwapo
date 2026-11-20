@@ -1125,7 +1125,8 @@ async def niche_add(request):
         flash(request, "Type a niche name.")
         return redirect("/prompts")
     key = await run(db.add_niche, label, emoji)
-    flash(request, f"Niche '{label}' added. It now shows in /prompt.")
+    await refresh_prompt_panel()
+    flash(request, f"Niche '{label}' added. It now shows on the prompt panel.")
     return redirect(f"/prompts?n={key}")
 
 
@@ -1138,6 +1139,7 @@ async def niche_edit(request):
     emoji = str(form.get("emoji", "")).strip()
     if await run(db.get_niche, key) is not None and label:
         await run(db.update_niche, key, label, emoji, None)
+        await refresh_prompt_panel()
         flash(request, "Niche updated.")
     return redirect(f"/prompts?n={key}")
 
@@ -1150,6 +1152,7 @@ async def niche_toggle(request):
     n = await run(db.get_niche, key)
     if n is not None:
         await run(db.update_niche, key, None, None, not n.active)
+        await refresh_prompt_panel()
     return redirect(f"/prompts?n={key}")
 
 
@@ -1160,6 +1163,7 @@ async def niche_delete(request):
     key = str(form.get("key", ""))
     if await run(db.get_niche, key) is not None:
         await run(db.delete_niche, key)
+        await refresh_prompt_panel()
         flash(request, "Niche and its prompts deleted.")
     return redirect("/prompts")
 
@@ -1404,12 +1408,12 @@ async def join_submit(request):
         return redirect("/join")
     info = await run(security.consume_web_signup_code_sync, code)
     if info is None:
-        flash(request, "Invalid or used signup code. Run /weblogin in Discord to get a new one.")
+        flash(request, "Invalid or used signup code. Tap Open tutorials in Discord to get a new one.")
         return redirect("/join")
     uid, dname = info
     ok = await run(db.create_web_user, username, _hash_pw(password), uid, dname)
     if not ok:
-        flash(request, "That username is taken. Run /weblogin again for a new code and try another name.")
+        flash(request, "That username is taken. Tap Open tutorials again for a new code and try another name.")
         return redirect("/join")
     request.session["member"] = username
     return redirect("/watch")
@@ -1832,7 +1836,7 @@ async def video_add_and_announce(request):
     if new:
         v = new[0]
         body = (v.description + "\n\n" if v.description else "") + \
-            "Watch it on the tutorials page. No account yet? Use `/weblogin` in the server."
+            "Watch it on the tutorials page. No account yet? Tap **Open tutorials** in the server."
         await _post_result(request, "video", str(form.get("announce", "")).strip(), f"New tutorial: {v.title}",
                            body, [("Watch now", _watch_url())], image, problem)
     return resp
@@ -2220,7 +2224,7 @@ async def magic_login_submit(request):
     got = await run(security.consume_web_login_token_sync, request.path_params.get("token", ""))
     if not got:
         return JSONResponse({"ok": False, "msg": "This login link has expired or was already used. "
-                                                 "Run /weblogin in Discord for a new one."})
+                                                 "Tap Open tutorials in Discord for a new one."})
     uid, dname = got
     username = await run(_web_user_for_discord_sync, uid, dname)
     u = await run(db.get_web_user, username)
@@ -2341,6 +2345,99 @@ async def security_panel_remove(request):
         await _remove_panel(gid)
     flash(request, "Verification panel removed.")
     return redirect("/security")
+
+
+# ---------- prompt panel (Prompts page): niche buttons in a channel the owner picks ----------
+def prompt_panel_info() -> dict:
+    """For the Prompts page: channels the bot can post in, and where the prompt panel is now."""
+    out = panel_info()
+    out["current"] = []
+    b = discord_bot.bot
+    if not b.is_ready():
+        return out
+    for gid in sorted(db.allowed_guild_ids()):
+        g = b.get_guild(gid)
+        ch = b.get_channel(int(db.get_setting(f"ppanel_ch:{gid}", "0") or 0)) if g is not None else None
+        if ch is not None:
+            out["current"].append({"server": g.name, "channel": ch.name, "id": str(ch.id)})
+    return out
+
+
+templates.env.globals["prompt_panel_info"] = prompt_panel_info
+
+
+async def _prompt_panel_parts() -> tuple:
+    return prompt_commands.prompt_panel_message(await run(db.list_niches, True))
+
+
+async def refresh_prompt_panel() -> None:
+    """Niches changed on the dashboard: update the buttons on the posted prompt panel."""
+    b = discord_bot.bot
+    if not b.is_ready():
+        return
+    for gid in await run(db.allowed_guild_ids):
+        ch_id, _, msg_id = (await run(db.get_setting, f"ppanel_msg:{gid}", "")).partition("|")
+        ch = b.get_channel(int(ch_id)) if ch_id.isdigit() else None
+        if ch is None or not msg_id.isdigit():
+            continue
+        try:
+            e, v = await _prompt_panel_parts()
+            await (await ch.fetch_message(int(msg_id))).edit(embed=e, view=v)
+        except Exception:
+            log.warning("Could not update the prompt panel in #%s", getattr(ch, "name", ch_id))
+
+
+async def _remove_prompt_panel(gid: int) -> None:
+    b = discord_bot.bot
+    ch_id, _, msg_id = (await run(db.get_setting, f"ppanel_msg:{gid}", "")).partition("|")
+    if ch_id.isdigit() and msg_id.isdigit():
+        ch = b.get_channel(int(ch_id))
+        if ch is not None:
+            try:
+                await (await ch.fetch_message(int(msg_id))).delete()
+            except Exception:
+                pass
+    await run(db.set_setting, f"ppanel_msg:{gid}", "")
+    await run(db.set_setting, f"ppanel_ch:{gid}", "")
+
+
+async def prompts_panel_post(request):
+    """Post (or move) the prompt panel to the chosen channel."""
+    import discord
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    b = discord_bot.bot
+    if not b.is_ready():
+        flash(request, "The bot is not connected to Discord yet. Try again in a moment.")
+        return redirect("/prompts")
+    cid = str(form.get("channel", "")).strip()
+    ch = b.get_channel(int(cid)) if cid.isdigit() else None
+    if ch is None or getattr(ch, "guild", None) is None or ch.guild.id not in await run(db.allowed_guild_ids):
+        flash(request, "Pick a channel first.")
+        return redirect("/prompts")
+    g = ch.guild
+    await _remove_prompt_panel(g.id)
+    e, v = await _prompt_panel_parts()
+    try:
+        msg = await ch.send(embed=e, view=v)
+    except (discord.Forbidden, discord.HTTPException):
+        flash(request, f"The bot can't post in #{ch.name}. Give it Send Messages and Embed Links there.")
+        return redirect("/prompts")
+    await run(db.set_setting, f"ppanel_msg:{g.id}", f"{ch.id}|{msg.id}")
+    await run(db.set_setting, f"ppanel_ch:{g.id}", str(ch.id))
+    flash(request, f"Prompt panel posted in #{ch.name}. Members tap a niche to get a prompt.")
+    return redirect("/prompts")
+
+
+async def prompts_panel_remove(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    for gid in await run(db.allowed_guild_ids):
+        await _remove_prompt_panel(gid)
+    flash(request, "Prompt panel removed.")
+    return redirect("/prompts")
 
 
 # ---------- lesson feedback (tutorials page) ----------
@@ -2681,6 +2778,8 @@ app = Starlette(
         Route("/prompts/niche/edit", niche_edit, methods=["POST"]),
         Route("/prompts/niche/toggle", niche_toggle, methods=["POST"]),
         Route("/prompts/niche/delete", niche_delete, methods=["POST"]),
+        Route("/prompts/panel", prompts_panel_post, methods=["POST"]),
+        Route("/prompts/panel/remove", prompts_panel_remove, methods=["POST"]),
         Route("/api/prompts/live", prompts_live),
         Route("/api/overview/live", overview_live),
         Route("/api/security/live", security_live),
