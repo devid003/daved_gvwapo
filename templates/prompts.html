@@ -129,7 +129,7 @@
 <script>
 (function(){
   var $=function(id){return document.getElementById(id);};
-  var lastOk=Date.now(),busy=false;
+  var lastOk=Date.now(),busy=false; (function(){function fit(t){t.style.height='auto';t.style.height=Math.min(t.scrollHeight+2,Math.max(140,window.innerHeight*0.7))+'px';}Array.prototype.forEach.call(document.querySelectorAll('textarea.ptext'),function(t){fit(t);t.addEventListener('input',function(){fit(t);});});})();
   function age(){var s=Math.round((Date.now()-lastOk)/1000);$('live-age').textContent=s<5?'just now':(s<60?'updated '+s+'s ago':'updated '+Math.round(s/60)+'m ago');}
   function refresh(){
     if(busy)return; var a=document.activeElement;

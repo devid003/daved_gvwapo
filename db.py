@@ -916,7 +916,7 @@ def prompt_counts() -> dict:
 
 def add_prompt(niche: str, text: str) -> int:
     with Session.begin() as s:
-        p = Prompt(niche=niche, text=text.strip()[:4000])
+        p = Prompt(niche=niche, text=text.strip())  # no length limit
         s.add(p)
         s.flush()
         return p.id
@@ -926,7 +926,7 @@ def update_prompt(prompt_id: int, text: str) -> None:
     with Session.begin() as s:
         p = s.get(Prompt, prompt_id)
         if p:
-            p.text = text.strip()[:4000]
+            p.text = text.strip()  # no length limit
 
 
 def toggle_prompt(prompt_id: int) -> None:

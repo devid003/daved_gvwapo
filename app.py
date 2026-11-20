@@ -1057,7 +1057,7 @@ async def prompt_add(request):
         flash(request, "Please type the prompt.")
         return redirect(f"/prompts?n={niche}")
     await run(db.add_prompt, niche, text)
-    flash(request, "Prompt added.")
+    flash(request, f"Prompt added: {len(text):,} characters, nothing cut.")
     return redirect(f"/prompts?n={niche}")
 
 
@@ -1070,7 +1070,7 @@ async def prompt_edit(request):
     text = str(form.get("text", "")).strip()
     if pid and text:
         await run(db.update_prompt, pid, text)
-        flash(request, "Prompt updated.")
+        flash(request, f"Prompt updated: {len(text):,} characters, nothing cut.")
     return redirect(f"/prompts?n={niche}")
 
 
