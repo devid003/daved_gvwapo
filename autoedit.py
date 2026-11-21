@@ -2,10 +2,13 @@
 a whole video: a YouTube Short / Facebook Reel (30 to 60 seconds) or a long video (5 to 10 minutes).
 
 The server does the light work. The story comes from the owner's Pollinations text model (free). The voice,
-the pictures and the music come either from the member's own Monid key (monid.ai: ElevenLabs voices, MiniMax or
-GPT Image pictures, MiniMax music; the member pays) or from the owner's Pollinations key, as the owner chooses.
-The member's browser then puts it all together into an MP4 (static/autoedit.js), so nothing heavy runs on the
-Render server and the bot stays fast.
+the pictures and the music come either from the member's own Monid key (monid.ai: ElevenLabs voices, ChatGPT
+(GPT Image) or MiniMax pictures, MiniMax music; the member pays) or from the owner's Pollinations key, as the owner
+chooses. The member's browser then puts it all together into an MP4 (static/autoedit.js), so nothing heavy runs
+on the Render server and the bot stays fast.
+
+Manual mode: the member uploads a picture and writes what should happen, and a picture-to-video model on Monid
+(Gemini Omni Flash, Seedance 2.5, Kling, Hailuo) turns it into a short clip, paid with their own Monid key.
 
 Only members the owner gives access to can use it, each in their own time window, one video at a time.
 """
@@ -43,16 +46,39 @@ LANGS = ["English", "Tagalog", "Taglish", "Cebuano", "Ilocano", "Spanish", "Port
          "Japanese", "Korean", "Chinese"]
 VOICES = [("onyx", "Deep male"), ("echo", "Male"), ("fable", "Storyteller"), ("alloy", "Neutral"),
           ("nova", "Female"), ("shimmer", "Soft female")]
-ACTIVE = ("queued", "writing", "voicing", "drawing", "music")
+ACTIVE = ("queued", "writing", "voicing", "drawing", "music", "sending", "animating", "saving")
 STEP_LABEL = {"queued": "Waiting in line", "writing": "Writing the story", "voicing": "Recording the voice",
-              "drawing": "Making the pictures", "music": "Making the music", "ready": "Ready",
+              "drawing": "Making the pictures", "music": "Making the music", "sending": "Sending your picture",
+              "animating": "Making the video", "saving": "Saving the video", "ready": "Ready",
               "failed": "Didn't finish", "canceled": "Canceled", "expired": "Files cleared"}
+PROVIDERS = [("monid", "Each member's own Monid key (they pay)"), ("pollinations", "Your Pollinations key (you pay)")]
+PICS = [("gpt-image-2", "ChatGPT (GPT Image 2): best, about $0.04 a picture"),
+        ("gpt-image-2.5-flare", "ChatGPT (GPT Image 2.5 Flare): about $0.04 a picture"),
+        ("gpt-image-2.5-sunburst", "ChatGPT (GPT Image 2.5 Sunburst): about $0.04 a picture"),
+        ("minimax", "MiniMax image-01: cheapest, about $0.004 a picture")]
+GPT = {"gpt-image-2": ("/v1/image/gpt-image-2", "medium"),               # Monid endpoint, quality
+       "gpt-image-2.5-flare": ("/v1/image/gpt-image-2.5-flare", "high"),
+       "gpt-image-2.5-sunburst": ("/v1/image/gpt-image-2.5-sunburst", "high")}
+# Picture-to-video models for Manual mode. The first endpoint Monid knows is used.
+CLIPS = {
+    "omni-flash": {"label": "Gemini Omni Flash", "provider": "gemini", "endpoints": ("/v1/video/omni-flash-i2v",),
+                   "note": "with sound", "wait": 180},
+    "seedance-2.5": {"label": "Seedance 2.5", "provider": "bytedance",
+                     "endpoints": ("/v1/video/seedance-2.5", "/seedance-2.5"), "note": "with sound, 720p", "wait": 240},
+    "kling-3.0": {"label": "Kling 3.0", "provider": "kling", "endpoints": ("/image-to-video/kling-3.0",),
+                  "note": "720p, no sound", "wait": 240},
+    "kling-2.6": {"label": "Kling 2.6", "provider": "kling", "endpoints": ("/image-to-video/kling-2.6",),
+                  "note": "720p, no sound", "wait": 240},
+    "hailuo-2.3": {"label": "Hailuo 2.3", "provider": "minimax", "endpoints": ("/v1/video/minimax-hailuo-2.3",),
+                   "note": "768p, no sound", "wait": 240},
+}
+CLIP_ORDER = ["omni-flash", "seedance-2.5", "kling-3.0", "kling-2.6", "hailuo-2.3"]
+CLIP_SECS = (5, 10)
+CLIP_SHAPES = ("9:16", "16:9", "keep")
 DEFAULTS = {"ae_on": "1", "ae_limit": "2", "ae_text_model": "openai", "ae_voice_model": "elevenflash",
             "ae_image_model": "flux", "ae_music": "1", "ae_music_model": "elevenmusic",
-            "ae_provider": "monid", "ae_monid_image": "minimax", "ae_monid_voice": "eleven_flash_v2_5"}
-PROVIDERS = [("monid", "Each member's own Monid key (they pay)"), ("pollinations", "Your Pollinations key (you pay)")]
-MONID_IMAGES = [("minimax", "MiniMax image-01: good, about $0.004 a picture"),
-                ("gpt-image-2", "GPT Image 2: best, costs more")]
+            "ae_provider": "monid", "ae_pic": "gpt-image-2", "ae_monid_voice": "eleven_flash_v2_5",
+            "ae_clips": ",".join(CLIP_ORDER)}
 MONID_VOICES = [("eleven_flash_v2_5", "ElevenLabs Flash: fast, half the price"),
                 ("eleven_multilingual_v2", "ElevenLabs Multilingual: best quality")]
 ELEVEN_VOICE = {"onyx": "nPczCjzI2devNBz1zQrb", "echo": "pNInz6obpgDQGcFmaJgB", "fable": "JBFqnCBsd6RMkjVDRZzb",
@@ -219,9 +245,29 @@ def in_window(start: str, end: str, now: dt.datetime | None = None) -> bool:
     return a <= m < b if a < b else (m >= a or m < b)        # windows past midnight work too
 
 
+def clip_price(model: str, secs: int) -> str:
+    """What one clip costs on Monid, roughly (the member pays it)."""
+    if model == "omni-flash":
+        return f"${0.04 * secs:.2f} to ${0.31 * secs:.2f}"
+    if model == "hailuo-2.3":
+        return "$0.28 (6 s)" if secs < 8 else "$0.56"
+    per = {"seedance-2.5": 0.231, "kling-3.0": 0.084, "kling-2.6": 0.042}.get(model, 0.1)
+    return f"about ${per * secs:.2f}"
+
+
+def clip_choices() -> list:
+    """The picture-to-video models the owner lets members pick, in order."""
+    on = setting("ae_clips").split(",")
+    return [{"key": k, "label": CLIPS[k]["label"], "note": CLIPS[k]["note"],
+             "price": {s: clip_price(k, s) for s in CLIP_SECS}} for k in CLIP_ORDER if k in on]
+
+
 def member_info(username: str) -> dict:
     """For the tutorials page: show the Auto edit tab? What may this member do right now?"""
-    if not username or setting("ae_on") == "0" or not os.getenv("POLLINATIONS_KEY", "").strip():
+    if not username or setting("ae_on") == "0":
+        return {"show": False}
+    story, clips = bool(os.getenv("POLLINATIONS_KEY", "").strip()), clip_choices()
+    if not story and not clips:
         return {"show": False}
     acc = access_get(username)
     if acc is None:
@@ -234,7 +280,8 @@ def member_info(username: str) -> dict:
     niches = [{"key": n.key, "label": n.label or n.key} for n in db.list_niches(active_only=True)]
     return {"show": True, "limit": limit, "left": max(0, limit - used), "window": window_label(acc.start, acc.end),
             "open": in_window(acc.start, acc.end), "niches": niches, "langs": LANGS, "voices": VOICES,
-            "lengths": LENGTHS, "shorts": SHORTS, "monid": setting("ae_provider") == "monid"}
+            "lengths": LENGTHS, "shorts": SHORTS, "monid": setting("ae_provider") == "monid", "story": story,
+            "clips": clips, "clip_secs": CLIP_SECS}
 
 
 # ------------------------- Monid (the member's own key) -------------------------
@@ -284,8 +331,24 @@ def _monid_why(status: int, j, text: str, what: str) -> str:
     return f"Monid couldn't finish {what} (HTTP {status}){': ' + str(msg)[:200] if msg else ''}."
 
 
-async def monid_run(key: str, provider: str, endpoint: str, inp: dict, what: str, wait: float = 900) -> dict:
-    """Run one Monid endpoint and wait for it. Returns the finished run (with "output")."""
+def _say(obj, depth=0) -> str:
+    """The first readable error message inside a provider's answer."""
+    if isinstance(obj, str):
+        return obj.strip()
+    if isinstance(obj, dict) and depth < 5:
+        for k in ("message", "msg", "status_msg", "error_message", "detail", "reason", "error", "base_resp", "data"):
+            t = _say(obj.get(k), depth + 1)
+            if t:
+                return t
+    if isinstance(obj, list) and obj and depth < 5:
+        return _say(obj[0], depth + 1)
+    return ""
+
+
+async def monid_run(key: str, provider: str, endpoint: str, inp: dict, what: str, wait: float = 900,
+                    on_wait=None) -> dict:
+    """Run one Monid endpoint and wait for it. Returns the finished run (with "output").
+    on_wait: an async function called on every check while it is still being made."""
     status, j, text = await monid_call(key, "POST", "/v1/run", {"provider": provider, "endpoint": endpoint, "input": inp})
     if status in (401, 402, 403):
         raise MemberStop(_monid_why(status, j, text, what))
@@ -295,6 +358,8 @@ async def monid_run(key: str, provider: str, endpoint: str, inp: dict, what: str
     while str(run.get("status", "")).upper() in ("READY", "QUEUED", "PENDING", "RUNNING", "IN_PROGRESS", "STARTED") \
             and run.get("runId") and time.monotonic() - start < wait:
         await asyncio.sleep(4)
+        if on_wait is not None:
+            await on_wait()
         st, r2, t2 = await monid_call(key, "GET", f"/v1/runs/{run['runId']}", timeout=60)
         if st in (401, 402, 403):
             raise MemberStop(_monid_why(st, r2, t2, what))
@@ -305,11 +370,13 @@ async def monid_run(key: str, provider: str, endpoint: str, inp: dict, what: str
     code = pr.get("httpStatus") if isinstance(pr, dict) else None
     if state not in ("COMPLETED", "SUCCEEDED", "SUCCESS", "DONE", "") or (isinstance(code, int) and code >= 400) \
             or run.get("output") is None:
-        err = pr.get("error") if isinstance(pr, dict) else None
-        detail = (err.get("message") if isinstance(err, dict) else err) or run.get("reason") or state.lower() or "no result"
+        detail = (_say(pr.get("error") if isinstance(pr, dict) else None) or _say(run.get("output"))
+                  or _say(run.get("error")) or str(run.get("reason") or "") or state.lower() or "no result")
         if isinstance(code, int) and code == 402:
             raise MemberStop("Your Monid balance ran out. Top up at monid.ai, then press Make it again.")
-        raise Stop(f"Monid couldn't finish {what}: {str(detail)[:200]}")
+        if state in ("RUNNING", "READY", "QUEUED", "PENDING", "IN_PROGRESS", "STARTED"):
+            detail = f"it took longer than {int(wait // 60)} minutes"
+        raise ProviderError(f"Monid couldn't finish {what}: {detail[:200]}", detail[:300], code)
     return run
 
 
@@ -327,6 +394,8 @@ def _media_spots(obj, depth=0):
                     yield "b64", v
                 elif lk in ("audio", "data", "image") and len(v) > 400 and re.fullmatch(r"[0-9a-fA-F]+", v[:400]):
                     yield "hex", v
+                elif lk in ("data", "video", "bytes") and len(v) > 1000 and re.fullmatch(r"[A-Za-z0-9+/=\s]+", v[:1000]):
+                    yield "b64", v
             elif isinstance(v, list):
                 for x in v:
                     if isinstance(x, str) and x.startswith(("http://", "https://")) and \
@@ -342,11 +411,13 @@ def _media_spots(obj, depth=0):
 
 
 async def monid_media(run: dict, want: str) -> bytes:
-    """The picture or sound a Monid run made (from a link, base64 or hex). want: "image" or "audio"."""
+    """The picture, sound or video a Monid run made (from a link, base64 or hex). want: "image", "audio" or "video"."""
     import aiohttp
     import base64
     seen = 0
     todo = list(_media_spots(run.get("output")))
+    if want == "video":                         # links that say "video" first
+        todo.sort(key=lambda kv: 0 if kv[0] == "url" and ".mp4" in kv[1].lower() else 1)
     while todo and seen < 6:
         kind, val = todo.pop(0)
         seen += 1
@@ -361,7 +432,7 @@ async def monid_media(run: dict, want: str) -> bytes:
             except ValueError:
                 continue
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=180)) as s:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=600 if want == "video" else 180)) as s:
                 async with s.get(val) as r:
                     data = await r.read()
                     ctype = r.headers.get("Content-Type", "").lower()
@@ -379,6 +450,8 @@ async def monid_media(run: dict, want: str) -> bytes:
             return data
         if want == "audio" and (ctype.startswith("audio/") or _is_audio(ctype, data) or "octet" in ctype):
             return data
+        if want == "video" and (ctype.startswith("video/") or data[4:8] == b"ftyp" or "octet" in ctype):
+            return data
     raise Stop("Monid finished, but the file couldn't be read from its answer.")
 
 
@@ -388,13 +461,23 @@ async def monid_speech(key: str, text: str, voice: str) -> bytes:
     return await monid_media(run, "audio")
 
 
+async def gpt_picture(key: str, prompt: str, ratio: str, model: str = "gpt-image-2", refs: list | None = None,
+                      what: str = "making the pictures") -> bytes:
+    """One ChatGPT (GPT Image) picture through Monid. refs: public links of pictures to copy or change."""
+    endpoint, quality = GPT.get(model, GPT["gpt-image-2"])
+    inp = {"prompt": prompt[:3800], "size": "1088x1920" if ratio == "9:16" else "1920x1088", "quality": quality}
+    if refs:
+        endpoint, inp["images"] = endpoint + "-edit", list(refs)[:4]
+    run = await monid_run(key, "openai", endpoint, inp, what, wait=300)
+    return await monid_media(run, "image")
+
+
 async def monid_picture(key: str, prompt: str, ratio: str) -> bytes | None:
     import app as web
     w, h = (1080, 1920) if ratio == "9:16" else (1920, 1080)
-    if setting("ae_monid_image") == "gpt-image-2":
-        size = "1088x1920" if ratio == "9:16" else "1920x1088"
-        run = await monid_run(key, "openai", "/v1/image/gpt-image-2",
-                              {"prompt": prompt[:3800], "size": size, "quality": "medium"}, "making the pictures")
+    pic = setting("ae_pic")
+    if pic in GPT:
+        data = await gpt_picture(key, prompt, ratio, pic)
     else:
         try:
             run = await monid_run(key, "minimax", "/v1/image_generation",
@@ -404,7 +487,7 @@ async def monid_picture(key: str, prompt: str, ratio: str) -> bytes | None:
             run = await monid_run(key, "minimax", "/v1/image_generation",
                                   {"model": "image-01", "prompt": prompt[:1400], "aspect_ratio": ratio,
                                    "response_format": "url", "n": 1}, "making the pictures")
-    data = await monid_media(run, "image")
+        data = await monid_media(run, "image")
     final, _why = await asyncio.to_thread(web._img_finish, data, ratio)
     return final
 
@@ -451,6 +534,392 @@ async def monid_check(key: str) -> dict:
     return {"ok": True, "balance": bal}
 
 
+# ------------------------- Manual mode: a picture and a prompt become a clip -------------------------
+PUB = ROOT / "pub"                 # pictures handed to Monid by link (long random names, kept a few hours)
+PUB_HOURS = 6
+
+
+def pub_put(data: bytes) -> str:
+    """Make a picture reachable at /watch/pub/<name> so a model on Monid can open it. Returns the name."""
+    PUB.mkdir(parents=True, exist_ok=True)
+    name = secrets.token_urlsafe(24) + ".jpg"
+    (PUB / name).write_bytes(data)
+    return name
+
+
+def pub_drop(name: str) -> None:
+    try:
+        (PUB / name).unlink()
+    except OSError:
+        pass
+
+
+def public_base(request) -> str:
+    """The site's public https address (Render sets RENDER_EXTERNAL_URL)."""
+    env = (os.getenv("PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").strip().rstrip("/")
+    if env:
+        return env
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
+    return f"https://{host}"
+
+
+def picture_bytes(data_url) -> bytes | None:
+    """The bytes of a picture sent as a data: URL, or None."""
+    import base64
+    s = str(data_url or "")
+    m = re.match(r"data:image/[a-zA-Z0-9.+-]+;base64,", s[:80])
+    if not m:
+        return None
+    try:
+        return base64.b64decode(s[m.end():])
+    except ValueError:
+        return None
+
+
+def prep_picture(raw: bytes, shape: str) -> bytes:
+    """The member's picture as a clean JPEG that video and picture models accept.
+    shape: 9:16 or 16:9 (cut to that shape) or keep (as it is, within the models' limits)."""
+    import io
+    from PIL import Image, ImageOps
+    try:
+        with Image.open(io.BytesIO(raw)) as src:
+            src.load()
+            im = ImageOps.exif_transpose(src).convert("RGB")
+    except Exception:
+        raise Stop("That file isn't a picture. Use a JPG, PNG or WEBP.")
+    w, h = im.size
+    if min(w, h) < 200:
+        raise Stop("That picture is too small. Use one at least 300 pixels on each side.")
+    if shape in ("9:16", "16:9"):
+        im = ImageOps.fit(im, (1080, 1920) if shape == "9:16" else (1920, 1080), Image.LANCZOS, centering=(0.5, 0.42))
+    else:
+        if w / h > 2.4:
+            im = ImageOps.fit(im, (int(h * 2.4), h), Image.LANCZOS)
+        elif h / w > 2.4:
+            im = ImageOps.fit(im, (w, int(w * 2.4)), Image.LANCZOS, centering=(0.5, 0.42))
+        w, h = im.size
+        z = max(min(1.0, 1920 / max(w, h)), 360 / min(w, h))
+        if abs(z - 1) > 0.01:
+            im = im.resize((round(w * z), round(h * z)), Image.LANCZOS)
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=92, optimize=True)
+    return buf.getvalue()
+
+
+_INSPECT: dict = {}                # (provider, endpoint) -> (when, input schema): {} = unknown, None = Monid doesn't have it
+
+
+async def inspect(key: str, provider: str, endpoint: str):
+    """The input schema of one Monid endpoint (free to ask; remembered for an hour). None = no such endpoint."""
+    k = (provider, endpoint)
+    if k in _INSPECT and time.monotonic() - _INSPECT[k][0] < 3600:
+        return _INSPECT[k][1]
+    status, j, text = await monid_call(key, "POST", "/v1/inspect", {"provider": provider, "endpoint": endpoint}, timeout=30)
+    if status in (401, 402, 403):
+        raise MemberStop(_monid_why(status, j, text, "getting ready"))
+    if status == 200 and isinstance(j, dict):
+        _INSPECT[k] = (time.monotonic(), j.get("inputSchema") if isinstance(j.get("inputSchema"), dict) else {})
+        return _INSPECT[k][1]
+    if status in (400, 404):
+        _INSPECT[k] = (time.monotonic(), None)
+        return None
+    return {}                                   # couldn't ask right now: try it anyway
+
+
+async def clip_endpoint(key: str, model: dict) -> tuple:
+    """(endpoint, input schema) of a picture-to-video model."""
+    for ep in model["endpoints"]:
+        schema = await inspect(key, model["provider"], ep)
+        if schema is not None:
+            return ep, schema
+    raise Stop(f"{model['label']} isn't on Monid right now ({model['provider']} {model['endpoints'][0]}). "
+               "Turn it off in Auto edit settings so members pick another model.")
+
+
+# Filling an input schema we only learn from Monid (Gemini Omni Flash): a prompt, the picture, the length...
+_SKIP = object()
+_PROMPTS = {"prompt", "text", "caption", "instruction", "instructions", "description", "positive_prompt", "text_prompt"}
+
+
+def _variants(s, depth=0) -> list:
+    if not isinstance(s, dict) or depth > 4:
+        return []
+    for k in ("anyOf", "oneOf", "allOf"):
+        if isinstance(s.get(k), list):
+            out = []
+            for x in s[k]:
+                out += _variants(x, depth + 1)
+            return out
+    return [s]
+
+
+def _types(s) -> set:
+    out = set()
+    for v in _variants(s):
+        t = v.get("type")
+        if isinstance(t, list):
+            out |= {x for x in t if isinstance(x, str)}
+        elif isinstance(t, str):
+            out.add(t)
+        elif "properties" in v:
+            out.add("object")
+        elif "items" in v:
+            out.add("array")
+        else:
+            vals = ([v["const"]] if "const" in v else []) + (v["enum"] if isinstance(v.get("enum"), list) else [])
+            if vals and all(isinstance(x, str) for x in vals):
+                out.add("string")
+            elif vals and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in vals):
+                out.add("number")
+    return out
+
+
+def _consts(s) -> list:
+    out = []
+    for v in _variants(s):
+        if "const" in v:
+            out.append(v["const"])
+        if isinstance(v.get("enum"), list):
+            out += v["enum"]
+    return out
+
+
+def _props(s) -> dict:
+    out = {}
+    for v in _variants(s):
+        if isinstance(v.get("properties"), dict):
+            out.update(v["properties"])
+    return out
+
+
+def _bound(s, k, pick):
+    vals = [v[k] for v in _variants(s) if isinstance(v.get(k), (int, float))]
+    return pick(vals) if vals else None
+
+
+def _num(x):
+    try:
+        return float(re.sub(r"[^0-9.]", "", str(x)) or "x")
+    except ValueError:
+        return None
+
+
+def _closest(vals: list, want: float):
+    """The allowed value nearest to what was asked (the longer one on a tie)."""
+    nums = [(abs(n - want), -n, v) for v in vals if (n := _num(v)) is not None]
+    return min(nums, key=lambda p: (p[0], p[1]))[2] if nums else _SKIP
+
+
+def _pick(vals: list, prefs: list):
+    low = [(str(v).lower(), v) for v in vals]
+    for p in prefs:
+        for k, v in low:
+            if k == p:
+                return v
+    for p in prefs:
+        for k, v in low:
+            if p in k:
+                return v
+    return _SKIP
+
+
+def _url_key(props: dict):
+    for k in ("url", "uri", "image_url", "imageUrl", "file_uri", "fileUri", "link"):
+        if k in props and "string" in _types(props[k]):
+            return k
+    return None
+
+
+def _image_value(t: set, ps, want: dict):
+    if "string" in t:
+        return want["image"]
+    if "array" in t:
+        items = next((v.get("items") for v in _variants(ps) if isinstance(v.get("items"), dict)), {})
+        if "string" in _types(items):
+            return [want["image"]]
+        k = _url_key(_props(items))
+        if k:
+            return [{k: want["image"]}]
+    if "object" in t:
+        p = _props(ps)
+        k = _url_key(p)
+        if k:
+            return {k: want["image"]}
+        if "data" in p:
+            mime = "mime_type" if "mime_type" in p else "mimeType" if "mimeType" in p else ""
+            return {"data": want["b64"], **({mime: "image/jpeg"} if mime else {})}
+    return _SKIP
+
+
+def _content(items, want: dict) -> list:
+    """A content list (Seedance and Gemini style): one text item and one picture item."""
+    text = image = None
+    for v in _variants(items):
+        p = v.get("properties") or {}
+        tc = [str(x) for x in _consts(p.get("type", {}))]
+        kind = " ".join(tc).lower()
+        if text is None and (any(x in ("text", "prompt") for x in tc) or (not tc and ("text" in p or "prompt" in p))):
+            field = "text" if "text" in p else "prompt" if "prompt" in p else ""
+            if field:
+                text = {"type": next(x for x in tc if x in ("text", "prompt"))} if tc else {}
+                text[field] = want["prompt"]
+        elif image is None and ("image" in kind or "frame" in kind):
+            item = {"type": "first_frame" if "first_frame" in tc else next((x for x in tc if "image" in x), tc[0])}
+            k = _url_key(p)
+            if k:
+                item[k] = want["image"]
+            elif "image_url" in p:
+                item["image_url"] = {"url": want["image"]}
+            elif "data" in p:
+                item["data"] = want["b64"]
+                for mk in ("mime_type", "mimeType"):
+                    if mk in p:
+                        item[mk] = "image/jpeg"
+            else:
+                continue
+            if "role" in p and "first_frame" in [str(x) for x in _consts(p["role"])]:
+                item["role"] = "first_frame"
+            image = item
+    return [x for x in (text, image) if x] if image else []
+
+
+def _fill_prop(name: str, ps, want: dict, depth: int):
+    n = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower().replace("-", "_")
+    t, c = _types(ps), _consts(ps)
+    if n == "type" and c:
+        return c[0]
+    if n in _PROMPTS and "string" in t:
+        return want["prompt"][:int(_bound(ps, "maxLength", min) or 4000)]
+    if "negative" in n or "mask" in n or "last" in n or "end_image" in n or "tail" in n:
+        return _SKIP
+    if n in ("duration", "seconds", "duration_seconds", "length", "video_length", "duration_sec") or n.endswith("_duration"):
+        nums = [v for v in c if not isinstance(v, bool) and _num(v) is not None]
+        if nums:
+            return _closest(nums, want["secs"])
+        if t & {"integer", "number"}:
+            lo, hi = _bound(ps, "minimum", max), _bound(ps, "maximum", min)
+            return int(max(lo if lo is not None else 0, min(hi if hi is not None else want["secs"], want["secs"])))
+        return str(want["secs"]) if "string" in t and not c else _SKIP
+    if n in ("aspect_ratio", "ratio", "aspect", "video_aspect_ratio"):
+        r = want.get("ratio") or ""
+        if c:
+            return r if r in c else _pick(c, ["adaptive", "auto", "keep", "match_input", "original"])
+        return r if r and "string" in t else _SKIP
+    if n in ("resolution", "video_resolution", "quality") and c:
+        return _pick(c, ["720p", "768p", "720", "768"])
+    if n == "model" and c:
+        return _pick(c, ["1.1"])
+    if "boolean" in t and ("audio" in n or "sound" in n):
+        return True
+    if "boolean" in t and "watermark" in n:
+        return False
+    if ("image" in n or "frame" in n or n in ("url", "uri", "source", "media_url", "input_url")) \
+            and not any(w in n for w in ("mime", "size", "count", "num")):
+        return _image_value(t, ps, want)
+    if "array" in t and n in ("content", "contents", "input", "inputs", "messages", "parts", "media"):
+        items = next((v.get("items") for v in _variants(ps) if isinstance(v.get("items"), dict)), {})
+        got = _content(items, want)
+        return got if got else _SKIP
+    if "object" in t and depth < 3:
+        sub, _missing = fill_schema(ps, want, depth + 1)
+        return sub if sub else _SKIP
+    return _SKIP
+
+
+def fill_schema(schema, want: dict, depth: int = 0) -> tuple:
+    """(input, names of required fields left empty) for a JSON schema."""
+    props, out, req = _props(schema), {}, set()
+    for name, ps in props.items():
+        val = _fill_prop(name, ps, want, depth)
+        if val is not _SKIP:
+            out[name] = val
+    for v in _variants(schema):
+        req |= set(v.get("required") or [])
+    missing = [r for r in sorted(req) if r not in out and not any("default" in x for x in _variants(props.get(r, {})))]
+    return out, missing
+
+
+def clip_input(model: str, prompt: str, url: str, b64: str, secs: int, shape: str, schema: dict) -> dict:
+    """What to send to a picture-to-video model on Monid."""
+    if model == "seedance-2.5":
+        return {"content": [{"type": "text", "text": prompt[:5000]},
+                            {"type": "image_url", "image_url": {"url": url}, "role": "first_frame"}],
+                "resolution": "720p", "duration": secs, "ratio": "adaptive", "generate_audio": True, "watermark": False}
+    if model in ("kling-2.6", "kling-3.0"):
+        return {"contents": [{"type": "prompt", "text": prompt[:2500]}, {"type": "first_frame", "url": url}],
+                "settings": {"resolution": "720p", "duration": secs, "audio": "off"}}
+    if model == "hailuo-2.3":
+        return {"prompt": prompt[:2000], "first_frame_image": url, "resolution": "768P", "duration": 6 if secs < 8 else 10}
+    want = {"prompt": prompt[:4000], "image": url, "b64": b64, "secs": secs, "ratio": shape if shape != "keep" else ""}
+    if not schema:                              # Monid didn't say what it takes: the common names
+        return {"prompt": want["prompt"], "image_url": url, "duration": secs,
+                **({"aspect_ratio": want["ratio"]} if want["ratio"] else {})}
+    inp, missing = fill_schema(schema, want)
+    if missing:
+        raise Stop(f"{CLIPS[model]['label']} on Monid needs {', '.join(missing)}, which Auto edit doesn't know how "
+                   "to fill yet. Turn this model off in Auto edit settings for now.")
+    return inp
+
+
+def _clip_why(label: str, e: Exception) -> str:
+    """A model refused or failed: say so in words the member can act on."""
+    d = getattr(e, "detail", "") or str(e)
+    low = d.lower()
+    hint = ""
+    if any(w in low for w in ("face", "person", "people", "human", "celebrit", "portrait", "minor")):
+        hint = (" Some models refuse pictures of real people. Try Kling or Hailuo, or a drawn or AI-made "
+                "character.")
+    elif any(w in low for w in ("safety", "sensitive", "policy", "moderation", "inappropriate", "nsfw", "violat")):
+        hint = " The picture or the prompt was blocked by the model's safety check. Try another picture or prompt."
+    elif any(w in low for w in ("download", "fetch", "unreachable", "invalid url", "timed out", "timeout")):
+        hint = " The model couldn't open your picture. Try again in a minute."
+    return f"{label} couldn't make this video: {d[:220].rstrip('.')}.{hint}"
+
+
+async def run_clip(job_id: int, job, d: dict) -> None:
+    """Manual mode: send the member's picture and prompt to the picture-to-video model and save the MP4."""
+    import base64
+    folder = job_dir(job_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    key = _KEYS.get(job_id, "")
+    if not key:
+        raise MemberStop("The server restarted, so your Monid key is needed again. Press Make it again.")
+    src, stash = folder / "src.jpg", ROOT / "in" / f"{d.get('pic', '')}.jpg"
+    if not src.exists() and d.get("pic") and stash.exists():
+        shutil.move(str(stash), str(src))
+    if not src.exists():
+        raise MemberStop("Your picture is gone (the server restarted). Upload it again.")
+    model = CLIPS.get(d.get("model", ""))
+    if model is None:
+        raise MemberStop("That video model isn't offered anymore. Pick another one.")
+    await _step(job_id, status="sending", step_done=0, step_total=0, msg="")
+    endpoint, schema = await clip_endpoint(key, model)
+    pic = src.read_bytes()
+    name = await asyncio.to_thread(pub_put, pic)
+    try:
+        url = f"{str(d.get('base', '')).rstrip('/')}/watch/pub/{name}"
+        b64 = base64.b64encode(pic).decode() if schema and '"data"' in json.dumps(schema) else ""
+        inp = clip_input(d.get("model", ""), job.concept, url, b64, int(d.get("sec") or 5), d.get("shape", "9:16"), schema)
+        expect, t0 = int(model.get("wait", 240)), time.monotonic()
+
+        async def tick():
+            await _step(job_id, step_done=min(int(time.monotonic() - t0), int(expect * 0.95)), step_total=expect)
+        await _step(job_id, status="animating", step_done=0, step_total=expect)
+        try:
+            run = await monid_run(key, model["provider"], endpoint, inp, "making the video", wait=1800, on_wait=tick)
+        except ProviderError as e:
+            raise MemberStop(_clip_why(model["label"], e))
+    finally:
+        await asyncio.to_thread(pub_drop, name)
+    await _step(job_id, status="saving", step_done=0, step_total=0)
+    data = await monid_media(run, "video")
+    if len(data) < 2000:
+        raise Stop(f"{model['label']} sent back an empty video.")
+    if not await _save(job_id, folder / "clip.mp4", data):
+        return
+    await _step(job_id, status="ready", step_done=1, step_total=1, finished_at=db.utcnow(), msg="")
+
+
 # ------------------------- Pollinations -------------------------
 def _base() -> str:
     return os.getenv("POLLINATIONS_URL", "https://gen.pollinations.ai").rstrip("/")
@@ -462,6 +931,13 @@ def _key() -> str:
 
 class Stop(Exception):
     """A problem that ends the job; the text is shown to the member."""
+
+
+class ProviderError(Stop):
+    """The model on Monid answered with an error (a refused picture, a blocked prompt...)."""
+    def __init__(self, msg: str, detail: str = "", code=None):
+        super().__init__(msg)
+        self.detail, self.code = detail or msg, code
 
 
 def problem(msg: str) -> None:
@@ -747,6 +1223,8 @@ async def _worker() -> None:
 async def run_job(job_id: int) -> None:
     job = await asyncio.to_thread(job_get, job_id)
     d = _data(job)
+    if d.get("mode") == "manual":
+        return await run_clip(job_id, job, d)
     folder = job_dir(job_id)
     folder.mkdir(parents=True, exist_ok=True)
     monid = setting("ae_provider") == "monid"
@@ -834,6 +1312,14 @@ def cleanup() -> None:
     if not ROOT.exists():
         return
     limit = time.time() - KEEP_HOURS * 3600
+    for folder, keep in ((PUB, PUB_HOURS * 3600), (ROOT / "in", KEEP_HOURS * 3600)):
+        if folder.exists():
+            for f in folder.iterdir():
+                try:
+                    if f.stat().st_mtime < time.time() - keep:
+                        f.unlink()
+                except OSError:
+                    pass
     for d in ROOT.iterdir():
         try:
             if d.is_dir() and d.stat().st_mtime < limit and d.name.isdigit():
@@ -856,8 +1342,8 @@ def _ago(t) -> str:
 
 def job_view(job, files: bool = False) -> dict:
     d = _data(job)
-    ready = job.status == "ready"
-    if ready and not (job_dir(job.id) / "p000.jpg").exists():      # server restarted: files are gone
+    ready, manual = job.status == "ready", d.get("mode") == "manual"
+    if ready and not (job_dir(job.id) / ("clip.mp4" if manual else "p000.jpg")).exists():   # server restarted
         job_set(job.id, status="expired")
         job.status, ready = "expired", False
     out = {"id": job.id, "status": job.status, "label": STEP_LABEL.get(job.status, job.status),
@@ -866,8 +1352,18 @@ def job_view(job, files: bool = False) -> dict:
            "shorts": bool(seconds_of(job)), "length": f"{seconds_of(job)} s" if seconds_of(job) else f"{job.minutes} min",
            "msg": job.msg, "when": _ago(job.created_at), "active": job.status in ACTIVE,
            "line": queue_position(job.id) if job.status == "queued" else 0,
-           "again": job.status in ("expired", "failed", "canceled") and bool(d.get("scenes"))}
-    if ready and files:
+           "again": job.status in ("expired", "failed", "canceled") and bool(d.get("scenes")), "manual": manual}
+    if manual:
+        m = CLIPS.get(d.get("model", ""), {})
+        src = (job_dir(job.id) / "src.jpg").exists() or (ROOT / "in" / f"{d.get('pic', '')}.jpg").exists()
+        out.update({"title": job.title or "Picture to video", "niche": m.get("label", "Picture to video"),
+                    "model": m.get("label", ""), "length": f"{d.get('sec', 5)} s", "shorts": False, "language": "",
+                    "ratio": "like the picture" if job.ratio == "keep" else job.ratio, "minutes": 0,
+                    "poster": f"/watch/autoedit/file/{job.id}/src.jpg" if (job_dir(job.id) / "src.jpg").exists() else "",
+                    "again": job.status == "failed" and src})
+        if ready:
+            out["clip"] = f"/watch/autoedit/file/{job.id}/clip.mp4"
+    if ready and files and not manual:
         out["scenes"] = [{"text": s["text"]} for s in d.get("scenes", [])]
         out["music"] = bool(d.get("music_file"))
     return out
@@ -887,8 +1383,11 @@ def admin_info() -> dict:
                      "today": made_today(a.username)})
     others = [u.username for u in db.list_web_users() if u.username not in names and u.active]
     jobs = [{**job_view(j), "user": j.username} for j in jobs_recent(30)]
-    return {"provider": setting("ae_provider"), "providers": PROVIDERS, "monid_image": setting("ae_monid_image"),
-            "monid_images": MONID_IMAGES, "monid_voice": setting("ae_monid_voice"), "monid_voices": MONID_VOICES,
+    on = setting("ae_clips").split(",")
+    clips = [{"key": k, "label": CLIPS[k]["label"], "note": CLIPS[k]["note"], "on": k in on,
+              "price": "$0.28 for 6 seconds" if k == "hailuo-2.3" else clip_price(k, 5) + " for 5 seconds"} for k in CLIP_ORDER]
+    return {"provider": setting("ae_provider"), "providers": PROVIDERS, "pic": setting("ae_pic"), "pics": PICS,
+            "clips": clips, "monid_voice": setting("ae_monid_voice"), "monid_voices": MONID_VOICES,
             "on": setting("ae_on") != "0", "limit": setting("ae_limit"), "text_model": setting("ae_text_model"),
             "voice_model": setting("ae_voice_model"), "image_model": setting("ae_image_model"),
             "music": setting("ae_music") != "0", "music_model": setting("ae_music_model"),
@@ -928,10 +1427,15 @@ async def member_start(request):
         return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
     raw = await request.body()
     try:
-        f = json.loads(raw) if len(raw) < 120_000 else None
+        f = json.loads(raw) if len(raw) < 16_000_000 else None
         if not isinstance(f, dict):
             raise ValueError
     except ValueError:
+        return JSONResponse({"ok": False, "msg": "That's too big. Use a smaller picture or a shorter script."},
+                            status_code=400)
+    if f.get("mode") == "manual":
+        return await start_clip(request, user, f)
+    if len(raw) >= 120_000:
         return JSONResponse({"ok": False, "msg": "That's too much text. Shorten the script and try again."},
                             status_code=400)
 
@@ -974,6 +1478,57 @@ async def member_start(request):
                                      data=json.dumps({"seconds": seconds if seconds in SHORTS else 60}) if shorts else "")
     if key:
         _KEYS[job_id] = key
+    kick()
+    job = await asyncio.to_thread(job_get, job_id)
+    return JSONResponse({"ok": True, "job": await asyncio.to_thread(job_view, job)})
+
+
+async def start_clip(request, user: str, f: dict):
+    """Manual mode: a picture and a prompt, made into a clip by the model the member picks."""
+    from starlette.responses import JSONResponse
+    web = _web()
+
+    def fail(msg, code=400):
+        return JSONResponse({"ok": False, "msg": msg}, status_code=code)
+    clips = {c["key"] for c in clip_choices()}
+    model = str(f.get("model", ""))
+    if model not in clips:
+        return fail("Pick a video model first.")
+    key = str(f.get("key", "")).strip()
+    if not good_key(key):
+        return fail("Put your Monid key in the box at the top first.")
+    prompt = _clean(f.get("prompt"), 1500)
+    if len(prompt) < 3:
+        return fail("Write what should happen in the video first.")
+    raw = picture_bytes(f.get("image"))
+    if not raw:
+        return fail("Add a picture first.")
+    if len(raw) > 15 * 1024 * 1024:
+        return fail("That picture is too big. Use one under 15 MB.")
+    sec = int(f.get("sec")) if str(f.get("sec", "")).isdigit() and int(f.get("sec")) in CLIP_SECS else 5
+    shape = f.get("shape") if f.get("shape") in CLIP_SHAPES else "9:16"
+    acc = await asyncio.to_thread(access_get, user)
+    if not in_window(acc.start, acc.end):
+        return fail(f"You can start videos from {window_label(acc.start, acc.end)} (Manila time). Come back then.", 403)
+    if any(j.status in ACTIVE for j in await asyncio.to_thread(jobs_for, user, 5)):
+        return fail("Your last video is still being made. Wait for it to finish first.", 429)
+    info = await asyncio.to_thread(member_info, user)
+    if info.get("left", 0) <= 0:
+        return fail(f"You've made {info.get('limit')} videos today, the most allowed. Come back tomorrow.", 429)
+    if web._too_many("ae:" + user, limit=6, window=600):
+        return fail("Too many tries. Wait a few minutes.", 429)
+    try:
+        pic = await asyncio.to_thread(prep_picture, raw, shape)
+    except Stop as e:
+        return fail(str(e))
+    stash = secrets.token_urlsafe(16)
+    (ROOT / "in").mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread((ROOT / "in" / f"{stash}.jpg").write_bytes, pic)
+    job_id = await asyncio.to_thread(job_add, username=user, niche="manual", niche_label="Picture to video",
+                                     concept=prompt, language="", voice="", ratio=shape, minutes=0, title=prompt[:120],
+                                     data=json.dumps({"mode": "manual", "model": model, "sec": sec, "shape": shape,
+                                                      "pic": stash, "base": public_base(request)}))
+    _KEYS[job_id] = key
     kick()
     job = await asyncio.to_thread(job_get, job_id)
     return JSONResponse({"ok": True, "job": await asyncio.to_thread(job_view, job)})
@@ -1023,16 +1578,27 @@ async def member_file(request):
         return bad
     jid = request.path_params.get("jid", "")
     name = request.path_params.get("name", "")
-    if not jid.isdigit() or not re.fullmatch(r"(v\d{3}\.mp3|p\d{3}\.jpg|music\.mp3)", name):
+    if not jid.isdigit() or not re.fullmatch(r"(v\d{3}\.mp3|p\d{3}\.jpg|music\.mp3|clip\.mp4|src\.jpg)", name):
         return JSONResponse({"ok": False}, status_code=404)
     job = await asyncio.to_thread(job_get, int(jid))
-    if job is None or job.username != user or job.status != "ready":
+    if job is None or job.username != user or (job.status != "ready" and name != "src.jpg"):
         return JSONResponse({"ok": False}, status_code=404)
     path = job_dir(job.id) / name
     if not path.exists():
         return JSONResponse({"ok": False}, status_code=404)
-    return FileResponse(path, media_type="audio/mpeg" if name.endswith(".mp3") else "image/jpeg",
-                        headers={"Cache-Control": "private, max-age=3600"})
+    kind = {"mp3": "audio/mpeg", "jpg": "image/jpeg", "mp4": "video/mp4"}[name.rsplit(".", 1)[1]]
+    return FileResponse(path, media_type=kind, headers={"Cache-Control": "private, max-age=3600"})
+
+
+async def pub_file(request):
+    """A picture a model on Monid is opening (Manual mode, ChatGPT edits). Long random names, kept a few hours."""
+    from starlette.responses import FileResponse, PlainTextResponse
+    name = request.path_params.get("name", "")
+    path = PUB / name
+    if not re.fullmatch(r"[A-Za-z0-9_-]{30,40}\.jpg", name) or not path.exists() \
+            or time.time() - path.stat().st_mtime > PUB_HOURS * 3600:
+        return PlainTextResponse("Not found", status_code=404)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
 
 async def member_action(request):
@@ -1057,7 +1623,9 @@ async def member_action(request):
         shutil.rmtree(job_dir(jid), ignore_errors=True)
     elif f.get("action") == "again" and job.status in ("expired", "failed", "canceled"):
         key = str(f.get("key", "")).strip()
-        if setting("ae_provider") == "monid":
+        if not job_view(job).get("again"):
+            return JSONResponse({"ok": False, "msg": "This one can't be made again. Start a new one."}, status_code=400)
+        if setting("ae_provider") == "monid" or _data(job).get("mode") == "manual":
             if not good_key(key):
                 return JSONResponse({"ok": False, "msg": "Put your Monid key in the box at the top first."}, status_code=400)
             _KEYS[jid] = key
@@ -1096,9 +1664,10 @@ async def admin_save(request):
     if what == "settings":
         limit = web.parse_int(form.get("limit")) or 2
         img = str(form.get("image_model", "flux"))
-        prov, mimg, mvoice = str(form.get("provider", "")), str(form.get("monid_image", "")), str(form.get("monid_voice", ""))
+        prov, pic, mvoice = str(form.get("provider", "")), str(form.get("pic", "")), str(form.get("monid_voice", ""))
+        clips = [k for k in CLIP_ORDER if k in form.getlist("clips")]
         vals = {"ae_provider": prov if prov in dict(PROVIDERS) else "monid",
-                "ae_monid_image": mimg if mimg in dict(MONID_IMAGES) else "minimax",
+                "ae_pic": pic if pic in dict(PICS) else "gpt-image-2", "ae_clips": ",".join(clips) or "none",
                 "ae_monid_voice": mvoice if mvoice in dict(MONID_VOICES) else "eleven_flash_v2_5",
                 "ae_on": "1" if form.get("on") else "0", "ae_limit": str(max(1, min(50, limit))),
                 "ae_text_model": _clean(form.get("text_model"), 60) or DEFAULTS["ae_text_model"],
@@ -1167,6 +1736,7 @@ def routes() -> list:
         Route("/watch/autoedit/act", member_action, methods=["POST"]),
         Route("/watch/autoedit/key", member_key, methods=["POST"]),
         Route("/watch/autoedit/file/{jid}/{name}", member_file),
+        Route("/watch/pub/{name}", pub_file),
         Route("/autoedit", admin_page),
         Route("/autoedit/save", admin_save, methods=["POST"]),
         Route("/autoedit/test-voice", admin_test_voice, methods=["POST"]),

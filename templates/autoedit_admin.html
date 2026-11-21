@@ -19,15 +19,20 @@ input[type=time]{padding:7px 10px;border:1px solid var(--line);border-radius:var
 .ae-sub{margin:18px 0 8px;font-size:13.5px;color:var(--muted);font-weight:600}
 .bar-mini{display:inline-block;width:70px;height:6px;border-radius:99px;background:var(--sunk);vertical-align:middle;margin-right:8px;overflow:hidden}
 .bar-mini i{display:block;height:100%;background:var(--accent)}
+.ae-clips{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.ae-clip{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;font-size:14px}
+.ae-clip input{width:16px;height:16px;margin:2px 0 0;flex:0 0 auto}
+.ae-clip span{display:flex;flex-direction:column}
+.ae-clip small{color:var(--muted);font-size:12.5px}
 </style>
 {% endblock %}
 {% block content %}
 <div class="head">
-  <div><h1>Auto edit</h1><p>Members you choose make whole videos from a niche: YouTube Shorts and Facebook Reels (up to 60 seconds) or long videos (5 to 10 minutes). Their browser puts the MP4 together, and one video is made at a time.</p></div>
-  {% if not ae.key %}<span class="badge pending">Needs key</span>{% elif ae.on %}<span class="badge live">On</span>{% else %}<span class="badge off">Off</span>{% endif %}
+  <div><h1>Auto edit</h1><p>Members you choose make whole videos from a niche: YouTube Shorts and Facebook Reels (up to 60 seconds) or long videos (5 to 10 minutes). In Manual, they upload a picture and say what happens, and a video model turns it into a clip. One video is made at a time.</p></div>
+  {% if not ae.on %}<span class="badge off">Off</span>{% elif not ae.key %}<span class="badge pending">Manual only</span>{% else %}<span class="badge live">On</span>{% endif %}
 </div>
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
-{% if not ae.key %}<div class="ae-note"><b>One step left:</b> add <code>POLLINATIONS_KEY</code> on Render (the same secret key the image generator uses). The story is always written with it, for free.</div>{% endif %}
+{% if not ae.key %}<div class="ae-note"><b>Automatic videos need one more step:</b> add <code>POLLINATIONS_KEY</code> on Render (the same secret key the image generator uses). The story is always written with it, for free. Manual works without it.</div>{% endif %}
 {% if ae.err %}<div class="ae-note" style="border-color:var(--bad);background:var(--bad-soft)"><b>Last problem{{ ' (' ~ ae.err_when ~ ')' if ae.err_when }}:</b> {{ ae.err }}
   <form method="post" action="/autoedit/save" class="inline" style="margin-left:8px"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="clear-error"><button class="btn sm">Clear</button></form></div>{% endif %}
 
@@ -75,7 +80,7 @@ input[type=time]{padding:7px 10px;border:1px solid var(--line);border-radius:var
     {% for j in ae.jobs %}
     <tr>
       <td class="nowrap">{{ j.user }}</td>
-      <td style="min-width:220px"><b>{{ j.title }}</b><div class="muted small">{{ j.niche }}, {{ j.minutes }} min, {{ j.ratio }}, {{ j.language }}</div></td>
+      <td style="min-width:220px"><b>{{ j.title }}</b><div class="muted small">{{ 'Manual, ' if j.manual }}{{ j.niche }}, {{ j.length }}, {{ j.ratio }}{{ ', ' ~ j.language if j.language }}</div></td>
       <td class="nowrap">{% if j.active %}{% if j.total %}<span class="bar-mini"><i style="width:{{ (100 * j.done / j.total)|round|int }}%"></i></span>{% endif %}<span class="badge pending">{{ j.label }}{% if j.line > 1 %} (#{{ j.line }}){% endif %}</span>
         {% elif j.status == 'ready' %}<span class="badge live">Ready</span>{% else %}<span class="badge off">{{ j.label }}</span>{% endif %}
         {% if j.msg %}<div class="muted small" style="white-space:normal;max-width:320px">{{ j.msg }}</div>{% endif %}</td>
@@ -88,7 +93,7 @@ input[type=time]{padding:7px 10px;border:1px solid var(--line);border-radius:var
 </section>
 
 <section class="panel">
-  <div class="panel-head"><div><h2>Settings</h2><p>{% if ae.provider == 'monid' %}Each member puts in their own Monid key, so the voice, pictures and music are paid from their Monid balance. The story uses your Pollinations key for free.{% else %}Each video uses your pollen: about one picture every 11 seconds (every 4 in a Short), the voice for the whole story, and one music track.{% endif %}</p></div></div>
+  <div class="panel-head"><div><h2>Settings</h2><p>{% if ae.provider == 'monid' %}Each member puts in their own Monid key, so the voice, pictures and music are paid from their Monid balance. The story uses your Pollinations key for free.{% else %}Each video uses your pollen: about one picture every 11 seconds (every 4 in a Short), the voice for the whole story, and one music track.{% endif %} Manual clips are always paid with the member's own Monid key.</p></div></div>
   <div class="panel-body">
     <form method="post" action="/autoedit/save">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="what" value="settings">
@@ -103,10 +108,15 @@ input[type=time]{padding:7px 10px;border:1px solid var(--line);border-radius:var
       <h3 class="ae-sub">With members' Monid keys</h3>
       <div class="ae-form">
         <label class="field">Pictures
-          <select name="monid_image">{% for k, label in ae.monid_images %}<option value="{{ k }}"{{ ' selected' if k == ae.monid_image }}>{{ label }}</option>{% endfor %}</select></label>
+          <select name="pic">{% for k, label in ae.pics %}<option value="{{ k }}"{{ ' selected' if k == ae.pic }}>{{ label }}</option>{% endfor %}</select></label>
         <label class="field">Voice
           <select name="monid_voice">{% for k, label in ae.monid_voices %}<option value="{{ k }}"{{ ' selected' if k == ae.monid_voice }}>{{ label }}</option>{% endfor %}</select></label>
       </div>
+      <h3 class="ae-sub">Manual: video models members can pick</h3>
+      <div class="ae-clips">
+        {% for c in ae.clips %}<label class="ae-clip"><input type="checkbox" name="clips" value="{{ c.key }}"{{ ' checked' if c.on }}><span><b>{{ c.label }}</b><small>{{ c.note }}, {{ c.price }}</small></span></label>{% endfor %}
+      </div>
+      <p class="ae-hint">Grok and Dola aren't on Monid, so they can't be used with a Monid key.</p>
       <h3 class="ae-sub">With your Pollinations key</h3>
       <div class="ae-form">
         <label class="field">Picture model
@@ -116,7 +126,7 @@ input[type=time]{padding:7px 10px;border:1px solid var(--line);border-radius:var
       </div>
       <button class="btn primary" style="margin-top:16px">Save</button>
     </form>
-    <p class="ae-hint">Monid prices go to the member: MiniMax pictures about $0.004 each, MiniMax music about $0.15 a song, and the ElevenLabs voice by the character. Pollinations model names are the ones on enter.pollinations.ai.</p>
+    <p class="ae-hint">Monid prices go to the member: ChatGPT pictures about $0.04 each (MiniMax about $0.004), MiniMax music about $0.15 a song, and the ElevenLabs voice by the character. Pollinations model names are the ones on enter.pollinations.ai.</p>
   </div>
 </section>
 

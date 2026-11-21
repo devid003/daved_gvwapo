@@ -2750,20 +2750,31 @@ def _img_key() -> str:
     return os.getenv("POLLINATIONS_KEY", "").strip()
 
 
+IMG_PROVIDERS = [("monid", "Each member's own Monid key: ChatGPT pictures (they pay)"),
+                 ("pollinations", "Your Pollinations key (you pay)")]
+IMG_PICS = [p for p in autoedit.PICS if p[0] in autoedit.GPT]          # ChatGPT (GPT Image) models on Monid
+
+
 def _img_cfg() -> dict:
     model = db.get_setting("img_model", "zimage") or "zimage"
     try:
         limit = max(1, min(500, int(db.get_setting("img_limit", "15") or 15)))
     except ValueError:
         limit = 15
-    return {"on": db.get_setting("img_on", "1") != "0", "model": model, "limit": limit, "key": bool(_img_key())}
+    provider = db.get_setting("img_provider", "monid") or "monid"
+    pic = db.get_setting("img_pic", "gpt-image-2") or "gpt-image-2"
+    return {"on": db.get_setting("img_on", "1") != "0", "model": model, "limit": limit, "key": bool(_img_key()),
+            "provider": provider if provider in dict(IMG_PROVIDERS) else "monid",
+            "pic": pic if pic in autoedit.GPT else "gpt-image-2"}
 
 
 def imagine_member(username: str) -> dict:
     """For the tutorials page: show the Create images tab? How many left today?"""
     c = _img_cfg()
     used = db.image_gens_since(username, 24) if username else 0
-    return {"show": c["on"] and c["key"], "limit": c["limit"], "left": max(0, c["limit"] - used)}
+    monid = c["provider"] == "monid"
+    return {"show": c["on"] and (monid or c["key"]), "limit": c["limit"], "left": max(0, c["limit"] - used),
+            "monid": monid}
 
 
 def imagine_admin() -> dict:
@@ -2776,7 +2787,8 @@ def imagine_admin() -> dict:
         err_when = ""
     rows = [{"user": g.username, "prompt": g.prompt, "ratio": g.ratio, "ok": g.ok, "when": _ago(g.created_at)}
             for g in db.recent_image_gens(15)]
-    return {**c, "models": IMG_MODELS, "stats": db.image_gen_stats(), "rows": rows, "err": err, "err_when": err_when}
+    return {**c, "models": IMG_MODELS, "providers": IMG_PROVIDERS, "pics": IMG_PICS, "stats": db.image_gen_stats(),
+            "rows": rows, "err": err, "err_when": err_when}
 
 
 templates.env.globals["imagine_member"] = imagine_member
@@ -2838,8 +2850,51 @@ async def _pollinations(prompt: str, w: int, h: int, model: str, seed: int) -> t
         return 0, "", f"could not reach Pollinations ({type(e).__name__})", ""
 
 
+async def watch_imagine_key(request):
+    """POST JSON {key}: check a member's Monid key for Create images and show the balance. Not saved on the server."""
+    if not member_authed(request):
+        return JSONResponse({"ok": False}, status_code=401)
+    username = request.session.get("member")
+    check = globals().get("_member_access")
+    if check and await check(username):
+        return JSONResponse({"ok": False}, status_code=401)
+    if not _same_site_json(request):
+        return JSONResponse({"ok": False}, status_code=400)
+    try:
+        key = str(json.loads(await request.body()).get("key", "")).strip()
+    except (ValueError, AttributeError):
+        return JSONResponse({"ok": False}, status_code=400)
+    if not autoedit.good_key(key):
+        return JSONResponse({"ok": False, "msg": "That doesn't look like a Monid key. Copy it again from monid.ai."})
+    if _too_many("imgkey:" + username, limit=12, window=600):
+        return JSONResponse({"ok": False, "msg": "Too many tries. Wait a few minutes."}, status_code=429)
+    return JSONResponse(await autoedit.monid_check(key))
+
+
+async def _imagine_monid(request, key: str, prompt: str, ratio: str, model: str, ref: bytes | None) -> tuple:
+    """One ChatGPT picture from the member's Monid key. (status, bytes or message): 200 = picture."""
+    name = None
+    try:
+        refs = None
+        if ref:
+            name = await run(autoedit.pub_put, ref)
+            refs = [f"{autoedit.public_base(request)}/watch/pub/{name}"]
+        out = await autoedit.gpt_picture(key, prompt, ratio, model, refs, "making your image")
+        return 200, out
+    except autoedit.MemberStop as e:
+        return 402, str(e).replace("press Make it again", "try again").replace("Press Make it again", "Try again")
+    except autoedit.ProviderError as e:
+        return 400, f"ChatGPT couldn't make this image: {e.detail[:220].rstrip('.')}."
+    except autoedit.Stop as e:
+        await _img_problem(f"Monid: {e}")
+        return 502, str(e)
+    finally:
+        if name:
+            await run(autoedit.pub_drop, name)
+
+
 async def watch_imagine(request):
-    """POST JSON {prompt, ratio}: make one image for a logged-in member. Returns the image itself."""
+    """POST JSON {prompt, ratio[, key, image]}: make one image for a logged-in member. Returns the image itself."""
     if not member_authed(request):
         return JSONResponse({"ok": False}, status_code=401)
     username = request.session.get("member")
@@ -2849,15 +2904,30 @@ async def watch_imagine(request):
     if not _same_site_json(request):
         return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
     cfg = await run(_img_cfg)
-    if not (cfg["on"] and cfg["key"]):
+    monid = cfg["provider"] == "monid"
+    if not (cfg["on"] and (monid or cfg["key"])):
         return JSONResponse({"ok": False, "msg": "The image generator is turned off right now."}, status_code=503)
     body = await request.body()
     try:
-        data = json.loads(body) if len(body) < 12000 else None
+        data = json.loads(body) if len(body) < (16_000_000 if monid else 12000) else None
         if not isinstance(data, dict):
             raise ValueError
     except ValueError:
-        return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
+        return JSONResponse({"ok": False, "msg": "That picture is too big. Use one under 10 MB." if monid else
+                             "Bad request."}, status_code=400)
+    key, ref = str(data.get("key", "")).strip(), None
+    if monid:
+        if not autoedit.good_key(key):
+            return JSONResponse({"ok": False, "msg": "Put your Monid key in the box at the top first."}, status_code=400)
+        if data.get("image"):
+            raw = autoedit.picture_bytes(data.get("image"))
+            if not raw or len(raw) > 15 * 1024 * 1024:
+                return JSONResponse({"ok": False, "msg": "That picture couldn't be read. Use a JPG or PNG under 10 MB."},
+                                    status_code=400)
+            try:
+                ref = await run(autoedit.prep_picture, raw, "keep")
+            except autoedit.Stop as e:
+                return JSONResponse({"ok": False, "msg": str(e)}, status_code=400)
     prompt = " ".join("".join(ch for ch in str(data.get("prompt", "")) if ch.isprintable() or ch == " ").split())[:2000]
     ratio = data.get("ratio") if data.get("ratio") in _IMG_SIZES else "9:16"
     if len(prompt) < 3:
@@ -2870,6 +2940,23 @@ async def watch_imagine(request):
     if used >= cfg["limit"]:
         return JSONResponse({"ok": False, "msg": f"You've made {cfg['limit']} images today, the most allowed. "
                                                  "Come back tomorrow for more.", "left": 0}, status_code=429)
+    if monid:
+        _IMG_BUSY.add(username)
+        try:
+            async with _IMG_SEM:
+                status, out = await _imagine_monid(request, key, prompt, ratio, cfg["pic"], ref)
+        finally:
+            _IMG_BUSY.discard(username)
+        final, why = (await run(_img_finish, out, ratio)) if status == 200 else (None, "bad")
+        await run(db.log_image_gen, username, prompt, ratio, "monid:" + cfg["pic"], final is not None)
+        if final is not None:
+            fw, fh = _IMG_FINAL[ratio]
+            return Response(content=final, media_type="image/jpeg", headers={
+                "Cache-Control": "no-store", "X-Seed": str(secrets.randbelow(900000) + 100000), "X-Size": f"{fw}x{fh}",
+                "X-Left": str(max(0, cfg["limit"] - used - 1))})
+        msg = out if status != 200 else ("The image came back blank, so it wasn't counted. Try describing it differently."
+                                         if why == "blank" else "ChatGPT sent something that isn't a picture. Try again.")
+        return JSONResponse({"ok": False, "msg": msg}, status_code=502)
     _IMG_BUSY.add(username)
     try:
         async with _IMG_SEM:
@@ -2929,10 +3016,13 @@ async def imagine_settings_save(request):
     if model not in dict(IMG_MODELS):
         model = "zimage"
     limit = parse_int(form.get("limit")) or 15
+    provider, pic = str(form.get("provider", "monid")), str(form.get("pic", "gpt-image-2"))
     await run(db.set_setting, "img_on", "1" if form.get("on") else "0")
     await run(db.set_setting, "img_model", model)
     await run(db.set_setting, "img_limit", str(max(1, min(500, limit))))
-    flash(request, "Image generator saved." if _img_key() else
+    await run(db.set_setting, "img_provider", provider if provider in dict(IMG_PROVIDERS) else "monid")
+    await run(db.set_setting, "img_pic", pic if pic in autoedit.GPT else "gpt-image-2")
+    flash(request, "Image generator saved." if (_img_key() or provider == "monid") else
           "Saved. Add POLLINATIONS_KEY on Render so members can use it.")
     return redirect("/videos#imagine")
 
@@ -3046,6 +3136,7 @@ app = Starlette(
         Route("/watch/feedback", watch_feedback, methods=["GET", "POST"]),
         Route("/viewers/feedback/delete", feedback_delete, methods=["POST"]),
         Route("/watch/imagine", watch_imagine, methods=["POST"]),
+        Route("/watch/imagine/key", watch_imagine_key, methods=["POST"]),
         *autoedit.routes(),
         Route("/videos/imagine", imagine_settings_save, methods=["POST"]),
         Route("/watch/ping", watch_ping_1dev, methods=["POST"]),

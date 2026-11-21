@@ -1,6 +1,7 @@
 /* Auto edit (tutorials page): ask for a video, follow it while the bot writes the story, records the voice and
    makes the pictures, then put the MP4 together right here in the browser (WebCodecs + mp4-muxer), so the
-   server never does the heavy video work. */
+   server never does the heavy video work.
+   Manual mode: the member uploads a picture and says what happens; a video model on Monid makes the clip. */
 (function () {
   'use strict';
   var root = document.getElementById('ae');
@@ -27,38 +28,52 @@
   var form = $('ae-form'), go = $('ae-go'), msg = $('ae-msg'), left = $('ae-left');
   var state = { left: +root.getAttribute('data-left'), limit: +root.getAttribute('data-limit'),
                 open: root.getAttribute('data-open') === '1', window: root.getAttribute('data-window') };
-  var clips = [];
+  var clips = [], story = root.getAttribute('data-story') === '1', manualOn = !!$('ae-manual');
   function say(t) { msg.textContent = t || ''; }
   function radio(name) { var r = form.querySelector('input[name=' + name + ']:checked'); return r ? r.value : ''; }
   function setRadio(name, v) { var r = form.querySelector('input[name=' + name + '][value="' + v + '"]'); if (r) r.checked = true; }
+  function mode() { return !story ? 'manual' : !manualOn ? 'auto' : (radio('ae-mode') || 'auto'); }
   function remember() {
     store('aeForm', JSON.stringify({ niche: $('ae-niche').value, minutes: radio('ae-min'), ratio: radio('ae-ratio'),
-      fmt: radio('ae-fmt'), sec: radio('ae-sec'), language: $('ae-lang').value, voice: $('ae-voice').value }));
+      fmt: radio('ae-fmt'), sec: radio('ae-sec'), language: $('ae-lang').value, voice: $('ae-voice').value,
+      mode: radio('ae-mode'), model: radio('ae-model'), msec: radio('ae-msec'), mshape: radio('ae-mshape') }));
   }
   function format() {
     var shorts = radio('ae-fmt') !== 'long';
     $('ae-len-short').hidden = !shorts; $('ae-len-long').hidden = shorts; $('ae-shape').hidden = shorts;
+    var sec = radio('ae-msec') || '5';                      /* the price of each video model for this length */
+    Array.prototype.forEach.call(form.querySelectorAll('input[name=ae-model]'), function (r) {
+      r.parentNode.querySelector('em').textContent = r.getAttribute('data-p' + sec) || '';
+    });
   }
   try {
     var saved = JSON.parse(store('aeForm') || '{}');
     if (saved.niche && $('ae-niche').querySelector('option[value="' + saved.niche + '"]')) $('ae-niche').value = saved.niche;
-    if (saved.minutes) setRadio('ae-min', saved.minutes);
-    if (saved.ratio) setRadio('ae-ratio', saved.ratio);
-    if (saved.fmt) setRadio('ae-fmt', saved.fmt);
-    if (saved.sec) setRadio('ae-sec', saved.sec);
+    ['ae-min:minutes', 'ae-ratio:ratio', 'ae-fmt:fmt', 'ae-sec:sec', 'ae-mode:mode', 'ae-model:model', 'ae-msec:msec', 'ae-mshape:mshape']
+      .forEach(function (p) { var k = p.split(':'); if (saved[k[1]]) setRadio(k[0], saved[k[1]]); });
     if (saved.language) $('ae-lang').value = saved.language;
     if (saved.voice) $('ae-voice').value = saved.voice;
   } catch (e) {}
   ['ae-niche', 'ae-lang', 'ae-voice'].forEach(function (id) { $(id).addEventListener('change', remember); });
-  Array.prototype.forEach.call(form.querySelectorAll('input[type=radio]'), function (r) { r.addEventListener('change', function () { remember(); format(); }); });
+  Array.prototype.forEach.call(form.querySelectorAll('input[type=radio]'), function (r) { r.addEventListener('change', function () { remember(); format(); paint(); }); });
   format();
 
   /* ---------------- the member's own Monid key (kept on this device only) ---------------- */
-  var monid = !!$('ae-key'), key = monid ? (store('aeMonidKey') || '') : '';
+  var monid = !!$('ae-key'), key = monid ? (store('aeMonidKey') || '') : '', keyOk = false,
+      autoKey = monid && $('ae-key').getAttribute('data-auto') === '1';
+  function needKey() { return mode() === 'manual' || autoKey; }
+  function paint() {
+    var m = mode(), nk = needKey(), ready = !nk || keyOk;
+    if (monid) { $('ae-key').hidden = !nk; $('ae-key-ask').hidden = keyOk; $('ae-key-ok').hidden = !keyOk; }
+    $('ae-fields').hidden = !(m === 'auto' && ready);
+    if (manualOn) $('ae-manual').hidden = !(m === 'manual' && ready);
+    $('ae-sub-auto').hidden = m !== 'auto'; $('ae-sub-manual').hidden = m !== 'manual';
+    $('ae-how').hidden = m !== 'auto'; $('ae-how-m').hidden = m !== 'manual';
+  }
   function keyState(ok, bal) {
-    if (!monid) return;
-    $('ae-key-ask').hidden = ok; $('ae-key-ok').hidden = !ok; $('ae-fields').hidden = !ok;
-    $('ae-key-bal').textContent = ok ? (bal ? 'Balance: ' + bal : 'Ready to use') : '';
+    keyOk = !!ok;
+    if (monid) $('ae-key-bal').textContent = ok ? (bal ? 'Balance: ' + bal : 'Ready to use') : '';
+    paint();
   }
   function checkKey(k, quiet) {
     $('ae-key-msg').textContent = quiet ? '' : 'Checking...'; $('ae-key-save').disabled = true;
@@ -84,6 +99,7 @@
       keyState(false); $('ae-key-in').value = ''; $('ae-key-in').focus();
     });
   }
+  paint();
   ['ae-concept', 'ae-script'].forEach(function (id) {
     var t = $(id); t.value = store(id) || ''; t.addEventListener('input', function () { store(id, t.value); });
     t.addEventListener('contextmenu', function (e) { e.stopPropagation(); });
@@ -93,18 +109,59 @@
     $('ae-cliplist').textContent = clips.length ? clips.map(function (f) { return f.name; }).join(', ') + (this.files.length > 3 ? ' (first 3 only)' : '') : '';
   });
   function showLeft() {
-    if (!state.open) { left.textContent = 'You can start videos ' + (state.window === 'Any time' ? 'any time' : 'from ' + state.window) + ' (Manila time).'; }
-    else if (state.left <= 0) { left.textContent = 'No videos left today. Come back tomorrow for more.'; }
-    else { left.textContent = state.left + ' of ' + state.limit + ' videos left today' + (state.window !== 'Any time' ? '. Your time: ' + state.window : ''); }
-    go.disabled = busy || !state.open || state.left <= 0;
+    var t;
+    if (!state.open) { t = 'You can start videos ' + (state.window === 'Any time' ? 'any time' : 'from ' + state.window) + ' (Manila time).'; }
+    else if (state.left <= 0) { t = 'No videos left today. Come back tomorrow for more.'; }
+    else { t = state.left + ' of ' + state.limit + ' videos left today' + (state.window !== 'Any time' ? '. Your time: ' + state.window : ''); }
+    left.textContent = t; go.disabled = busy || !state.open || state.left <= 0;
+    if (manualOn) { $('ae-mleft').textContent = t; $('ae-mgo').disabled = go.disabled; }
+  }
+
+  /* ---------------- Manual: the picture (made smaller here so it uploads fast) ---------------- */
+  var pic = null;
+  function shrink(file, max) {
+    return new Promise(function (ok, bad) {
+      var fr = new FileReader();
+      fr.onerror = bad;
+      fr.onload = function () {
+        var im = new Image();
+        im.onload = function () {
+          var w = im.naturalWidth, h = im.naturalHeight, z = Math.min(1, max / Math.max(w, h)), c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(w * z)); c.height = Math.max(1, Math.round(h * z));
+          c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', 0.92));
+        };
+        im.onerror = bad; im.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+  function pickPic(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type) && !/\.(jpe?g|png|webp|gif|bmp)$/i.test(file.name)) { say('That file isn\'t a picture. Use a JPG or PNG.'); return; }
+    if (file.size > 25 * 1048576) { say('That picture is too big. Use one under 25 MB.'); return; }
+    shrink(file, 2048).then(function (src) {
+      pic = { data: src, name: file.name };
+      $('ae-thumb').src = src; $('ae-fname').textContent = file.name; $('ae-has').hidden = false; $('ae-pick').hidden = true; say('');
+    }).catch(function () { say('That picture couldn\'t be opened here. Use a JPG or PNG.'); });
+  }
+  if (manualOn) {
+    $('ae-file').addEventListener('change', function () { pickPic(this.files && this.files[0]); this.value = ''; });
+    $('ae-unpick').addEventListener('click', function () { $('ae-file').click(); });
+    var drop = $('ae-drop');
+    ['dragenter', 'dragover'].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
+    ['dragleave', 'drop'].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
+    drop.addEventListener('drop', function (e) { pickPic(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]); });
+    var mp = $('ae-mprompt'); mp.value = store('ae-mprompt') || '';
+    mp.addEventListener('input', function () { store('ae-mprompt', mp.value); });
+    mp.addEventListener('contextmenu', function (e) { e.stopPropagation(); });
   }
 
   /* ---------------- following a video ---------------- */
   var card = $('ae-card'), steps = ['writing', 'voicing', 'drawing', 'music', 'build'], cur = null, poll = null, busy = false,
-      autoBuild = {}, built = {};
+      autoBuild = {}, built = {}, stepList = $('ae-steps');
   function setSteps(active, frac) {
     var at = steps.indexOf(active);
-    Array.prototype.forEach.call($('ae-steps').children, function (li) {
+    Array.prototype.forEach.call(stepList.children, function (li) {
       var i = steps.indexOf(li.getAttribute('data-s'));
       li.className = at < 0 ? (active === 'done' ? 'done' : '') : i < at ? 'done' : i === at ? 'now' : '';
     });
@@ -114,8 +171,12 @@
   function note(t) { $('ae-note').textContent = t || ''; }
   function showJob(j) {
     cur = j; card.hidden = false; $('ae-empty').hidden = true;
+    var m = !!j.manual, ms = $('ae-steps-m');
+    if (ms) { ms.hidden = !m; $('ae-steps').hidden = m; }
+    stepList = m && ms ? ms : $('ae-steps');
+    steps = m ? ['sending', 'animating', 'saving'] : ['writing', 'voicing', 'drawing', 'music', 'build'];
     $('ae-title').textContent = j.title || 'Your video';
-    $('ae-meta').textContent = [j.niche, j.shorts ? j.length + ' Short' : j.length, j.ratio, j.language].join(', ');
+    $('ae-meta').textContent = (m ? [j.model, j.length, j.ratio] : [j.niche, j.shorts ? j.length + ' Short' : j.length, j.ratio, j.language]).join(', ');
     $('ae-cancel').hidden = !j.active;
     $('ae-build').hidden = true; $('ae-again').hidden = true;
     if (j.active) {
@@ -123,16 +184,28 @@
       var frac = j.total ? j.done / j.total : 0;
       setSteps(j.status === 'queued' ? '' : j.status, frac);
       note(j.status === 'queued' ? (j.line > 1 ? 'Waiting in line: number ' + j.line + '. Another member\'s video is being made first.' : 'Starting...')
+        : m ? j.label + (j.status === 'animating' ? '. Most clips take 1 to 5 minutes' + (j.done > 20 ? ' (' + Math.floor(j.done / 60) + ':' + ('0' + j.done % 60).slice(-2) + ' so far)' : '') : '') + '. You can leave this tab open and do something else.'
         : j.label + (j.total > 1 ? ': ' + j.done + ' of ' + j.total : '') + '. You can leave this tab open and do something else.');
+    } else if (j.status === 'ready' && m) {
+      setSteps('done', 1);
+      var v = $('ae-video');
+      if (v.getAttribute('src') !== j.clip) { if (j.poster) v.poster = j.poster; else v.removeAttribute('poster'); v.src = j.clip; }
+      var dl = $('ae-dl'); dl.href = j.clip; dl.setAttribute('download', slug(j.title) + '.mp4');
+      $('ae-result').hidden = false;
+      note('Done! Download it today. The file is cleared after a day.');
     } else if (j.status === 'ready') {
       if (!built[j.id]) {
         setSteps('build', 0); $('ae-result').hidden = true;
         if (autoBuild[j.id]) { delete autoBuild[j.id]; build(j.id); }
         else { $('ae-build').hidden = false; note('Everything is ready. Put the video together to get the MP4.'); }
+      } else if ($('ae-video').getAttribute('src') !== built[j.id]) {      /* back to the video made on this page */
+        var bv = $('ae-video'); bv.removeAttribute('poster'); bv.src = built[j.id];
+        $('ae-dl').href = built[j.id]; $('ae-dl').setAttribute('download', slug(j.title) + '.mp4');
+        $('ae-result').hidden = false; setSteps('done', 1); note('Done! Download it before you close this page.');
       }
     } else {
       setSteps('', 0); $('ae-result').hidden = true;
-      note(j.status === 'expired' ? 'The files of this video were cleared after a day. You can make it again with the same story.'
+      note(j.status === 'expired' ? (m ? 'The file of this video was cleared after a day.' : 'The files of this video were cleared after a day. You can make it again with the same story.')
         : j.status === 'canceled' ? 'Canceled.' : (j.msg || 'This video didn\'t finish.'));
       $('ae-again').hidden = !j.again;
     }
@@ -143,7 +216,7 @@
       var li = document.createElement('li'), b = document.createElement('button');
       b.type = 'button'; b.className = 'ae-item' + (cur && cur.id === j.id ? ' on' : '');
       var t = document.createElement('b'); t.textContent = j.title || j.niche;
-      var s = document.createElement('span'); s.textContent = j.niche + ', ' + j.length + (j.shorts ? ' Short' : '') + ', ' + j.when;
+      var s = document.createElement('span'); s.textContent = (j.manual ? j.model + ', ' + j.length : j.niche + ', ' + j.length + (j.shorts ? ' Short' : '')) + ', ' + j.when;
       var st = document.createElement('em'); st.className = 'st ' + (j.status === 'ready' ? 'ok' : j.active ? 'run' : 'off');
       st.textContent = j.active ? (j.status === 'queued' ? 'In line' : 'Making') : j.label;
       b.appendChild(t); b.appendChild(s); b.appendChild(st);
@@ -173,11 +246,26 @@
   document.addEventListener('viewchange', function (e) { if (e.detail === 'auto') refresh(); });
   if (document.body.classList.contains('v-auto')) refresh();
 
+  function startManual() {
+    if (!key) { say('Save your Monid key first.'); return; }
+    if (!pic) { say('Add a picture first.'); return; }
+    var p = $('ae-mprompt').value.trim();
+    if (p.length < 3) { say('Write what should happen in the video first.'); $('ae-mprompt').focus(); return; }
+    var mg = $('ae-mgo');
+    busy = true; mg.disabled = true; mg.textContent = 'Uploading...';
+    api('/watch/autoedit/start', { mode: 'manual', image: pic.data, prompt: p, model: radio('ae-model'), sec: radio('ae-msec'),
+                                   shape: radio('ae-mshape'), key: key }).then(function (r) {
+      cur = r.job; showJob(r.job); refresh();
+      if (window.innerWidth < 900) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }).catch(function (err) { if (err !== 0) say(errText(err)); })
+      .then(function () { busy = false; mg.textContent = 'Make the video'; showLeft(); });
+  }
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     if (busy) return;
     say('');
-    if (monid && !key) { say('Save your Monid key first.'); return; }
+    if (mode() === 'manual') { startManual(); return; }
+    if (needKey() && !key) { say('Save your Monid key first.'); return; }
     var body = { niche: $('ae-niche').value, format: radio('ae-fmt') || 'shorts', seconds: radio('ae-sec'), minutes: radio('ae-min'),
                  ratio: radio('ae-ratio'), language: $('ae-lang').value, voice: $('ae-voice').value,
                  concept: $('ae-concept').value.trim(), script: $('ae-script').value.trim(), key: key };
@@ -189,19 +277,20 @@
       .then(function () { busy = false; go.textContent = 'Make my video'; showLeft(); });
   });
   $('ae-cancel').addEventListener('click', function () {
-    if (!cur || !confirm('Cancel this video? It won\'t count toward today\'s limit.')) return;
+    if (!cur || !confirm(cur.manual ? 'Cancel this video? If the model already started, Monid may still charge for it.' : 'Cancel this video? It won\'t count toward today\'s limit.')) return;
     api('/watch/autoedit/act', { id: cur.id, action: 'cancel' }).then(function (r) { showJob(r.job); refresh(); }).catch(function (e) { if (e !== 0) note(errText(e)); });
   });
   $('ae-again').addEventListener('click', function () {
     if (!cur) return;
-    if (monid && !key) { note('Save your Monid key at the top first.'); return; }
+    if ((cur.manual || autoKey) && !key) { note('Save your Monid key at the top first.'); return; }
     api('/watch/autoedit/act', { id: cur.id, action: 'again', key: key }).then(function (r) { autoBuild[r.job.id] = true; showJob(r.job); refresh(); })
       .catch(function (e) { if (e !== 0) note(errText(e)); });
   });
   $('ae-build').addEventListener('click', function () { if (cur) build(cur.id); });
   $('ae-new').addEventListener('click', function () {
     $('ae-result').hidden = true; card.hidden = true; $('ae-empty').hidden = false; cur = null;
-    form.scrollIntoView({ behavior: 'smooth', block: 'start' }); $('ae-niche').focus();
+    var v = $('ae-video'); v.pause(); v.removeAttribute('src'); v.removeAttribute('poster');
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' }); (mode() === 'manual' ? $('ae-mprompt') : $('ae-niche')).focus();
   });
   showLeft();
 
@@ -476,8 +565,8 @@
     }).then(function (blob) {
       if (lastUrl) URL.revokeObjectURL(lastUrl);
       lastUrl = URL.createObjectURL(blob);
-      built[id] = true;
-      var v = $('ae-video'); v.src = lastUrl;
+      built = {}; built[id] = lastUrl;
+      var v = $('ae-video'); v.removeAttribute('poster'); v.src = lastUrl;
       var dl = $('ae-dl'); dl.href = lastUrl; dl.setAttribute('download', slug(job.title) + '.mp4');
       $('ae-result').hidden = false; setSteps('done', 1);
       note('Done! ' + (blob.size / 1048576).toFixed(0) + ' MB. Download it before you close this page.');

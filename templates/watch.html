@@ -303,6 +303,27 @@ a.btn{text-decoration:none}
 .ae-key-ok small{color:var(--faint);font-size:12.5px}
 .ok-dot{flex:0 0 10px;height:10px;border-radius:50%;background:var(--done);box-shadow:0 0 0 4px rgba(60,207,122,.15)}
 .ae-link{border:0;background:transparent;color:var(--brand2);font-weight:600;cursor:pointer;padding:6px}
+.opt{font-weight:500;color:var(--faint)}
+.drop{position:relative;margin:0 0 16px}
+.drop input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.drop-pick{display:flex;align-items:center;justify-content:center;gap:10px;min-height:84px;border:1.5px dashed var(--line2);border-radius:12px;color:var(--muted);font-weight:600;font-size:14.5px;cursor:pointer;padding:14px;text-align:center}
+.drop-pick:hover,.drop.over .drop-pick{border-color:var(--brand2);color:var(--ink);background:rgba(88,101,242,.08)}
+.drop input:focus-visible+.drop-pick{outline:2px solid #fff;outline-offset:2px}
+.drop-has{display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--line2);border-radius:12px;background:var(--bg)}
+.drop-has img{width:58px;height:58px;object-fit:cover;border-radius:8px;flex:0 0 auto;background:#000}
+.drop-has span{flex:1;min-width:0;display:flex;flex-direction:column}
+.drop-has b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drop-has small{color:var(--faint);font-size:12.5px;line-height:1.4}
+.ae-models{display:grid;gap:8px}
+.ae-models label{position:relative;display:block}
+.ae-models input{position:absolute;opacity:0;pointer-events:none}
+.mc{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1px 10px;align-items:center;padding:10px 13px;border:1px solid var(--line2);border-radius:12px;cursor:pointer}
+.mc:hover{background:var(--raise)}
+.mc b{font-size:14.5px}
+.mc small{grid-column:1;color:var(--faint);font-size:12.5px}
+.mc em{grid-column:2;grid-row:1/3;font-style:normal;font-size:13px;color:var(--soft);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ae-models input:checked+.mc{border-color:var(--brand2);background:rgba(88,101,242,.12)}
+.ae-models input:focus-visible+.mc{outline:2px solid #fff;outline-offset:2px}
 @media (max-width:520px){.ae-two{grid-template-columns:1fr}.ae-card,.ae-empty{padding:16px}}
 @media (prefers-reduced-motion:reduce){.ae-steps li.now::before{animation:none}}
 
@@ -418,6 +439,33 @@ a.btn{text-decoration:none}
     <form class="gen-ctl" id="gen-form" autocomplete="off">
       <h1>Create an image</h1>
       <p class="gen-sub">Describe what you want to see, pick a shape, then tap Generate.</p>
+      {% if ig.monid %}
+      <div class="ae-key" id="gen-key">
+        <div id="gen-key-ask">
+          <label class="gl" for="gen-key-in">Your Monid key</label>
+          <p class="ae-hint">Pictures are made with ChatGPT and paid from your own Monid balance, about $0.04 each. Get a key at
+            <a href="https://monid.ai" target="_blank" rel="noopener noreferrer">monid.ai</a>. It starts with monid_.</p>
+          <div class="ae-key-row"><input type="password" id="gen-key-in" placeholder="monid_live_..." autocomplete="off" spellcheck="false" aria-label="Monid key">
+            <button class="btn go" type="button" id="gen-key-save">Save</button></div>
+          <p class="ae-key-msg" id="gen-key-msg" role="status"></p>
+        </div>
+        <div class="ae-key-ok" id="gen-key-ok" hidden>
+          <span class="ok-dot" aria-hidden="true"></span>
+          <span class="grow"><b>Monid key saved</b><small id="gen-key-bal"></small></span>
+          <button class="ae-link" type="button" id="gen-key-change">Change</button>
+        </div>
+      </div>
+      {% endif %}
+      <div id="gen-fields"{{ ' hidden' if ig.monid }}>
+      {% if ig.monid %}
+      <span class="gl">Picture to copy or change <span class="opt">optional</span></span>
+      <div class="drop" id="gen-drop">
+        <input type="file" id="gen-file" accept="image/*">
+        <label for="gen-file" class="drop-pick" id="gen-pick"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>Add a picture</label>
+        <div class="drop-has" id="gen-has" hidden><img id="gen-thumb" alt=""><span><b id="gen-fname"></b><small>ChatGPT follows this picture and your words.</small></span>
+          <button class="ae-link" type="button" id="gen-unpick">Remove</button></div>
+      </div>
+      {% endif %}
       <label class="gl" for="gen-prompt">What should the image show?</label>
       <textarea id="gen-prompt" maxlength="2000" rows="6" placeholder="A rainy street in Manila at night, neon signs reflecting on the road, cinematic, ultra detailed"></textarea>
       <div class="gen-count"><span>Put the most important details first.</span><span id="gen-chars">2000 left</span></div>
@@ -429,14 +477,15 @@ a.btn{text-decoration:none}
       </fieldset>
       <button class="btn go gen-go" id="gen-go" type="submit">Generate</button>
       <p class="gen-left" id="gen-left" data-left="{{ ig.left }}" data-limit="{{ ig.limit }}">{{ ig.left }} of {{ ig.limit }} images left today</p>
+      </div>
       <p class="gen-msg" id="gen-msg" role="alert"></p>
     </form>
     <div class="gen-out">
       <div class="stagebox">
         <div class="canvas tall" id="gen-canvas">
           <div class="ph" id="gen-ph"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>
-            <b>Your image shows up here</b><span>HD, no logo</span></div>
-          <div class="busy" id="gen-busy" hidden><span class="spin"></span><b>Creating your image</b><span>Usually 5 to 30 seconds. <span class="sec" id="gen-sec">0s</span></span></div>
+            <b>Your image shows up here</b><span>{{ 'HD, made with ChatGPT' if ig.monid else 'HD, no logo' }}</span></div>
+          <div class="busy" id="gen-busy" hidden><span class="spin"></span><b>Creating your image</b><span>Usually {{ '20 to 60' if ig.monid else '5 to 30' }} seconds. <span class="sec" id="gen-sec">0s</span></span></div>
           <img id="gen-img" alt="" hidden>
         </div>
       </div>
@@ -456,16 +505,22 @@ a.btn{text-decoration:none}
 {% endif %}
 
 {% if ae.show %}
-<section class="ae" id="ae" role="tabpanel" aria-labelledby="tab-auto" data-left="{{ ae.left }}" data-limit="{{ ae.limit }}" data-open="{{ '1' if ae.open else '0' }}" data-window="{{ ae.window }}">
+<section class="ae" id="ae" role="tabpanel" aria-labelledby="tab-auto" data-story="{{ '1' if ae.story else '0' }}" data-left="{{ ae.left }}" data-limit="{{ ae.limit }}" data-open="{{ '1' if ae.open else '0' }}" data-window="{{ ae.window }}">
   <div class="gen-in">
     <form class="gen-ctl" id="ae-form" autocomplete="off">
       <h1>Auto edit</h1>
-      <p class="gen-sub">Pick a niche and the bot makes the whole video: story, voice, pictures, subtitles and music.</p>
-      {% if ae.monid %}
-      <div class="ae-key" id="ae-key" data-monid="1">
+      <p class="gen-sub" id="ae-sub-auto"{{ ' hidden' if not ae.story }}>Pick a niche and the bot makes the whole video: story, voice, pictures, subtitles and music.</p>
+      <p class="gen-sub" id="ae-sub-manual" hidden>Upload a picture, say what happens, and a video model brings it to life.</p>
+      {% if ae.story and ae.clips %}
+      <fieldset class="ae-len" id="ae-mode"><legend class="gl">Make it</legend>
+        <div class="seg two"><label><input type="radio" name="ae-mode" value="auto" checked><span>Automatic</span></label><label><input type="radio" name="ae-mode" value="manual"><span>Manual</span></label></div>
+      </fieldset>
+      {% endif %}
+      {% if ae.monid or ae.clips %}
+      <div class="ae-key" id="ae-key" data-auto="{{ '1' if ae.monid else '0' }}">
         <div id="ae-key-ask">
           <label class="gl" for="ae-key-in">Your Monid key</label>
-          <p class="ae-hint">The voice, pictures and music are paid from your own Monid balance. Get a key at
+          <p class="ae-hint">Your videos are paid from your own Monid balance. Get a key at
             <a href="https://monid.ai" target="_blank" rel="noopener noreferrer">monid.ai</a>. It starts with monid_.</p>
           <div class="ae-key-row"><input type="password" id="ae-key-in" placeholder="monid_live_..." autocomplete="off" spellcheck="false" aria-label="Monid key">
             <button class="btn go" type="button" id="ae-key-save">Save</button></div>
@@ -478,7 +533,7 @@ a.btn{text-decoration:none}
         </div>
       </div>
       {% endif %}
-      <div id="ae-fields"{{ ' hidden' if ae.monid }}>
+      <div id="ae-fields"{{ ' hidden' if ae.monid or not ae.story }}>
       <label class="gl" for="ae-niche">Niche</label>
       <select id="ae-niche">{% for n in ae.niches %}<option value="{{ n.key }}">{{ n.label }}</option>{% endfor %}</select>
       <fieldset class="ae-len"><legend class="gl">Video</legend>
@@ -514,16 +569,47 @@ a.btn{text-decoration:none}
       <button class="btn go gen-go" id="ae-go" type="submit">Make my video</button>
       <p class="gen-left" id="ae-left"></p>
       </div>
+      {% if ae.clips %}
+      <div id="ae-manual" hidden>
+        <span class="gl">Your picture</span>
+        <div class="drop" id="ae-drop">
+          <input type="file" id="ae-file" accept="image/*">
+          <label for="ae-file" class="drop-pick" id="ae-pick"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>Add a picture</label>
+          <div class="drop-has" id="ae-has" hidden><img id="ae-thumb" alt=""><span><b id="ae-fname"></b><small>This picture starts the video.</small></span>
+            <button class="ae-link" type="button" id="ae-unpick">Change</button></div>
+        </div>
+        <label class="gl" for="ae-mprompt">What happens in the video?</label>
+        <textarea id="ae-mprompt" maxlength="1500" rows="4" placeholder="She turns to the camera and smiles while the wind moves her hair. Slow push in."></textarea>
+        <p class="ae-hint" style="margin:0 0 16px">Say what moves and how the camera moves. Keep it to one moment.</p>
+        <fieldset class="ae-len"><legend class="gl">Video model</legend>
+          <div class="ae-models">{% for c in ae.clips %}<label><input type="radio" name="ae-model" value="{{ c.key }}"{{ ' checked' if loop.first }} data-p5="{{ c.price[5] }}" data-p10="{{ c.price[10] }}"><span class="mc"><b>{{ c.label }}</b><small>{{ c.note }}</small><em></em></span></label>{% endfor %}</div>
+        </fieldset>
+        <fieldset class="ae-len"><legend class="gl">Length</legend>
+          <div class="seg two">{% for s in ae.clip_secs %}<label><input type="radio" name="ae-msec" value="{{ s }}"{{ ' checked' if loop.first }}><span>{{ s }} sec</span></label>{% endfor %}</div>
+        </fieldset>
+        <fieldset class="ae-len"><legend class="gl">Shape</legend>
+          <div class="seg"><label><input type="radio" name="ae-mshape" value="9:16" checked><span>9:16</span></label><label><input type="radio" name="ae-mshape" value="16:9"><span>16:9</span></label><label><input type="radio" name="ae-mshape" value="keep"><span>Original</span></label></div>
+          <p class="ae-hint">9:16 and 16:9 trim your picture to that shape. Original keeps it as it is.</p>
+        </fieldset>
+        <button class="btn go gen-go" id="ae-mgo" type="submit">Make the video</button>
+        <p class="gen-left" id="ae-mleft"></p>
+      </div>
+      {% endif %}
       <p class="gen-msg" id="ae-msg" role="alert"></p>
     </form>
     <div class="gen-out">
       <div class="ae-empty" id="ae-empty">
         <h2>Your video shows up here</h2>
         <p>It takes a few minutes. You can leave this tab open and do something else.</p>
-        <ol class="ae-how">
+        <ol class="ae-how" id="ae-how"{{ ' hidden' if not ae.story }}>
           <li><span><b>The bot writes the story</b>From your concept, your script, or its own idea for the niche.</span></li>
           <li><span><b>It records the voice and makes the pictures</b>One picture for every part of the story, plus background music.</span></li>
           <li><span><b>Your browser puts it together</b>Subtitles and motion are added, then you download the MP4. Works best in Chrome or Edge on a computer.</span></li>
+        </ol>
+        <ol class="ae-how" id="ae-how-m" hidden>
+          <li><span><b>Add a picture</b>A person, a product, a place, a drawing. It becomes the first frame.</span></li>
+          <li><span><b>Say what happens</b>The model moves the picture the way you describe.</span></li>
+          <li><span><b>Download the MP4</b>Most clips are ready in 1 to 5 minutes.</span></li>
         </ol>
       </div>
       <div class="ae-card" id="ae-card" hidden aria-live="polite">
@@ -535,6 +621,11 @@ a.btn{text-decoration:none}
           <li data-s="drawing">Making the pictures</li>
           <li data-s="music">Making the music</li>
           <li data-s="build">Putting the video together</li>
+        </ol>
+        <ol class="ae-steps" id="ae-steps-m" hidden>
+          <li data-s="sending">Sending your picture</li>
+          <li data-s="animating">Making the video</li>
+          <li data-s="saving">Saving the video</li>
         </ol>
         <div class="ae-bar"><i id="ae-bar"></i></div>
         <p class="ae-note" id="ae-note"></p>
@@ -734,6 +825,57 @@ a.btn{text-decoration:none}
       ph=$('gen-ph'), busy=$('gen-busy'), act=$('gen-act'), dl=$('gen-dl'), left=$('gen-left'), thumbs=$('gen-thumbs');
   var made=[], working=false, tick=null;
   function store(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v);}catch(e){return null;}}
+  /* ---- the member's own Monid key (ChatGPT pictures). Shared with Auto edit, kept on this device only ---- */
+  var gk=$('gen-key'), key=gk?(store('aeMonidKey')||''):'', ref=null;
+  function keyState(ok,bal){if(!gk)return;$('gen-key-ask').hidden=ok;$('gen-key-ok').hidden=!ok;$('gen-fields').hidden=!ok;
+    $('gen-key-bal').textContent=ok?(bal?'Balance: '+bal:'Ready to use'):'';}
+  function checkKey(k,quiet){
+    $('gen-key-msg').textContent=quiet?'':'Checking...'; $('gen-key-save').disabled=true;
+    return fetch('/watch/imagine/key',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})})
+      .then(function(r){if(r.status===401){location.href='/members/login';throw 0;}
+        return r.json().catch(function(){return {};}).then(function(j){if(!r.ok||!j.ok)throw new Error(j.msg||'That key didn\'t work.');return j;});})
+      .then(function(j){key=k;store('aeMonidKey',k);$('gen-key-msg').textContent='';keyState(true,j.balance);})
+      .catch(function(e){if(e===0)return;var m=e&&e.message||'', net=!m||/fetch|network/i.test(m);
+        if(quiet&&net){keyState(true,'');return;}
+        key='';keyState(false);$('gen-key-msg').textContent=net?'Could not reach the server. Try again.':m;})
+      .then(function(){$('gen-key-save').disabled=false;});
+  }
+  function shrink(file,max){
+    return new Promise(function(ok,bad){
+      var fr=new FileReader();
+      fr.onerror=bad;
+      fr.onload=function(){
+        var im=new Image();
+        im.onload=function(){var w=im.naturalWidth,h=im.naturalHeight,z=Math.min(1,max/Math.max(w,h)),c=document.createElement('canvas');
+          c.width=Math.max(1,Math.round(w*z));c.height=Math.max(1,Math.round(h*z));c.getContext('2d').drawImage(im,0,0,c.width,c.height);ok(c.toDataURL('image/jpeg',0.9));};
+        im.onerror=bad; im.src=fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+  if(gk){
+    keyState(false);
+    if(key){$('gen-key-in').value=key;checkKey(key,true);}
+    $('gen-key-save').addEventListener('click',function(){var k=$('gen-key-in').value.trim();
+      if(!k){$('gen-key-msg').textContent='Paste your Monid key first.';$('gen-key-in').focus();return;} checkKey(k,false);});
+    $('gen-key-in').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();$('gen-key-save').click();}});
+    $('gen-key-in').addEventListener('contextmenu',function(e){e.stopPropagation();});
+    $('gen-key-change').addEventListener('click',function(){keyState(false);$('gen-key-in').value='';$('gen-key-in').focus();});
+    var pickRef=function(file){
+      if(!file)return;
+      if(!/^image\//.test(file.type)&&!/\.(jpe?g|png|webp|gif|bmp)$/i.test(file.name)){msg.textContent='That file isn\'t a picture. Use a JPG or PNG.';return;}
+      if(file.size>25*1048576){msg.textContent='That picture is too big. Use one under 25 MB.';return;}
+      shrink(file,1536).then(function(src){ref={data:src,name:file.name};$('gen-thumb').src=src;$('gen-fname').textContent=file.name;
+        $('gen-has').hidden=false;$('gen-pick').hidden=true;msg.textContent='';})
+        .catch(function(){msg.textContent='That picture couldn\'t be opened here. Use a JPG or PNG.';});
+    };
+    $('gen-file').addEventListener('change',function(){pickRef(this.files&&this.files[0]);this.value='';});
+    $('gen-unpick').addEventListener('click',function(){ref=null;$('gen-has').hidden=true;$('gen-pick').hidden=false;$('gen-thumb').removeAttribute('src');});
+    var drop=$('gen-drop');
+    ['dragenter','dragover'].forEach(function(n){drop.addEventListener(n,function(e){e.preventDefault();drop.classList.add('over');});});
+    ['dragleave','drop'].forEach(function(n){drop.addEventListener(n,function(e){e.preventDefault();drop.classList.remove('over');});});
+    drop.addEventListener('drop',function(e){pickRef(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]);});
+  }
   ta.value=store('genPrompt')||'';
   function chars(){$('gen-chars').textContent=(2000-ta.value.length)+' left';}
   chars();
@@ -765,12 +907,14 @@ a.btn{text-decoration:none}
   function make(){
     var p=ta.value.trim(), r=ratio();
     if(working)return;
+    if(gk&&!key){say('Save your Monid key first.');return;}
     if(p.length<3){say('Describe the image you want first.');ta.focus();return;}
+    var payload={prompt:p,ratio:r}; if(gk){payload.key=key;if(ref)payload.image=ref.data;}
     working=true; say(''); go.disabled=true; go.textContent='Generating...'; $('gen-again').disabled=true;
     shape(r); img.hidden=true; ph.hidden=true; busy.hidden=false; act.hidden=true; canvas.classList.remove('has');
     var s=0; $('gen-sec').textContent='0s'; tick=setInterval(function(){s++;$('gen-sec').textContent=s+'s';},1000);
     var info={};
-    fetch('/watch/imagine',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p,ratio:r})})
+    fetch('/watch/imagine',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
       .then(function(res){
         if(res.status===401){location.href='/members/login';throw 0;}
         var ct=res.headers.get('Content-Type')||'';
