@@ -246,6 +246,7 @@ a.btn{text-decoration:none}
 .seg span:hover{background:var(--raise)}
 .seg input:checked+span{border-color:var(--brand2);background:rgba(88,101,242,.12)}
 .seg input:focus-visible+span{outline:2px solid #fff;outline-offset:2px}
+.seg input:disabled+span{opacity:.38;cursor:not-allowed;background:transparent}
 .ae-len{border:0;margin:0 0 18px;padding:0}
 .ae-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .ae-two label{display:block}
@@ -510,7 +511,7 @@ a.btn{text-decoration:none}
     <form class="gen-ctl" id="ae-form" autocomplete="off">
       <h1>Auto edit</h1>
       <p class="gen-sub" id="ae-sub-auto"{{ ' hidden' if not ae.story }}>Pick a niche and the bot makes the whole video: story, voice, pictures, subtitles and music.</p>
-      <p class="gen-sub" id="ae-sub-manual" hidden>Upload a picture, say what happens, and a video model brings it to life.</p>
+      <p class="gen-sub" id="ae-sub-manual" hidden>Write what happens and a video model makes it. Add a picture if you want the video to start from it.</p>
       {% if ae.story and ae.clips %}
       <fieldset class="ae-len" id="ae-mode"><legend class="gl">Make it</legend>
         <div class="seg two"><label><input type="radio" name="ae-mode" value="auto" checked><span>Automatic</span></label><label><input type="radio" name="ae-mode" value="manual"><span>Manual</span></label></div>
@@ -571,16 +572,17 @@ a.btn{text-decoration:none}
       </div>
       {% if ae.clips %}
       <div id="ae-manual" hidden>
-        <span class="gl">Your picture</span>
-        <div class="drop" id="ae-drop">
+        <span class="gl">Picture to start from <span class="opt">optional</span></span>
+        <div class="drop" id="ae-drop" style="margin-bottom:6px">
           <input type="file" id="ae-file" accept="image/*">
           <label for="ae-file" class="drop-pick" id="ae-pick"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>Add a picture</label>
           <div class="drop-has" id="ae-has" hidden><img id="ae-thumb" alt=""><span><b id="ae-fname"></b><small>This picture starts the video.</small></span>
-            <button class="ae-link" type="button" id="ae-unpick">Change</button></div>
+            <button class="ae-link" type="button" id="ae-unpick">Remove</button></div>
         </div>
+        <p class="ae-hint" id="ae-pic-hint" style="margin:0 0 16px">No picture? The model makes the video from your words alone.</p>
         <label class="gl" for="ae-mprompt">What happens in the video?</label>
-        <textarea id="ae-mprompt" maxlength="1500" rows="4" placeholder="She turns to the camera and smiles while the wind moves her hair. Slow push in."></textarea>
-        <p class="ae-hint" style="margin:0 0 16px">Say what moves and how the camera moves. Keep it to one moment.</p>
+        <textarea id="ae-mprompt" maxlength="1500" rows="4" placeholder="A girl in a yellow raincoat runs across a wet street at night, neon lights reflecting. The camera follows her."></textarea>
+        <p class="ae-hint" id="ae-mhint" style="margin:0 0 16px">Describe everything: who, where, what happens, and how the camera moves.</p>
         <fieldset class="ae-len"><legend class="gl">Video model</legend>
           <div class="ae-models">{% for c in ae.clips %}<label><input type="radio" name="ae-model" value="{{ c.key }}"{{ ' checked' if loop.first }} data-p5="{{ c.price[5] }}" data-p10="{{ c.price[10] }}"><span class="mc"><b>{{ c.label }}</b><small>{{ c.note }}</small><em></em></span></label>{% endfor %}</div>
         </fieldset>
@@ -589,7 +591,7 @@ a.btn{text-decoration:none}
         </fieldset>
         <fieldset class="ae-len"><legend class="gl">Shape</legend>
           <div class="seg"><label><input type="radio" name="ae-mshape" value="9:16" checked><span>9:16</span></label><label><input type="radio" name="ae-mshape" value="16:9"><span>16:9</span></label><label><input type="radio" name="ae-mshape" value="keep"><span>Original</span></label></div>
-          <p class="ae-hint">9:16 and 16:9 trim your picture to that shape. Original keeps it as it is.</p>
+          <p class="ae-hint" id="ae-shape-hint"></p>
         </fieldset>
         <button class="btn go gen-go" id="ae-mgo" type="submit">Make the video</button>
         <p class="gen-left" id="ae-mleft"></p>
@@ -607,8 +609,8 @@ a.btn{text-decoration:none}
           <li><span><b>Your browser puts it together</b>Subtitles and motion are added, then you download the MP4. Works best in Chrome or Edge on a computer.</span></li>
         </ol>
         <ol class="ae-how" id="ae-how-m" hidden>
-          <li><span><b>Add a picture</b>A person, a product, a place, a drawing. It becomes the first frame.</span></li>
-          <li><span><b>Say what happens</b>The model moves the picture the way you describe.</span></li>
+          <li><span><b>Write what happens</b>Who, where, what they do, and how the camera moves.</span></li>
+          <li><span><b>Add a picture if you want</b>A person, a product, a place, a drawing. The video starts from it.</span></li>
           <li><span><b>Download the MP4</b>Most clips are ready in 1 to 5 minutes.</span></li>
         </ol>
       </div>
@@ -623,7 +625,7 @@ a.btn{text-decoration:none}
           <li data-s="build">Putting the video together</li>
         </ol>
         <ol class="ae-steps" id="ae-steps-m" hidden>
-          <li data-s="sending">Sending your picture</li>
+          <li data-s="sending" id="ae-step-send">Sending your picture</li>
           <li data-s="animating">Making the video</li>
           <li data-s="saving">Saving the video</li>
         </ol>

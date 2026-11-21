@@ -28,7 +28,7 @@ input[type=time]{padding:7px 10px;border:1px solid var(--line);border-radius:var
 {% endblock %}
 {% block content %}
 <div class="head">
-  <div><h1>Auto edit</h1><p>Members you choose make whole videos from a niche: YouTube Shorts and Facebook Reels (up to 60 seconds) or long videos (5 to 10 minutes). In Manual, they upload a picture and say what happens, and a video model turns it into a clip. One video is made at a time.</p></div>
+  <div><h1>Auto edit</h1><p>Members you choose make whole videos from a niche: YouTube Shorts and Facebook Reels (up to 60 seconds) or long videos (5 to 10 minutes). In Manual, they write what happens (and can add a picture to start from), and a video model makes the clip. One video is made at a time.</p></div>
   {% if not ae.on %}<span class="badge off">Off</span>{% elif not ae.key %}<span class="badge pending">Manual only</span>{% else %}<span class="badge live">On</span>{% endif %}
 </div>
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}

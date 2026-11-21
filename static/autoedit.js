@@ -1,7 +1,8 @@
 /* Auto edit (tutorials page): ask for a video, follow it while the bot writes the story, records the voice and
    makes the pictures, then put the MP4 together right here in the browser (WebCodecs + mp4-muxer), so the
    server never does the heavy video work.
-   Manual mode: the member uploads a picture and says what happens; a video model on Monid makes the clip. */
+   Manual mode: the member says what happens (and can add a picture to start from); a video model on Monid makes
+   the clip: text to video, or picture to video. */
 (function () {
   'use strict';
   var root = document.getElementById('ae');
@@ -45,6 +46,23 @@
     Array.prototype.forEach.call(form.querySelectorAll('input[name=ae-model]'), function (r) {
       r.parentNode.querySelector('em').textContent = r.getAttribute('data-p' + sec) || '';
     });
+    shapes();
+  }
+  var wantShape = '';
+  function shapes() {
+    /* Manual: Original needs a picture, and Hailuo makes 16:9 only from words */
+    if (!manualOn) return;
+    var has = !!(typeof pic !== 'undefined' && pic), wide = !has && radio('ae-model') === 'hailuo-2.3';
+    var box = function (v) { return form.querySelector('input[name=ae-mshape][value="' + v + '"]'); };
+    var cur = radio('ae-mshape');
+    box('keep').disabled = !has; box('9:16').disabled = wide;
+    if (!box(cur) || box(cur).disabled) { if (!wantShape) wantShape = cur; box(wide ? '16:9' : '9:16').checked = true; }
+    else if (wantShape && !box(wantShape).disabled && wantShape !== cur) { box(wantShape).checked = true; wantShape = ''; }
+    $('ae-shape-hint').textContent = has ? '9:16 and 16:9 trim your picture to that shape. Original keeps it as it is.'
+      : wide ? 'Hailuo makes 16:9 only when there\'s no picture.' : '';
+    $('ae-pic-hint').hidden = has;
+    $('ae-mhint').textContent = has ? 'Say what moves and how the camera moves. Keep it to one moment.'
+      : 'Describe everything: who, where, what happens, and how the camera moves.';
   }
   try {
     var saved = JSON.parse(store('aeForm') || '{}');
@@ -55,7 +73,9 @@
     if (saved.voice) $('ae-voice').value = saved.voice;
   } catch (e) {}
   ['ae-niche', 'ae-lang', 'ae-voice'].forEach(function (id) { $(id).addEventListener('change', remember); });
-  Array.prototype.forEach.call(form.querySelectorAll('input[type=radio]'), function (r) { r.addEventListener('change', function () { remember(); format(); paint(); }); });
+  Array.prototype.forEach.call(form.querySelectorAll('input[type=radio]'), function (r) {
+    r.addEventListener('change', function () { if (r.name === 'ae-mshape') wantShape = ''; remember(); format(); paint(); });
+  });
   format();
 
   /* ---------------- the member's own Monid key (kept on this device only) ---------------- */
@@ -142,11 +162,15 @@
     shrink(file, 2048).then(function (src) {
       pic = { data: src, name: file.name };
       $('ae-thumb').src = src; $('ae-fname').textContent = file.name; $('ae-has').hidden = false; $('ae-pick').hidden = true; say('');
+      shapes();
     }).catch(function () { say('That picture couldn\'t be opened here. Use a JPG or PNG.'); });
   }
   if (manualOn) {
     $('ae-file').addEventListener('change', function () { pickPic(this.files && this.files[0]); this.value = ''; });
-    $('ae-unpick').addEventListener('click', function () { $('ae-file').click(); });
+    $('ae-unpick').addEventListener('click', function () {
+      pic = null; $('ae-has').hidden = true; $('ae-pick').hidden = false; $('ae-thumb').removeAttribute('src'); shapes();
+    });
+    shapes();
     var drop = $('ae-drop');
     ['dragenter', 'dragover'].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
     ['dragleave', 'drop'].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
@@ -176,7 +200,8 @@
     stepList = m && ms ? ms : $('ae-steps');
     steps = m ? ['sending', 'animating', 'saving'] : ['writing', 'voicing', 'drawing', 'music', 'build'];
     $('ae-title').textContent = j.title || 'Your video';
-    $('ae-meta').textContent = (m ? [j.model, j.length, j.ratio] : [j.niche, j.shorts ? j.length + ' Short' : j.length, j.ratio, j.language]).join(', ');
+    $('ae-meta').textContent = (m ? [j.model, j.length, j.ratio, j.t2v ? 'from words' : 'from a picture'] : [j.niche, j.shorts ? j.length + ' Short' : j.length, j.ratio, j.language]).join(', ');
+    if (m && $('ae-step-send')) $('ae-step-send').textContent = j.t2v ? 'Getting ready' : 'Sending your picture';
     $('ae-cancel').hidden = !j.active;
     $('ae-build').hidden = true; $('ae-again').hidden = true;
     if (j.active) {
@@ -248,12 +273,11 @@
 
   function startManual() {
     if (!key) { say('Save your Monid key first.'); return; }
-    if (!pic) { say('Add a picture first.'); return; }
     var p = $('ae-mprompt').value.trim();
     if (p.length < 3) { say('Write what should happen in the video first.'); $('ae-mprompt').focus(); return; }
     var mg = $('ae-mgo');
-    busy = true; mg.disabled = true; mg.textContent = 'Uploading...';
-    api('/watch/autoedit/start', { mode: 'manual', image: pic.data, prompt: p, model: radio('ae-model'), sec: radio('ae-msec'),
+    busy = true; mg.disabled = true; mg.textContent = pic ? 'Uploading...' : 'Starting...';
+    api('/watch/autoedit/start', { mode: 'manual', image: pic ? pic.data : '', prompt: p, model: radio('ae-model'), sec: radio('ae-msec'),
                                    shape: radio('ae-mshape'), key: key }).then(function (r) {
       cur = r.job; showJob(r.job); refresh();
       if (window.innerWidth < 900) card.scrollIntoView({ behavior: 'smooth', block: 'start' });

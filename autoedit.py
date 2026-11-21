@@ -7,8 +7,9 @@ the pictures and the music come either from the member's own Monid key (monid.ai
 chooses. The member's browser then puts it all together into an MP4 (static/autoedit.js), so nothing heavy runs
 on the Render server and the bot stays fast.
 
-Manual mode: the member uploads a picture and writes what should happen, and a picture-to-video model on Monid
-(Gemini Omni Flash, Seedance 2.5, Kling, Hailuo) turns it into a short clip, paid with their own Monid key.
+Manual mode: the member writes what should happen (and, if they want, uploads a picture to start from), and a
+video model on Monid (Gemini Omni Flash, Seedance 2.5, Kling, Hailuo) makes a short clip, paid with their own
+Monid key: text to video, or picture to video.
 
 Only members the owner gives access to can use it, each in their own time window, one video at a time.
 """
@@ -59,19 +60,22 @@ PICS = [("gpt-image-2", "ChatGPT (GPT Image 2): best, about $0.04 a picture"),
 GPT = {"gpt-image-2": ("/v1/image/gpt-image-2", "medium"),               # Monid endpoint, quality
        "gpt-image-2.5-flare": ("/v1/image/gpt-image-2.5-flare", "high"),
        "gpt-image-2.5-sunburst": ("/v1/image/gpt-image-2.5-sunburst", "high")}
-# Picture-to-video models for Manual mode. The first endpoint Monid knows is used.
+# Video models for Manual mode: "endpoints" start from a picture, "t2v" from words only.
+# The first endpoint Monid knows is used.
 CLIPS = {
     "omni-flash": {"label": "Gemini Omni Flash", "provider": "gemini", "endpoints": ("/v1/video/omni-flash-i2v",),
-                   "note": "with sound", "wait": 180},
+                   "t2v": ("/v1/video/omni-flash-t2v",), "note": "with sound", "wait": 180},
     "seedance-2.5": {"label": "Seedance 2.5", "provider": "bytedance",
-                     "endpoints": ("/v1/video/seedance-2.5", "/seedance-2.5"), "note": "with sound, 720p", "wait": 240},
+                     "endpoints": ("/v1/video/seedance-2.5", "/seedance-2.5"),
+                     "t2v": ("/v1/video/seedance-2.5", "/seedance-2.5"), "note": "with sound, 720p", "wait": 240},
     "kling-3.0": {"label": "Kling 3.0", "provider": "kling", "endpoints": ("/image-to-video/kling-3.0",),
-                  "note": "720p, no sound", "wait": 240},
+                  "t2v": ("/text-to-video/kling-3.0",), "note": "720p, no sound", "wait": 240},
     "kling-2.6": {"label": "Kling 2.6", "provider": "kling", "endpoints": ("/image-to-video/kling-2.6",),
-                  "note": "720p, no sound", "wait": 240},
+                  "t2v": ("/text-to-video/kling-2.6",), "note": "720p, no sound", "wait": 240},
     "hailuo-2.3": {"label": "Hailuo 2.3", "provider": "minimax", "endpoints": ("/v1/video/minimax-hailuo-2.3",),
-                   "note": "768p, no sound", "wait": 240},
+                   "t2v": ("/v1/video/minimax-hailuo-2.3",), "note": "768p, no sound", "wait": 240},
 }
+WIDE_ONLY_T2V = ("hailuo-2.3",)    # from words alone these make 16:9 only
 CLIP_ORDER = ["omni-flash", "seedance-2.5", "kling-3.0", "kling-2.6", "hailuo-2.3"]
 CLIP_SECS = (5, 10)
 CLIP_SHAPES = ("9:16", "16:9", "keep")
@@ -626,13 +630,14 @@ async def inspect(key: str, provider: str, endpoint: str):
     return {}                                   # couldn't ask right now: try it anyway
 
 
-async def clip_endpoint(key: str, model: dict) -> tuple:
-    """(endpoint, input schema) of a picture-to-video model."""
-    for ep in model["endpoints"]:
+async def clip_endpoint(key: str, model: dict, words_only: bool = False) -> tuple:
+    """(endpoint, input schema) of a video model: from a picture, or from words only."""
+    eps = model["t2v"] if words_only else model["endpoints"]
+    for ep in eps:
         schema = await inspect(key, model["provider"], ep)
         if schema is not None:
             return ep, schema
-    raise Stop(f"{model['label']} isn't on Monid right now ({model['provider']} {model['endpoints'][0]}). "
+    raise Stop(f"{model['label']} isn't on Monid right now ({model['provider']} {eps[0]}). "
                "Turn it off in Auto edit settings so members pick another model.")
 
 
@@ -731,6 +736,8 @@ def _url_key(props: dict):
 
 
 def _image_value(t: set, ps, want: dict):
+    if not want.get("image") and not want.get("b64"):
+        return _SKIP                            # text to video: no picture to give
     if "string" in t:
         return want["image"]
     if "array" in t:
@@ -763,7 +770,7 @@ def _content(items, want: dict) -> list:
             if field:
                 text = {"type": next(x for x in tc if x in ("text", "prompt"))} if tc else {}
                 text[field] = want["prompt"]
-        elif image is None and ("image" in kind or "frame" in kind):
+        elif image is None and ("image" in kind or "frame" in kind) and (want.get("image") or want.get("b64")):
             item = {"type": "first_frame" if "first_frame" in tc else next((x for x in tc if "image" in x), tc[0])}
             k = _url_key(p)
             if k:
@@ -780,6 +787,8 @@ def _content(items, want: dict) -> list:
             if "role" in p and "first_frame" in [str(x) for x in _consts(p["role"])]:
                 item["role"] = "first_frame"
             image = item
+    if not want.get("image") and not want.get("b64"):
+        return [text] if text else []           # text to video
     return [x for x in (text, image) if x] if image else []
 
 
@@ -840,20 +849,29 @@ def fill_schema(schema, want: dict, depth: int = 0) -> tuple:
 
 
 def clip_input(model: str, prompt: str, url: str, b64: str, secs: int, shape: str, schema: dict) -> dict:
-    """What to send to a picture-to-video model on Monid."""
+    """What to send to a video model on Monid. url = the starting picture, or "" for text to video."""
+    ratio = shape if shape in ("9:16", "16:9") else ""
     if model == "seedance-2.5":
-        return {"content": [{"type": "text", "text": prompt[:5000]},
-                            {"type": "image_url", "image_url": {"url": url}, "role": "first_frame"}],
-                "resolution": "720p", "duration": secs, "ratio": "adaptive", "generate_audio": True, "watermark": False}
+        content = [{"type": "text", "text": prompt[:5000]}]
+        if url:
+            content.append({"type": "image_url", "image_url": {"url": url}, "role": "first_frame"})
+        return {"content": content, "resolution": "720p", "duration": secs,
+                "ratio": ratio if ratio and not url else "adaptive", "generate_audio": True, "watermark": False}
     if model in ("kling-2.6", "kling-3.0"):
-        return {"contents": [{"type": "prompt", "text": prompt[:2500]}, {"type": "first_frame", "url": url}],
-                "settings": {"resolution": "720p", "duration": secs, "audio": "off"}}
+        if url:
+            return {"contents": [{"type": "prompt", "text": prompt[:2500]}, {"type": "first_frame", "url": url}],
+                    "settings": {"resolution": "720p", "duration": secs, "audio": "off"}}
+        return {"prompt": prompt[:2500], "settings": {"resolution": "720p", "duration": secs,
+                                                      "aspect_ratio": ratio or "9:16", "audio": "off"}}
     if model == "hailuo-2.3":
-        return {"prompt": prompt[:2000], "first_frame_image": url, "resolution": "768P", "duration": 6 if secs < 8 else 10}
-    want = {"prompt": prompt[:4000], "image": url, "b64": b64, "secs": secs, "ratio": shape if shape != "keep" else ""}
+        inp = {"prompt": prompt[:2000], "resolution": "768P", "duration": 6 if secs < 8 else 10}
+        if url:
+            inp["first_frame_image"] = url
+        return inp
+    want = {"prompt": prompt[:4000], "image": url, "b64": b64, "secs": secs, "ratio": ratio}
     if not schema:                              # Monid didn't say what it takes: the common names
-        return {"prompt": want["prompt"], "image_url": url, "duration": secs,
-                **({"aspect_ratio": want["ratio"]} if want["ratio"] else {})}
+        return {"prompt": want["prompt"], "duration": secs, **({"image_url": url} if url else {}),
+                **({"aspect_ratio": ratio} if ratio else {})}
     inp, missing = fill_schema(schema, want)
     if missing:
         raise Stop(f"{CLIPS[model]['label']} on Monid needs {', '.join(missing)}, which Auto edit doesn't know how "
@@ -884,21 +902,22 @@ async def run_clip(job_id: int, job, d: dict) -> None:
     key = _KEYS.get(job_id, "")
     if not key:
         raise MemberStop("The server restarted, so your Monid key is needed again. Press Make it again.")
+    words_only = not d.get("pic")                # no picture: text to video
     src, stash = folder / "src.jpg", ROOT / "in" / f"{d.get('pic', '')}.jpg"
-    if not src.exists() and d.get("pic") and stash.exists():
+    if not words_only and not src.exists() and stash.exists():
         shutil.move(str(stash), str(src))
-    if not src.exists():
+    if not words_only and not src.exists():
         raise MemberStop("Your picture is gone (the server restarted). Upload it again.")
     model = CLIPS.get(d.get("model", ""))
     if model is None:
         raise MemberStop("That video model isn't offered anymore. Pick another one.")
     await _step(job_id, status="sending", step_done=0, step_total=0, msg="")
-    endpoint, schema = await clip_endpoint(key, model)
-    pic = src.read_bytes()
-    name = await asyncio.to_thread(pub_put, pic)
+    endpoint, schema = await clip_endpoint(key, model, words_only)
+    pic = b"" if words_only else src.read_bytes()
+    name = None if words_only else await asyncio.to_thread(pub_put, pic)
     try:
-        url = f"{str(d.get('base', '')).rstrip('/')}/watch/pub/{name}"
-        b64 = base64.b64encode(pic).decode() if schema and '"data"' in json.dumps(schema) else ""
+        url = f"{str(d.get('base', '')).rstrip('/')}/watch/pub/{name}" if name else ""
+        b64 = base64.b64encode(pic).decode() if pic and schema and '"data"' in json.dumps(schema) else ""
         inp = clip_input(d.get("model", ""), job.concept, url, b64, int(d.get("sec") or 5), d.get("shape", "9:16"), schema)
         expect, t0 = int(model.get("wait", 240)), time.monotonic()
 
@@ -910,7 +929,8 @@ async def run_clip(job_id: int, job, d: dict) -> None:
         except ProviderError as e:
             raise MemberStop(_clip_why(model["label"], e))
     finally:
-        await asyncio.to_thread(pub_drop, name)
+        if name:
+            await asyncio.to_thread(pub_drop, name)
     await _step(job_id, status="saving", step_done=0, step_total=0)
     data = await monid_media(run, "video")
     if len(data) < 2000:
@@ -1355,12 +1375,15 @@ def job_view(job, files: bool = False) -> dict:
            "again": job.status in ("expired", "failed", "canceled") and bool(d.get("scenes")), "manual": manual}
     if manual:
         m = CLIPS.get(d.get("model", ""), {})
-        src = (job_dir(job.id) / "src.jpg").exists() or (ROOT / "in" / f"{d.get('pic', '')}.jpg").exists()
-        out.update({"title": job.title or "Picture to video", "niche": m.get("label", "Picture to video"),
+        words = not d.get("pic")
+        src = words or (job_dir(job.id) / "src.jpg").exists() or (ROOT / "in" / f"{d.get('pic', '')}.jpg").exists()
+        out.update({"title": job.title or "Manual video", "niche": m.get("label", "Manual video"),
                     "model": m.get("label", ""), "length": f"{d.get('sec', 5)} s", "shorts": False, "language": "",
-                    "ratio": "like the picture" if job.ratio == "keep" else job.ratio, "minutes": 0,
+                    "ratio": "like the picture" if job.ratio == "keep" else job.ratio, "minutes": 0, "t2v": words,
                     "poster": f"/watch/autoedit/file/{job.id}/src.jpg" if (job_dir(job.id) / "src.jpg").exists() else "",
                     "again": job.status == "failed" and src})
+        if words and job.status == "sending":
+            out["label"] = "Getting ready"
         if ready:
             out["clip"] = f"/watch/autoedit/file/{job.id}/clip.mp4"
     if ready and files and not manual:
@@ -1484,7 +1507,7 @@ async def member_start(request):
 
 
 async def start_clip(request, user: str, f: dict):
-    """Manual mode: a picture and a prompt, made into a clip by the model the member picks."""
+    """Manual mode: a prompt (and, if they want, a picture to start from), made into a clip by the model they pick."""
     from starlette.responses import JSONResponse
     web = _web()
 
@@ -1500,13 +1523,15 @@ async def start_clip(request, user: str, f: dict):
     prompt = _clean(f.get("prompt"), 1500)
     if len(prompt) < 3:
         return fail("Write what should happen in the video first.")
-    raw = picture_bytes(f.get("image"))
-    if not raw:
-        return fail("Add a picture first.")
-    if len(raw) > 15 * 1024 * 1024:
+    raw = picture_bytes(f.get("image")) if f.get("image") else None         # no picture: text to video
+    if f.get("image") and not raw:
+        return fail("That picture couldn't be read. Use a JPG or PNG.")
+    if raw and len(raw) > 15 * 1024 * 1024:
         return fail("That picture is too big. Use one under 15 MB.")
     sec = int(f.get("sec")) if str(f.get("sec", "")).isdigit() and int(f.get("sec")) in CLIP_SECS else 5
     shape = f.get("shape") if f.get("shape") in CLIP_SHAPES else "9:16"
+    if not raw:
+        shape = "16:9" if model in WIDE_ONLY_T2V else ("9:16" if shape == "keep" else shape)
     acc = await asyncio.to_thread(access_get, user)
     if not in_window(acc.start, acc.end):
         return fail(f"You can start videos from {window_label(acc.start, acc.end)} (Manila time). Come back then.", 403)
@@ -1517,14 +1542,17 @@ async def start_clip(request, user: str, f: dict):
         return fail(f"You've made {info.get('limit')} videos today, the most allowed. Come back tomorrow.", 429)
     if web._too_many("ae:" + user, limit=6, window=600):
         return fail("Too many tries. Wait a few minutes.", 429)
-    try:
-        pic = await asyncio.to_thread(prep_picture, raw, shape)
-    except Stop as e:
-        return fail(str(e))
-    stash = secrets.token_urlsafe(16)
-    (ROOT / "in").mkdir(parents=True, exist_ok=True)
-    await asyncio.to_thread((ROOT / "in" / f"{stash}.jpg").write_bytes, pic)
-    job_id = await asyncio.to_thread(job_add, username=user, niche="manual", niche_label="Picture to video",
+    stash = ""
+    if raw:
+        try:
+            pic = await asyncio.to_thread(prep_picture, raw, shape)
+        except Stop as e:
+            return fail(str(e))
+        stash = secrets.token_urlsafe(16)
+        (ROOT / "in").mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread((ROOT / "in" / f"{stash}.jpg").write_bytes, pic)
+    job_id = await asyncio.to_thread(job_add, username=user, niche="manual",
+                                     niche_label="Picture to video" if raw else "Text to video",
                                      concept=prompt, language="", voice="", ratio=shape, minutes=0, title=prompt[:120],
                                      data=json.dumps({"mode": "manual", "model": model, "sec": sec, "shape": shape,
                                                       "pic": stash, "base": public_base(request)}))
