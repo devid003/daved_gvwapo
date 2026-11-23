@@ -3,11 +3,11 @@
 {% block head %}
 <style>
 .st-banner{display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px;border:1px solid var(--line);border-radius:var(--radius);padding:18px 22px;margin:0 0 20px}
-.st-banner.g{background:color-mix(in srgb,var(--good) 12%,var(--surface));border-color:color-mix(in srgb,var(--good) 45%,var(--line))}
+.st-banner.g{background:color-mix(in srgb,var(--live) 12%,var(--surface));border-color:color-mix(in srgb,var(--live) 45%,var(--line))}
 .st-banner.y{background:color-mix(in srgb,var(--warn) 14%,var(--surface));border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
 .st-banner.r{background:color-mix(in srgb,var(--bad) 12%,var(--surface));border-color:color-mix(in srgb,var(--bad) 50%,var(--line))}
 .st-dot{width:16px;height:16px;border-radius:50%;flex:none;background:currentColor;box-shadow:0 0 0 4px color-mix(in srgb,currentColor 22%,transparent)}
-.st-g{color:var(--good)} .st-y{color:var(--warn)} .st-r{color:var(--bad)}
+.st-g{color:var(--live)} .st-y{color:var(--warn)} .st-r{color:var(--bad)}
 .st-word{font-size:22px;font-weight:800;letter-spacing:-.01em}
 .st-sub{color:var(--muted);font-size:13px;margin-top:2px}
 .st-metrics{display:flex;gap:26px;margin-left:auto;flex-wrap:wrap}
@@ -18,6 +18,10 @@
 .st-key .d{width:12px;height:12px;border-radius:50%;flex:none}
 .st-chk{display:inline-flex;align-items:center;gap:8px;min-height:40px;font-size:14px;cursor:pointer;font-weight:600}
 .st-chk input{width:16px;height:16px;margin:0}
+.st-int{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 0;font-size:14px;color:var(--ink)}
+.st-num{width:76px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
+.st-unit{padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
+.st-num:focus,.st-unit:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
 .st-hint{color:var(--muted);font-size:13px;margin:10px 0 0;line-height:1.5}
 .panel-head .badge{align-self:center}
 </style>
@@ -45,11 +49,11 @@
   <div class="panel-head"><div><h2>What the colors mean</h2></div></div>
   <div class="panel-body">
     <div class="st-key">
-      <div><span class="d" style="background:var(--good)"></span><b>Green</b> &mdash; online, everything working.</div>
+      <div><span class="d" style="background:var(--live)"></span><b>Green</b> &mdash; online, everything working.</div>
       <div><span class="d" style="background:var(--warn)"></span><b>Yellow</b> &mdash; slow (high ping); prompts and the website may lag.</div>
       <div><span class="d" style="background:var(--bad)"></span><b>Red</b> &mdash; down; prompts can't be used and the website is unavailable.</div>
     </div>
-    <p class="st-hint">The bot updates the Discord message every ~2 minutes. A fully-down bot can't post, so if the time on the message gets old, it's down &mdash; this page always shows the real current color. On a planned restart or deploy the bot posts Red before it goes offline.</p>
+    <p class="st-hint">The bot refreshes the Discord message on the interval you set per server below. A fully-down bot can't post, so if the time on the message gets old, it's down &mdash; this page always shows the real current color. On a planned restart or deploy the bot posts Red before it goes offline.</p>
   </div>
 </section>
 
@@ -88,7 +92,15 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="guild_id" value="{{ sv.id }}">
       <label class="st-chk"><input type="checkbox" name="on" value="1"{{ ' checked' if sv.on }}> Keep a live status message in this server</label>
-      <p class="st-hint">Pick the channel above, then turn this on. Members can also check anytime with <code>/status</code> or <code>/ping</code>.</p>
+      <div class="st-int">
+        <span>Refresh every</span>
+        <input class="st-num" type="number" name="every" min="1" max="365" value="{{ sv.every }}" aria-label="How often">
+        <select class="st-unit" name="unit">
+          <option value="hours"{{ ' selected' if sv.unit == 'hours' }}>hours</option>
+          <option value="days"{{ ' selected' if sv.unit == 'days' }}>days</option>
+        </select>
+      </div>
+      <p class="st-hint">Pick the channel above and set how often to refresh. Members can also check anytime with <code>/status</code>.</p>
       <button class="btn primary" style="margin-top:12px">Save</button>
     </form>
   </div>

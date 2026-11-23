@@ -1,12 +1,13 @@
 """
 Bot status / health monitor.
 
-- Keeps ONE status message in a channel you pick and updates it every couple of minutes with a color:
+- Keeps ONE status message in a channel you pick and refreshes it on the interval YOU set (in hours or days),
+  with a color:
     GREEN  = online, everything working (prompts + website OK)
     YELLOW = slow (high ping) -- prompts/website may lag
     RED    = down -- prompts can't be used and the website is unavailable
 - Shows the ping (ms), uptime, and the date/time it was last checked (with the year).
-- `/status` and `/ping` let anyone check on demand.
+- `/status` lets anyone check on demand.
 
 Honest limit: a bot that is TOTALLY dead can't post anything, so on a hard crash the Discord message just stops
 updating -- an old "Checked" time means it's down. The website Status page always shows the true current color,
@@ -34,6 +35,11 @@ _BOOT = time.time()
 GREEN_MS = 400
 YELLOW_MS = 1500
 
+# how often the loop wakes up to see if any server is due for a refresh
+TICK_SECONDS = 60
+DEFAULT_MINS = 360          # 6 hours, until the owner sets their own
+_first_tick = True          # force one post right after the bot starts (shows it's back up)
+
 
 # ------------------------- settings -------------------------
 def _s(name: str, gid: int) -> str:
@@ -51,6 +57,30 @@ def set_on(gid: int, on: bool) -> None:
 def channel_sync(gid: int) -> int:
     v = db.get_setting(_s("health_ch", gid), "")
     return int(v) if v.isdigit() else 0
+
+
+def interval_mins(gid: int) -> int:
+    v = db.get_setting(_s("health_mins", gid), str(DEFAULT_MINS))
+    try:
+        return max(60, int(v))
+    except ValueError:
+        return DEFAULT_MINS
+
+
+def interval_fields(gid: int):
+    """Return (count, unit) for the form, e.g. (6, 'hours') or (1, 'days')."""
+    mins = interval_mins(gid)
+    if mins % 1440 == 0:
+        return mins // 1440, "days"
+    return max(1, mins // 60), "hours"
+
+
+def interval_text(mins: int) -> str:
+    if mins % 1440 == 0:
+        d = mins // 1440
+        return f"{d} day" + ("s" if d != 1 else "")
+    h = max(1, mins // 60)
+    return f"{h} hour" + ("s" if h != 1 else "")
 
 
 # ------------------------- state -------------------------
@@ -101,7 +131,7 @@ _NOTES = {
 }
 
 
-def build_embed(st: dict, *, offline: bool = False) -> discord.Embed:
+def build_embed(st: dict, *, offline: bool = False, footer: str | None = None) -> discord.Embed:
     color = "red" if offline else st["color"]
     label = "Offline (restarting)" if offline else st["label"]
     now = discord.utils.utcnow()
@@ -111,7 +141,8 @@ def build_embed(st: dict, *, offline: bool = False) -> discord.Embed:
     e.add_field(name="Uptime", value=uptime_text(st["uptime"]), inline=True)
     e.add_field(name="Checked", value=f"<t:{ts}:F>\n<t:{ts}:R>", inline=False)
     e.add_field(name="\u200b", value=(_NOTES["red"] if offline else _NOTES[color]), inline=False)
-    e.set_footer(text="Updates every ~2 min. Kung luma na ang oras sa itaas, down ang bot.")
+    if footer:
+        e.set_footer(text=footer)
     e.timestamp = now
     return e
 
@@ -119,7 +150,10 @@ def build_embed(st: dict, *, offline: bool = False) -> discord.Embed:
 # ------------------------- posting -------------------------
 async def _upsert(gid: int, ch, *, offline: bool = False) -> None:
     st = state()
-    embed = build_embed(st, offline=offline)
+    footer = ("Offline. Babalik ang updates pagkabalik ng bot."
+              if offline else
+              f"Refreshes every {interval_text(interval_mins(gid))}. Kung luma na ang oras sa itaas, down ang bot.")
+    embed = build_embed(st, offline=offline, footer=footer)
     mid = await run(db.get_setting, _s("health_msg", gid), "")
     msg = None
     if mid.isdigit():
@@ -157,9 +191,23 @@ async def _targets():
     return out
 
 
+def _due(gid: int) -> bool:
+    raw = db.get_setting(_s("health_last", gid), "")
+    try:
+        last = float(raw)
+    except ValueError:
+        last = 0.0
+    return (time.time() - last) >= interval_mins(gid) * 60
+
+
 async def tick() -> None:
+    global _first_tick
+    force = _first_tick
+    _first_tick = False
     for gid, ch in await _targets():
-        await _upsert(gid, ch)
+        if force or await run(_due, gid):
+            await _upsert(gid, ch)
+            await run(db.set_setting, _s("health_last", gid), str(time.time()))
 
 
 async def post_offline() -> None:
@@ -172,7 +220,7 @@ async def post_offline() -> None:
 
 
 # ------------------------- loop -------------------------
-@tasks.loop(seconds=120, reconnect=True)
+@tasks.loop(seconds=TICK_SECONDS, reconnect=True)
 async def heartbeat():
     try:
         await tick()
@@ -193,18 +241,9 @@ def _start():
 discord_bot.EXTRA_SETUP.append(_start)
 
 
-# ------------------------- on-demand commands -------------------------
-async def _reply_status(interaction: discord.Interaction) -> None:
-    await interaction.response.send_message(embed=build_embed(state()), ephemeral=True)
-
-
+# ------------------------- on-demand command -------------------------
 @bot.tree.command(name="status", description="Check if the bot is up (ping, uptime, status)")
 @app_commands.guild_only()
 async def status_cmd(interaction: discord.Interaction):
-    await _reply_status(interaction)
-
-
-@bot.tree.command(name="ping", description="Show the bot's ping / latency")
-@app_commands.guild_only()
-async def ping_cmd(interaction: discord.Interaction):
-    await _reply_status(interaction)
+    await interaction.response.send_message(
+        embed=build_embed(state(), footer="Checked just now."), ephemeral=True)
