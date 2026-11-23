@@ -55,6 +55,19 @@ class Member(Base):
     decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class NameRecord(Base):
+    """One name a member used for a stretch of time: their username, display name or server nickname.
+    A new row starts when the name changes; last_seen is bumped while it stays the same."""
+    __tablename__ = "name_records"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    kind: Mapped[str] = mapped_column(String(12), default="username")   # username | display | nick
+    name: Mapped[str] = mapped_column(String(200), default="")
+    guild_id: Mapped[int] = mapped_column(BigInteger, default=0)        # the server for a nickname; 0 = global
+    first_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    last_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class UsageLog(Base):
     __tablename__ = "usage_logs"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -1037,6 +1050,101 @@ def warning_count(guild_id: int, user_id: int) -> int:
     with Session() as s:
         return s.scalar(select(func.count()).select_from(Warning).where(
             Warning.guild_id == guild_id, Warning.user_id == user_id, Warning.active.is_(True))) or 0
+
+
+def record_name(user_id: int, kind: str, name: str, guild_id: int = 0, when=None) -> None:
+    """Note the name a member is using now. Adds a history row only when it changed."""
+    name = (name or "").strip()
+    if not user_id or not name:
+        return
+    when = when or utcnow()
+    with Session.begin() as s:
+        latest = s.scalars(select(NameRecord).where(
+            NameRecord.user_id == user_id, NameRecord.kind == kind, NameRecord.guild_id == (guild_id or 0))
+            .order_by(NameRecord.first_seen.desc(), NameRecord.id.desc()).limit(1)).first()
+        if latest is not None and latest.name == name[:200]:
+            if when > latest.last_seen:
+                latest.last_seen = when
+            return
+        s.add(NameRecord(user_id=user_id, kind=kind, name=name[:200], guild_id=guild_id or 0,
+                         first_seen=when, last_seen=when))
+
+
+def name_seed_from_existing() -> int:
+    """One-time backfill: build name history from every timestamped name the bot already recorded."""
+    with Session() as s:
+        if (s.scalar(select(func.count()).select_from(NameRecord)) or 0) > 0:
+            return 0
+        rows = []
+        for jr in s.scalars(select(JoinRequest)):
+            rows.append((jr.joined_at, jr.user_id, (jr.username or "").strip()))
+        for ul in s.scalars(select(UsageLog).order_by(UsageLog.id).limit(40000)):
+            rows.append((ul.ts, ul.user_id, (ul.username or "").strip()))
+        PL = globals().get("PromptLog")          # may not exist if the prompt-log update isn't applied
+        if PL is not None:
+            for pl in s.scalars(select(PL)):
+                rows.append((pl.created_at, pl.user_id, (pl.username or "").strip()))
+        for m in s.scalars(select(Member)):
+            rows.append((m.requested_at, m.user_id, (m.username or "").strip()))
+    far = dt.datetime(1970, 1, 1)
+    rows = [(t or far, u, n) for (t, u, n) in rows if u and n]
+    rows.sort(key=lambda r: (r[1], r[0]))
+    out, cur_user, last_name, cur = [], None, None, None
+    for ts, uid, nm in rows:
+        if uid != cur_user:
+            cur_user, last_name, cur = uid, None, None
+        if nm == last_name:
+            if cur is not None and ts > cur.last_seen:
+                cur.last_seen = ts
+            continue
+        cur = NameRecord(user_id=uid, kind="username", name=nm[:200], guild_id=0, first_seen=ts, last_seen=ts)
+        out.append(cur)
+        last_name = nm
+    with Session.begin() as s:
+        for r in out:
+            s.add(r)
+    set_setting("name_seeded", "1")
+    return len(out)
+
+
+def name_overview(q: str = "", limit: int = 80) -> list:
+    """Members and every name they've used, the most recently changed first; q filters by name or Discord ID."""
+    q = (q or "").strip()
+    with Session() as s:
+        order = s.execute(select(NameRecord.user_id, func.max(NameRecord.last_seen).label("m"))
+                          .group_by(NameRecord.user_id).order_by(func.max(NameRecord.last_seen).desc())).all()
+        uids = [u for (u, _m) in order]
+        if q:
+            if q.isdigit():
+                uids = [u for u in uids if q in str(u)]
+            else:
+                hit = set(s.scalars(select(NameRecord.user_id).where(func.lower(NameRecord.name).like(f"%{q.lower()}%"))))
+                uids = [u for u in uids if u in hit]
+        uids = uids[:max(1, min(500, limit))]
+        recs = list(s.scalars(select(NameRecord).where(NameRecord.user_id.in_(uids)))) if uids else []
+    by = {}
+    for r in recs:
+        by.setdefault(r.user_id, []).append(r)
+    out = []
+    for uid in uids:
+        rs = sorted(by.get(uid, []), key=lambda r: (r.first_seen, r.id))
+        latest = {}
+        for r in rs:
+            latest[r.kind] = r.name
+        out.append({"user_id": uid, "username": latest.get("username", ""), "display": latest.get("display", ""),
+                    "nick": latest.get("nick", ""), "count": len(rs), "last": max((r.last_seen for r in rs), default=None),
+                    "history": [{"kind": r.kind, "name": r.name, "first": r.first_seen, "last": r.last_seen} for r in rs]})
+    return out
+
+
+def name_record_total() -> int:
+    with Session() as s:
+        return s.scalar(select(func.count()).select_from(NameRecord)) or 0
+
+
+def name_user_total() -> int:
+    with Session() as s:
+        return s.scalar(select(func.count(func.distinct(NameRecord.user_id)))) or 0
 
 
 def member_joins(guild_id: int, user_id: int) -> list:

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Name history{% endblock %}
+{% block head %}{% include "_reason_style.html" %}
+<style>
+.nh-search{display:flex;gap:8px;margin:0 0 16px;max-width:460px}
+.nh-search input{flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
+.nh-search input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.nh-stats{color:var(--muted);font-size:13px;margin:0 0 16px}
+.nh-note{border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line));background:var(--warn-soft);border-radius:10px;padding:11px 14px;font-size:13px;color:var(--ink);margin:0 0 18px}
+.nh-list{display:flex;flex-direction:column;gap:10px}
+.nh-card{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:14px 18px}
+.nh-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px}
+.nh-name{font-size:16px;font-weight:700}
+.nh-id{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:var(--faint)}
+.nh-now{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.nh-tag{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;border:1px solid var(--line);border-radius:999px;padding:2px 9px}
+.nh-tag b{font-weight:600}
+.nh-tag .k{color:var(--faint);font-weight:500}
+.nh-when{color:var(--muted);font-size:12.5px;margin-left:auto}
+details.nh-hist{margin-top:10px}
+details.nh-hist>summary{cursor:pointer;color:var(--brand2);font-size:13px;font-weight:600;list-style:none}
+details.nh-hist>summary::-webkit-details-marker{display:none}
+details.nh-hist>summary::before{content:"Show all names \25be";}
+details.nh-hist[open]>summary::before{content:"Hide names \25b4";}
+.nh-row{display:grid;grid-template-columns:86px minmax(0,1fr) auto;gap:4px 12px;align-items:baseline;padding:7px 0;border-top:1px solid var(--line)}
+.nh-row .kind{font-size:12px;color:var(--faint);text-transform:uppercase;letter-spacing:.03em}
+.nh-row .val{font-weight:600;word-break:break-word}
+.nh-row .dates{font-size:12.5px;color:var(--muted);white-space:nowrap}
+</style>
+{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Name history</h1><p>Every username, display name and server nickname each member has used, tracked by their Discord ID.</p></div>
+</div>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+
+<div class="nh-note">The bot records names from when it started tracking, and backfills from older records it already had. Discord doesn't share names a member used before that, so the earliest name shown is the earliest the bot has on file.</div>
+
+<form class="nh-search" method="get" action="/name-history">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search by name or Discord ID" aria-label="Search">
+  <button class="btn primary">Search</button>
+  {% if q %}<a class="btn" href="/name-history">Clear</a>{% endif %}
+</form>
+{% if people %}<p class="nh-stats">{{ people }} member{{ 's' if people != 1 }} tracked, {{ total }} name{{ 's' if total != 1 }} on record.</p>{% endif %}
+
+{% if users %}
+<div class="nh-list">
+  {% for u in users %}
+  <div class="nh-card">
+    <div class="nh-top">
+      <span class="nh-name">{{ u.nick or u.display or u.username or u.user_id }}</span>
+      <span class="nh-id">{{ u.user_id }}</span>
+      {% if u.last %}<span class="nh-when">last change {{ u.last|local }}</span>{% endif %}
+    </div>
+    <div class="nh-now">
+      {% if u.username %}<span class="nh-tag"><span class="k">username</span><b>{{ u.username }}</b></span>{% endif %}
+      {% if u.display %}<span class="nh-tag"><span class="k">display</span><b>{{ u.display }}</b></span>{% endif %}
+      {% if u.nick %}<span class="nh-tag"><span class="k">nickname</span><b>{{ u.nick }}</b></span>{% endif %}
+    </div>
+    {% if u.count > 1 %}
+    <details class="nh-hist"><summary></summary>
+      {% for h in u.history|reverse %}
+      <div class="nh-row">
+        <span class="kind">{{ {'username':'Username','display':'Display','nick':'Nickname'}.get(h.kind, h.kind) }}</span>
+        <span class="val">{{ h.name }}</span>
+        <span class="dates">{{ h.first|local }}{% if h.last and h.last != h.first %} &ndash; {{ h.last|local }}{% endif %}</span>
+      </div>
+      {% endfor %}
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">{% if q %}No member matches &ldquo;{{ q }}&rdquo;.{% else %}No names recorded yet. They fill in as members join, use the bot, or change their names.{% endif %}</div>
+{% endif %}
+{% endblock %}

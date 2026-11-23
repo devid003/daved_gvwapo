@@ -31,6 +31,7 @@ import db  # noqa: E402
 import discord_bot  # noqa: E402
 import upload_reports  # noqa: E402  (adds upload-time reports + commands to the bot)
 import security  # noqa: E402  (join gate: new members need approval)
+import name_history  # noqa: E402,F401  (records every name a member uses, by Discord ID)
 import antinuke  # noqa: E402  (stops someone from wrecking the server fast)
 import prompt_commands  # noqa: E402,F401  (adds /ghibli, /cooking, ... commands)
 import prompts as promptlib  # noqa: E402
@@ -1221,6 +1222,17 @@ async def member_export(request):
 
 
 # ---------- prompts (niche slash commands) ----------
+async def name_history_page(request):
+    """Name history: every username, display name and nickname each member has used, by Discord ID."""
+    if not authed(request):
+        return redirect("/login")
+    q = request.query_params.get("q", "")
+    return templates.TemplateResponse(request=request, name="name_history.html", context={
+        "users": await run(db.name_overview, q, 80), "q": q, "tz": TZ_LABEL,
+        "total": await run(db.name_record_total), "people": await run(db.name_user_total),
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None)})
+
+
 async def prompts_page(request):
     if not authed(request):
         return redirect("/login")
@@ -3171,6 +3183,7 @@ app = Starlette(
         Route("/member/warn", member_warn, methods=["POST"]),
         Route("/member/unwarn", member_unwarn, methods=["POST"]),
         Route("/member/export", member_export),
+        Route("/name-history", name_history_page),
         Route("/prompts", prompts_page),
         Route("/prompts/add", prompt_add, methods=["POST"]),
         Route("/prompts/edit", prompt_edit, methods=["POST"]),
