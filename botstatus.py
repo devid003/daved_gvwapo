@@ -125,9 +125,9 @@ def state() -> dict:
 _COLORS = {"green": 0x1F9D4D, "yellow": 0xE0A800, "red": 0xB42318}
 _DOTS = {"green": "\U0001f7e2", "yellow": "\U0001f7e1", "red": "\U0001f534"}
 _NOTES = {
-    "green": "Gumagana lahat \u2014 OK ang prompt at ang website.",
-    "yellow": "Mabagal ang server ngayon \u2014 baka maantala ang prompt o ang website.",
-    "red": "Down \u2014 hindi magagamit ang prompt, at hindi available ang website.",
+    "green": "Everything is working \u2014 prompts and the website are OK.",
+    "yellow": "The server is slow right now \u2014 prompts or the website may lag.",
+    "red": "Down \u2014 prompts can't be used and the website is unavailable.",
 }
 
 
@@ -150,9 +150,9 @@ def build_embed(st: dict, *, offline: bool = False, footer: str | None = None) -
 # ------------------------- posting -------------------------
 async def _upsert(gid: int, ch, *, offline: bool = False) -> None:
     st = state()
-    footer = ("Offline. Babalik ang updates pagkabalik ng bot."
+    footer = ("Offline. Updates will resume when the bot is back."
               if offline else
-              f"Refreshes every {interval_text(interval_mins(gid))}. Kung luma na ang oras sa itaas, down ang bot.")
+              f"Refreshes every {interval_text(interval_mins(gid))}. If the time above gets old, the bot is down.")
     embed = build_embed(st, offline=offline, footer=footer)
     mid = await run(db.get_setting, _s("health_msg", gid), "")
     msg = None

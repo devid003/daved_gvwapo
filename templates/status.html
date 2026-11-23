@@ -37,7 +37,7 @@
   <span class="st-dot {{ 'st-g' if c=='green' else 'st-y' if c=='yellow' else 'st-r' }}"></span>
   <div>
     <div class="st-word {{ 'st-g' if c=='green' else 'st-y' if c=='yellow' else 'st-r' }}">{{ state.label }}</div>
-    <div class="st-sub">{% if c=='green' %}Gumagana lahat &mdash; OK ang prompt at ang website.{% elif c=='yellow' %}Mabagal ang server &mdash; baka maantala ang prompt o website.{% else %}Down &mdash; hindi magagamit ang prompt, at hindi available ang website.{% endif %}</div>
+    <div class="st-sub">{% if c=='green' %}Everything is working &mdash; prompts and the website are OK.{% elif c=='yellow' %}The server is slow &mdash; prompts or the website may lag.{% else %}Down &mdash; prompts can't be used and the website is unavailable.{% endif %}</div>
   </div>
   <div class="st-metrics">
     <div class="st-metric"><div class="n">{% if state.ping is not none %}{{ state.ping }} ms{% else %}&mdash;{% endif %}</div><div class="l">Ping</div></div>
