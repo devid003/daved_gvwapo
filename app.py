@@ -31,6 +31,7 @@ import db  # noqa: E402
 import discord_bot  # noqa: E402
 import upload_reports  # noqa: E402  (adds upload-time reports + commands to the bot)
 import security  # noqa: E402  (join gate: new members need approval)
+import linkguard  # noqa: E402  (link filter, invite lock, link commands)
 import name_history  # noqa: E402,F401  (records every name a member uses, by Discord ID)
 import antinuke  # noqa: E402  (stops someone from wrecking the server fast)
 import prompt_commands  # noqa: E402,F401  (adds /ghibli, /cooking, ... commands)
@@ -508,6 +509,72 @@ async def antinuke_save(request):
     return redirect("/antinuke")
 
 
+# ---------- link control ----------
+async def links_page(request):
+    if not authed(request):
+        return redirect("/login")
+    b = discord_bot.bot
+    data = await run(db.overview)
+    servers = []
+    for s in data["servers"]:
+        guild = b.get_guild(s.guild_id) if b.is_ready() else None
+        wl = await run(linkguard.whitelist_sync, s.guild_id)
+        st = linkguard.status_sync(guild) if guild else {"content": False, "can_delete": False, "can_roles": False, "invites_open": True}
+        servers.append({
+            "id": s.guild_id,
+            "name": (guild.name if guild else s.name) or "Unnamed server",
+            "joined": guild is not None,
+            "on": await run(linkguard.on_sync, s.guild_id),
+            "whitelist": " ".join(str(i) for i in sorted(wl)),
+            "status": st,
+        })
+    ctx = {
+        "csrf": csrf_token(request),
+        "flash": request.session.pop("flash", None),
+        "servers": servers,
+        "report": await run(_report_info, "link"),
+        "online": b.is_ready(),
+    }
+    return templates.TemplateResponse(request=request, name="links.html", context=ctx)
+
+
+async def links_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    gid, _ = await _approved_guild(form)
+    if gid is None:
+        flash(request, "That server is not approved.")
+        return redirect("/links")
+    raw_wl = str(form.get("whitelist", "")).replace("\n", ",").replace(" ", ",")
+    wl = [x for x in (p.strip() for p in raw_wl.split(",")) if x.isdigit() and len(x) >= 5][:200]
+    await run(db.set_setting, f"link_on:{gid}", "1" if form.get("on") else "0")
+    await run(db.set_setting, f"link_wl:{gid}", ",".join(wl))
+    flash(request, "Link filter saved." if form.get("on") else "Link filter is OFF for this server.")
+    return redirect("/links")
+
+
+async def links_invites(request):
+    import discord
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    gid, guild = await _approved_guild(form)
+    if gid is None or guild is None:
+        flash(request, "The bot must be online and inside the server for this.")
+        return redirect("/links")
+    block = str(form.get("block", "")) == "1"
+    try:
+        await linkguard.set_invite_lock(guild, block)
+        flash(request, "Members can't create invite links anymore." if block
+              else "Members can create invite links again.")
+    except discord.Forbidden:
+        flash(request, "The bot needs Manage Roles, placed above the members' roles, to change this.")
+    except Exception as e:  # noqa: BLE001
+        flash(request, f"Could not change it: {type(e).__name__}.")
+    return redirect("/links")
+
+
 # ---------- security (join gate) ----------
 async def security_page(request):
     if not authed(request):
@@ -806,9 +873,9 @@ async def joins_page(request):
         "report": await run(_report_info, "join")})
 
 
-REPORT_PAGES = {"deny": "/denied", "ban": "/banned", "join": "/joins", "prompt": "/prompt-log"}
+REPORT_PAGES = {"deny": "/denied", "ban": "/banned", "join": "/joins", "prompt": "/prompt-log", "link": "/links"}
 REPORT_LABELS = {"deny": "Post each deny in", "ban": "Post each ban in", "join": "Post each new member in",
-                 "prompt": "Notify each prompt in"}
+                 "prompt": "Notify each prompt in", "link": "Report blocked links in"}
 
 
 def _report_info(kind: str) -> dict:
@@ -848,7 +915,8 @@ async def report_channel_save(request):
     await run(db.set_setting, security.report_key(kind, ch.guild.id), str(ch.id))
     what = {"deny": "every deny, with the reason,", "ban": "every ban, with the reason,",
             "join": "every new member, and update it when you decide,",
-            "prompt": "every prompt a member gets, with who asked and the prompt,"}[kind]
+            "prompt": "every prompt a member gets, with who asked and the prompt,",
+            "link": "every blocked link, with who sent it,"}[kind]
     flash(request, f"Saved. The bot will post {what} in #{ch.name}.")
     return redirect(back)
 
@@ -3169,6 +3237,9 @@ app = Starlette(
         Route("/uploads", uploads),
         Route("/antinuke", antinuke_page),
         Route("/antinuke/save", antinuke_save, methods=["POST"]),
+        Route("/links", links_page),
+        Route("/links/save", links_save, methods=["POST"]),
+        Route("/links/invites", links_invites, methods=["POST"]),
         Route("/security", security_page_v2),
         Route("/security/gate", security_gate, methods=["POST"]),
         Route("/security/log", security_log, methods=["POST"]),

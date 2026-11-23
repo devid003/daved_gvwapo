@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Links{% endblock %}
+{% block head %}
+<style>
+.lk-form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 16px}
+.lk-chk{display:inline-flex;align-items:center;gap:8px;min-height:40px;font-size:14px;cursor:pointer;font-weight:600}
+.lk-chk input{width:16px;height:16px;margin:0}
+.lk-wl{width:100%;box-sizing:border-box;min-height:64px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font:inherit;font-size:14px;line-height:1.5;resize:vertical}
+.lk-wl:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.lk-hint{color:var(--muted);font-size:13px;margin:10px 0 0;line-height:1.5}
+.lk-sub{margin:16px 0 6px;font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.lk-checks{display:flex;flex-direction:column;gap:7px;margin:4px 0 0}
+.lk-check{display:flex;align-items:center;gap:9px;font-size:13.5px}
+.lk-check .mk{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:12px;font-weight:700}
+.lk-check .mk.ok{background:color-mix(in srgb,var(--good) 22%,transparent);color:var(--good)}
+.lk-check .mk.no{background:color-mix(in srgb,var(--bad) 22%,transparent);color:var(--bad)}
+.lk-inv{display:flex;flex-wrap:wrap;align-items:center;gap:12px;border-top:1px solid var(--line);margin-top:16px;padding-top:16px}
+.lk-inv .grow{flex:1;min-width:200px}
+.lk-cmds{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.lk-cmds code{background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-size:12.5px}
+.panel-head .badge{align-self:center}
+</style>
+{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Links</h1><p>Stop members from posting links in chat (except the ones you allow), and stop them from making invite links. You pick who can post links by their Discord ID.</p></div>
+</div>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+
+{% include "_report_pick.html" %}
+
+{% if not online %}<div class="empty">The bot is offline right now, so some of this can't be checked. Settings are still saved.</div>{% endif %}
+
+{% for sv in servers %}
+<section class="panel">
+  <div class="panel-head">
+    <div><h2>{{ sv.name }}</h2>
+      {% if not sv.joined %}<p>The bot isn't in this server right now.</p>
+      {% elif sv.on %}<p>Deleting links from anyone who isn't on the allow list, an admin, or you.</p>
+      {% else %}<p>The link filter is off. Turn it on below.</p>{% endif %}
+    </div>
+    {% if sv.on %}<span class="badge live">On</span>{% else %}<span class="badge off">Off</span>{% endif %}
+  </div>
+  <div class="panel-body">
+    {% if sv.joined and sv.on %}
+    <div class="lk-checks">
+      <div class="lk-check"><span class="mk {{ 'ok' if sv.status.content else 'no' }}">{% if sv.status.content %}&#10003;{% else %}&#10007;{% endif %}</span>
+        {% if sv.status.content %}The bot can read messages (Message Content Intent is on).{% else %}<b>Message Content Intent is OFF</b> &mdash; the bot can't read messages, so links won't be caught. Turn it on in the Developer Portal (Bot &rarr; Privileged Gateway Intents), then Restart on Render.{% endif %}</div>
+      <div class="lk-check"><span class="mk {{ 'ok' if sv.status.can_delete else 'no' }}">{% if sv.status.can_delete %}&#10003;{% else %}&#10007;{% endif %}</span>
+        {% if sv.status.can_delete %}The bot can delete messages.{% else %}<b>Missing Manage Messages</b> &mdash; the bot can report a link but can't delete it. Add it to the bot's role.{% endif %}</div>
+    </div>
+    {% endif %}
+
+    <form method="post" action="/links/save" style="margin-top:14px">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="guild_id" value="{{ sv.id }}">
+      <label class="lk-chk"><input type="checkbox" name="on" value="1"{{ ' checked' if sv.on }}> Block links from members</label>
+      <p class="lk-sub">Members allowed to send links</p>
+      <textarea class="lk-wl" name="whitelist" placeholder="Paste Discord user IDs, one per line or separated by spaces. You and your admins can always post links.">{{ sv.whitelist }}</textarea>
+      <p class="lk-hint">Everyone else's links get deleted and reported. To get an ID: in Discord turn on Settings &rarr; Advanced &rarr; Developer Mode, then right-click a person &rarr; Copy User ID. You can also add someone right in the server with <code>/allowlink</code>.</p>
+      <button class="btn primary" style="margin-top:14px">Save</button>
+    </form>
+
+    {% if sv.joined %}
+    <div class="lk-inv">
+      <div class="grow"><b>Invite links</b>
+        <div class="muted small">{% if sv.status.invites_open %}Members can create invite links right now.{% else %}Members can't create invite links. Only admins can.{% endif %}</div>
+        {% if not sv.status.can_roles %}<div class="muted small" style="color:var(--bad)">The bot needs Manage Roles, above the members' roles, to change this.</div>{% endif %}
+      </div>
+      <form method="post" action="/links/invites">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="guild_id" value="{{ sv.id }}">
+        <input type="hidden" name="block" value="{{ '0' if not sv.status.invites_open else '1' }}">
+        <button class="btn{{ ' primary' if sv.status.invites_open }}">{% if sv.status.invites_open %}Block member invites{% else %}Allow member invites{% endif %}</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <p class="lk-sub" style="margin-top:18px">In the server</p>
+    <p class="lk-hint" style="margin-top:0">You and your admins can manage this from Discord too:</p>
+    <div class="lk-cmds"><code>/allowlink @member</code><code>/blocklink @member</code><code>/linkfilter on</code><code>/linkfilter off</code></div>
+  </div>
+</section>
+{% else %}
+<div class="empty">No approved servers yet.</div>
+{% endfor %}
+{% endblock %}
