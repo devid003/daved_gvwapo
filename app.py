@@ -31,6 +31,7 @@ import db  # noqa: E402
 import discord_bot  # noqa: E402
 import upload_reports  # noqa: E402  (adds upload-time reports + commands to the bot)
 import security  # noqa: E402  (join gate: new members need approval)
+import music  # noqa: E402,F401  (voice music: /music, /skip, /queue, ...)
 import botstatus  # noqa: E402,F401  (bot status / health monitor)
 import unsent  # noqa: E402,F401  (logs and reposts deleted/unsent messages)
 import linkguard  # noqa: E402  (link filter, invite lock, link commands)
