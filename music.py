@@ -162,8 +162,8 @@ def _now_embed(track: Track) -> discord.Embed:
 
 # ------------------------- commands -------------------------
 def _not_ready_msg() -> str:
-    return ("Hindi pa naka-set up ang music dito. Kailangan ma-deploy muna sa Render ang PyNaCl + yt-dlp + "
-            "ffmpeg (nasa requirements.txt na). Hintayin mong maging Live ulit, tapos subukan ulit.")
+    return ("Music isn't set up yet. The server still needs to deploy PyNaCl + yt-dlp + ffmpeg "
+            "(already in requirements.txt). Wait for it to go Live again, then try once more.")
 
 
 @bot.tree.command(name="music", description="Play a song in your voice channel (YouTube or a link)")
@@ -175,7 +175,7 @@ async def music_cmd(interaction: discord.Interaction, song: str):
         return
     vs = getattr(interaction.user, "voice", None)
     if vs is None or vs.channel is None:
-        await interaction.response.send_message("Pumasok ka muna sa isang voice channel, tapos ulitin mo.",
+        await interaction.response.send_message("Join a voice channel first, then try again.",
                                                 ephemeral=True)
         return
     await interaction.response.defer()
@@ -187,25 +187,25 @@ async def music_cmd(interaction: discord.Interaction, song: str):
         elif vc.channel.id != vs.channel.id:
             await vc.move_to(vs.channel)
     except discord.ClientException:
-        await interaction.followup.send("Nasa ibang voice channel na ako. I-/leave muna, tapos ulitin.")
+        await interaction.followup.send("I'm already in another voice channel. Use /leave first, then try again.")
         return
     except Exception:                            # noqa: BLE001
-        await interaction.followup.send("Hindi ako makapasok sa voice channel. Tingnan ang Connect/Speak perms.")
+        await interaction.followup.send("I can't join that voice channel. Check my Connect and Speak permissions.")
         return
     try:
         track = await resolve(song, interaction.user.id, interaction.channel_id)
     except Exception:                            # noqa: BLE001
-        await interaction.followup.send(f"Hindi ko mahanap o ma-play yan: **{song}**")
+        await interaction.followup.send(f"I couldn't find or play that: **{song}**")
         return
     q = _queues.setdefault(guild.id, deque())
     busy = vc.is_playing() or vc.is_paused() or guild.id in _now
     if busy:
         q.append(track)
-        await interaction.followup.send(f"\u2795 Nasa queue na (#{len(q)}): **{track.title}**")
+        await interaction.followup.send(f"\u2795 Added to the queue (#{len(q)}): **{track.title}**")
     else:
         q.append(track)
         await play_next(guild.id)
-        await interaction.followup.send(f"\u25b6\ufe0f Pinapatugtog: **{track.title}**")
+        await interaction.followup.send(f"\u25b6\ufe0f Now playing: **{track.title}**")
 
 
 @bot.tree.command(name="skip", description="Skip the song that's playing")
@@ -213,7 +213,7 @@ async def music_cmd(interaction: discord.Interaction, song: str):
 async def skip_cmd(interaction: discord.Interaction):
     vc = interaction.guild.voice_client
     if vc is None or not (vc.is_playing() or vc.is_paused()):
-        await interaction.response.send_message("Walang tumutugtog ngayon.", ephemeral=True)
+        await interaction.response.send_message("Nothing is playing right now.", ephemeral=True)
         return
     vc.stop()                                     # triggers the after-callback -> next track
     await interaction.response.send_message("\u23ed\ufe0f Skipped.")
@@ -242,13 +242,13 @@ async def leave_cmd(interaction: discord.Interaction):
     _queues.pop(gid, None)
     _now.pop(gid, None)
     if vc is None:
-        await interaction.response.send_message("Wala naman ako sa voice channel.", ephemeral=True)
+        await interaction.response.send_message("I'm not in a voice channel.", ephemeral=True)
         return
     try:
         await vc.disconnect(force=True)
     except Exception:                            # noqa: BLE001
         pass
-    await interaction.response.send_message("\U0001f44b Umalis na ako sa voice.")
+    await interaction.response.send_message("\U0001f44b Left the voice channel.")
 
 
 @bot.tree.command(name="pause", description="Pause the music")
@@ -256,10 +256,10 @@ async def leave_cmd(interaction: discord.Interaction):
 async def pause_cmd(interaction: discord.Interaction):
     vc = interaction.guild.voice_client
     if vc is None or not vc.is_playing():
-        await interaction.response.send_message("Walang tumutugtog.", ephemeral=True)
+        await interaction.response.send_message("Nothing is playing.", ephemeral=True)
         return
     vc.pause()
-    await interaction.response.send_message("\u23f8\ufe0f Paused. Gamitin ang /resume para ituloy.")
+    await interaction.response.send_message("\u23f8\ufe0f Paused. Use /resume to continue.")
 
 
 @bot.tree.command(name="resume", description="Resume the paused music")
@@ -267,7 +267,7 @@ async def pause_cmd(interaction: discord.Interaction):
 async def resume_cmd(interaction: discord.Interaction):
     vc = interaction.guild.voice_client
     if vc is None or not vc.is_paused():
-        await interaction.response.send_message("Walang naka-pause.", ephemeral=True)
+        await interaction.response.send_message("Nothing is paused.", ephemeral=True)
         return
     vc.resume()
     await interaction.response.send_message("\u25b6\ufe0f Resumed.")
@@ -280,7 +280,7 @@ async def queue_cmd(interaction: discord.Interaction):
     now = _now.get(gid)
     q = _queues.get(gid) or deque()
     if now is None and not q:
-        await interaction.response.send_message("Walang laman ang queue.", ephemeral=True)
+        await interaction.response.send_message("The queue is empty.", ephemeral=True)
         return
     lines = []
     if now is not None:
@@ -291,7 +291,7 @@ async def queue_cmd(interaction: discord.Interaction):
         lines.append(f"{i}. {t.title}" + (f" ({d})" if d else ""))
     extra = len(q) - 20
     if extra > 0:
-        lines.append(f"\u2026 at {extra} pa")
+        lines.append(f"\u2026 and {extra} more")
     e = discord.Embed(title="\U0001f3b6 Queue", color=0x5865F2, description="\n".join(lines))
     await interaction.response.send_message(embed=e)
 
