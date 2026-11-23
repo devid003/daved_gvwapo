@@ -159,6 +159,20 @@ class LinkBlock(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class DeletedMsg(Base):
+    """One message that was unsent/deleted: who wrote it, what it said, where, when it was sent and deleted."""
+    __tablename__ = "deleted_msgs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    username: Mapped[str] = mapped_column(String(200), default="")
+    content: Mapped[str] = mapped_column(Text, default="")
+    channel_id: Mapped[int] = mapped_column(BigInteger, default=0)
+    channel_name: Mapped[str] = mapped_column(String(120), default="")
+    sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class WebUser(Base):
     """A member's website account (self-registered with a Discord code). For the videos page."""
     __tablename__ = "web_users"
@@ -1177,6 +1191,27 @@ def link_blocks(limit: int = 200, guild_id: int | None = None):
 def link_block_total() -> int:
     with Session() as s:
         return s.scalar(select(func.count()).select_from(LinkBlock)) or 0
+
+
+def log_deleted_msg(guild_id: int, user_id: int, username: str, content: str, channel_id: int,
+                    channel_name: str, sent_at=None) -> None:
+    with Session.begin() as s:
+        s.add(DeletedMsg(guild_id=guild_id, user_id=user_id, username=(username or "")[:200],
+                         content=(content or "")[:4000], channel_id=channel_id or 0,
+                         channel_name=(channel_name or "")[:120], sent_at=sent_at))
+
+
+def deleted_msgs(limit: int = 200, guild_id: int | None = None):
+    with Session() as s:
+        q = select(DeletedMsg).order_by(DeletedMsg.id.desc()).limit(max(1, min(1000, limit)))
+        if guild_id is not None:
+            q = q.where(DeletedMsg.guild_id == guild_id)
+        return list(s.scalars(q))
+
+
+def deleted_msg_total() -> int:
+    with Session() as s:
+        return s.scalar(select(func.count()).select_from(DeletedMsg)) or 0
 
 
 def member_joins(guild_id: int, user_id: int) -> list:

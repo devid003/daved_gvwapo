@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Deleted messages{% endblock %}
+{% block head %}
+<style>
+.us-chk{display:inline-flex;align-items:center;gap:8px;min-height:40px;font-size:14px;cursor:pointer;font-weight:600}
+.us-chk input{width:16px;height:16px;margin:0}
+.us-hint{color:var(--muted);font-size:13px;margin:10px 0 0;line-height:1.5}
+.us-checks{display:flex;flex-direction:column;gap:7px;margin:4px 0 0}
+.us-check{display:flex;align-items:center;gap:9px;font-size:13.5px}
+.us-check .mk{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:12px;font-weight:700}
+.us-check .mk.ok{background:color-mix(in srgb,var(--good) 22%,transparent);color:var(--good)}
+.us-check .mk.no{background:color-mix(in srgb,var(--bad) 22%,transparent);color:var(--bad)}
+.us-log .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--faint)}
+.us-log td.msg{max-width:420px}
+.us-log td.msg .pv,.us-log td.msg .full{white-space:pre-wrap;word-break:break-word}
+.us-log details>summary{cursor:pointer;color:var(--brand2);list-style:none}
+.us-log details>summary::-webkit-details-marker{display:none}
+.us-log .sent{color:var(--muted);font-size:12px}
+.panel-head .badge{align-self:center}
+</style>
+{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Deleted messages</h1><p>When a member unsends (deletes) a message, the bot reposts who wrote it and what it said in a channel you choose, with the time it was first sent. Every one is kept in the log below too.</p></div>
+</div>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+
+<section class="panel">
+  {% if report.servers %}
+  <form method="post" action="/unsent/channel" class="rp-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="rp-lbl" for="rp-ch">{{ report.label }}</label>
+    <select id="rp-ch" name="channel">
+      <option value="">Don't post in Discord</option>
+      {% for s in report.servers %}{% for cat, chans in s.groups %}
+      <optgroup label="{{ s.name ~ ' / ' if report.servers|length > 1 }}{{ cat }}">
+        {% for cid, name in chans %}<option value="{{ cid }}"{{ ' selected' if cid in report.ids }}># {{ name }}</option>{% endfor %}
+      </optgroup>{% endfor %}{% endfor %}
+    </select>
+    <button class="btn primary">Save</button>
+    <span class="rp-now">{% if report.current %}<span class="badge live">On</span> Posting in {% for c in report.current %}<b>#{{ c.name }}</b>{% if report.servers|length > 1 %} ({{ c.server }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}{% else %}Not posting in Discord{% endif %}</span>
+  </form>
+  {% else %}
+  <p class="muted small" style="margin:0;padding:14px 20px">The bot is offline or can't post in any channel right now, so you can't pick a report channel yet.</p>
+  {% endif %}
+</section>
+
+{% if not online %}<div class="empty">The bot is offline right now, so some of this can't be checked. Settings are still saved.</div>{% endif %}
+
+{% for sv in servers %}
+<section class="panel">
+  <div class="panel-head">
+    <div><h2>{{ sv.name }}</h2>
+      {% if not sv.joined %}<p>The bot isn't in this server right now.</p>
+      {% elif sv.on %}<p>Watching for unsent messages and logging each one.</p>
+      {% else %}<p>Not watching this server yet. Turn it on below.</p>{% endif %}
+    </div>
+    {% if sv.on %}<span class="badge live">On</span>{% else %}<span class="badge off">Off</span>{% endif %}
+  </div>
+  <div class="panel-body">
+    {% if sv.joined and sv.on %}
+    <div class="us-checks">
+      <div class="us-check"><span class="mk {{ 'ok' if sv.status.content else 'no' }}">{% if sv.status.content %}&#10003;{% else %}&#10007;{% endif %}</span>
+        {% if sv.status.content %}The bot can read messages (Message Content Intent is on).{% else %}<b>Message Content Intent is OFF</b> &mdash; the bot can still see that a message was deleted, but not its text. Turn it on in the Developer Portal (Bot &rarr; Privileged Gateway Intents), then Restart on Render.{% endif %}</div>
+    </div>
+    {% endif %}
+
+    <form method="post" action="/unsent/save" style="margin-top:14px">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="guild_id" value="{{ sv.id }}">
+      <label class="us-chk"><input type="checkbox" name="on" value="1"{{ ' checked' if sv.on }}> Log unsent (deleted) messages</label>
+      <p class="us-hint">The bot can only catch messages it saw while it was online &mdash; anything sent before it started, or while it was offline, can't be brought back. Links that the link filter removes aren't reported here twice.</p>
+      <button class="btn primary" style="margin-top:14px">Save</button>
+    </form>
+  </div>
+</section>
+{% else %}
+<div class="empty">No approved servers yet.</div>
+{% endfor %}
+
+<section class="panel us-log">
+  <div class="panel-head"><div><h2>Log</h2><p>Every unsent message, newest first{% if total %} &mdash; {{ total }} so far{% endif %}.</p></div></div>
+  {% if rows %}
+  <div class="scroll"><table>
+    <tr><th>Member</th><th>Message</th><th>Channel</th><th>Unsent ({{ tz }})</th>{% if multi %}<th>Server</th>{% endif %}</tr>
+    {% for r in rows %}
+    <tr>
+      <td><b>{{ r.username or r.user_id }}</b><div class="mono">{{ r.user_id }}</div></td>
+      <td class="msg">{% if r.content %}{% if r.content|length > 200 %}<details><summary><span class="pv">{{ r.content[:180] }}&hellip; </span></summary><div class="full">{{ r.content }}</div></details>{% else %}<span class="pv">{{ r.content }}</span>{% endif %}{% else %}<span class="muted">(no text)</span>{% endif %}</td>
+      <td class="nowrap">{% if r.channel_name %}#{{ r.channel_name }}{% else %}&mdash;{% endif %}</td>
+      <td class="nowrap">{{ r.deleted_at|local }}{% if r.sent_at %}<div class="sent">sent {{ r.sent_at|local }}</div>{% endif %}</td>
+      {% if multi %}<td>{{ names.get(r.guild_id, r.guild_id) }}</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <div class="empty">Nothing logged yet. When a member unsends a message the bot saw, it shows up here.</div>
+  {% endif %}
+</section>
+{% endblock %}

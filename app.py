@@ -31,6 +31,7 @@ import db  # noqa: E402
 import discord_bot  # noqa: E402
 import upload_reports  # noqa: E402  (adds upload-time reports + commands to the bot)
 import security  # noqa: E402  (join gate: new members need approval)
+import unsent  # noqa: E402,F401  (logs and reposts deleted/unsent messages)
 import linkguard  # noqa: E402  (link filter, invite lock, link commands)
 import name_history  # noqa: E402,F401  (records every name a member uses, by Discord ID)
 import antinuke  # noqa: E402  (stops someone from wrecking the server fast)
@@ -573,6 +574,87 @@ async def links_invites(request):
     except Exception as e:  # noqa: BLE001
         flash(request, f"Could not change it: {type(e).__name__}.")
     return redirect("/links")
+
+
+# ---------- deleted / unsent message log ----------
+def _unsent_report_info() -> dict:
+    """Channel picker for the deleted-message report: channels the bot can post in, and where it posts now.
+    Self-contained so this page doesn't depend on the shared report dicts (which the Links update rewrites)."""
+    b = discord_bot.bot
+    cur = []
+    for gid in sorted(db.allowed_guild_ids()):
+        raw = db.get_setting(security.report_key("unsent", gid), "")
+        ch = b.get_channel(int(raw)) if raw.isdigit() and b.is_ready() else None
+        if ch is not None:
+            cur.append({"id": str(ch.id), "name": ch.name, "server": ch.guild.name})
+    return {"label": "Report deleted messages in", "servers": panel_info()["servers"],
+            "current": cur, "ids": [c["id"] for c in cur]}
+
+
+async def unsent_page(request):
+    if not authed(request):
+        return redirect("/login")
+    b = discord_bot.bot
+    data = await run(db.overview)
+    servers = []
+    for s in data["servers"]:
+        guild = b.get_guild(s.guild_id) if b.is_ready() else None
+        st = unsent.status_sync(guild) if guild else {"content": False}
+        servers.append({
+            "id": s.guild_id,
+            "name": (guild.name if guild else s.name) or "Unnamed server",
+            "joined": guild is not None,
+            "on": await run(unsent.on_sync, s.guild_id),
+            "status": st,
+        })
+    ctx = {
+        "csrf": csrf_token(request),
+        "flash": request.session.pop("flash", None),
+        "servers": servers,
+        "report": await run(_unsent_report_info),
+        "online": b.is_ready(),
+        "rows": await run(db.deleted_msgs, 200),
+        "total": await run(db.deleted_msg_total),
+        "names": {s["id"]: s["name"] for s in servers},
+        "multi": len(servers) > 1,
+        "tz": TZ_LABEL,
+    }
+    return templates.TemplateResponse(request=request, name="unsent.html", context=ctx)
+
+
+async def unsent_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    gid, _ = await _approved_guild(form)
+    if gid is None:
+        flash(request, "That server is not approved.")
+        return redirect("/unsent")
+    await run(db.set_setting, f"unsent_on:{gid}", "1" if form.get("on") else "0")
+    flash(request, "Saved. Deleted messages will be logged."
+          if form.get("on") else "Deleted-message log is OFF for this server.")
+    return redirect("/unsent")
+
+
+async def unsent_channel_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    allowed = await run(db.allowed_guild_ids)
+    cid = str(form.get("channel", "")).strip()
+    b = discord_bot.bot
+    if not cid:
+        for gid in allowed:
+            await run(db.set_setting, security.report_key("unsent", gid), "")
+        flash(request, "Saved. The bot won't post deleted messages in Discord anymore.")
+        return redirect("/unsent")
+    ch = b.get_channel(int(cid)) if cid.isdigit() and b.is_ready() else None
+    if ch is None or getattr(ch, "guild", None) is None or ch.guild.id not in allowed:
+        flash(request, "Pick a channel first.")
+        return redirect("/unsent")
+    await run(db.set_setting, security.report_key("unsent", ch.guild.id), str(ch.id))
+    flash(request, f"Saved. The bot will repost every deleted message, with who wrote it, in #{ch.name}.")
+    return redirect("/unsent")
 
 
 # ---------- security (join gate) ----------
@@ -3240,6 +3322,9 @@ app = Starlette(
         Route("/links", links_page),
         Route("/links/save", links_save, methods=["POST"]),
         Route("/links/invites", links_invites, methods=["POST"]),
+        Route("/unsent", unsent_page),
+        Route("/unsent/save", unsent_save, methods=["POST"]),
+        Route("/unsent/channel", unsent_channel_save, methods=["POST"]),
         Route("/security", security_page_v2),
         Route("/security/gate", security_gate, methods=["POST"]),
         Route("/security/log", security_log, methods=["POST"]),
