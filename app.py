@@ -31,6 +31,7 @@ import db  # noqa: E402
 import discord_bot  # noqa: E402
 import upload_reports  # noqa: E402  (adds upload-time reports + commands to the bot)
 import security  # noqa: E402  (join gate: new members need approval)
+import antinuke  # noqa: E402  (stops someone from wrecking the server fast)
 import prompt_commands  # noqa: E402,F401  (adds /ghibli, /cooking, ... commands)
 import prompts as promptlib  # noqa: E402
 import daily_word  # noqa: E402  (motivation + Bible verse at 6 AM, 3 PM, 10 PM)
@@ -445,6 +446,65 @@ async def uploads_live(request):
         "fx_at": _utc_local(st["last_fx_at"]),
         "fx_interval": st["fx_interval"],
     }, headers={"Cache-Control": "no-store"})
+
+
+# ---------- anti-nuke ----------
+async def antinuke_page(request):
+    if not authed(request):
+        return redirect("/login")
+    b = discord_bot.bot
+    data = await run(db.overview)
+    servers = []
+    for s in data["servers"]:
+        guild = b.get_guild(s.guild_id) if b.is_ready() else None
+        cfg = await run(antinuke.cfg_sync, s.guild_id)
+        st = antinuke.status_sync(guild) if guild else {"audit": False, "can_act": False, "high": False, "blind_seen": False}
+        servers.append({
+            "id": s.guild_id,
+            "name": (guild.name if guild else s.name) or "Unnamed server",
+            "joined": guild is not None,
+            "on": cfg["on"],
+            "limit": cfg["limit"],
+            "window": cfg["window"],
+            "punish": cfg["punish"],
+            "whitelist": " ".join(str(i) for i in sorted(cfg["whitelist"])),
+            "log": cfg["log"],
+            "status": st,
+            "options": [(c.id, c.name) for c in guild.text_channels] if guild else [],
+        })
+    ctx = {
+        "csrf": csrf_token(request),
+        "flash": request.session.pop("flash", None),
+        "servers": servers,
+        "punishes": antinuke.PUNISH,
+        "online": b.is_ready(),
+    }
+    return templates.TemplateResponse(request=request, name="antinuke.html", context=ctx)
+
+
+async def antinuke_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    gid, _ = await _approved_guild(form)
+    if gid is None:
+        flash(request, "That server is not approved.")
+        return redirect("/antinuke")
+    limit = parse_int(form.get("limit")) or 3
+    window = parse_int(form.get("window")) or 15
+    punish = str(form.get("punish", "strip"))
+    raw_wl = str(form.get("whitelist", "")).replace("\n", ",").replace(" ", ",")
+    wl = [x for x in (p.strip() for p in raw_wl.split(",")) if x.isdigit() and len(x) >= 5][:100]
+    ch = str(form.get("log", "")).strip()
+    await run(db.set_setting, f"an_on:{gid}", "1" if form.get("on") else "0")
+    await run(db.set_setting, f"an_limit:{gid}", str(max(2, min(50, limit))))
+    await run(db.set_setting, f"an_window:{gid}", str(max(3, min(600, window))))
+    await run(db.set_setting, f"an_punish:{gid}", punish if punish in antinuke.PUNISH_LABEL else "strip")
+    await run(db.set_setting, f"an_wl:{gid}", ",".join(wl))
+    await run(db.set_setting, f"an_log:{gid}", ch if ch.isdigit() else "")
+    antinuke.forget_cache(gid)
+    flash(request, "Anti-nuke settings saved." if form.get("on") else "Anti-nuke is OFF for this server.")
+    return redirect("/antinuke")
 
 
 # ---------- security (join gate) ----------
@@ -3095,6 +3155,8 @@ app = Starlette(
         Route("/members/set", members_set, methods=["POST"]),
         Route("/image/toggle", image_toggle, methods=["POST"]),
         Route("/uploads", uploads),
+        Route("/antinuke", antinuke_page),
+        Route("/antinuke/save", antinuke_save, methods=["POST"]),
         Route("/security", security_page_v2),
         Route("/security/gate", security_gate, methods=["POST"]),
         Route("/security/log", security_log, methods=["POST"]),

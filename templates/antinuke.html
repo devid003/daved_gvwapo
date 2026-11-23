@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Anti-nuke{% endblock %}
+{% block head %}
+<style>
+.an-form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 16px}
+.an-form .field{margin:0}
+.an-chk{display:inline-flex;align-items:center;gap:8px;min-height:40px;font-size:14px;cursor:pointer;font-weight:600}
+.an-chk input{width:16px;height:16px;margin:0}
+.an-num input{width:92px}
+.an-wl{width:100%;box-sizing:border-box;min-height:70px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font:inherit;font-size:14px;line-height:1.5;resize:vertical}
+.an-wl:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.an-hint{color:var(--muted);font-size:13px;margin:10px 0 0;line-height:1.5}
+.an-sub{margin:16px 0 6px;font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.an-checks{display:flex;flex-direction:column;gap:7px;margin:4px 0 0}
+.an-check{display:flex;align-items:center;gap:9px;font-size:13.5px}
+.an-check .mk{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:12px;font-weight:700}
+.an-check .mk.ok{background:color-mix(in srgb,var(--good) 22%,transparent);color:var(--good)}
+.an-check .mk.no{background:color-mix(in srgb,var(--bad) 22%,transparent);color:var(--bad)}
+.an-off{opacity:.55;pointer-events:none}
+.panel-head .badge{align-self:center}
+</style>
+{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Anti-nuke</h1><p>Stops someone from wrecking your server in seconds. If one person suddenly deletes a bunch of channels or roles, or mass-bans members, the bot catches it, stops them, and alerts you.</p></div>
+</div>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+
+<div class="warnbox">
+  <b>Before you rely on this, set up the bot's role:</b>
+  <ol>
+    <li>In Server Settings &rarr; Roles, drag the bot's role <b>near the top</b>, above your admins and mods.</li>
+    <li>Give that role <b>View Audit Log</b> (to see who did it) plus <b>Ban Members</b>, <b>Kick Members</b> and <b>Manage Roles</b> (to stop them).</li>
+    <li><b>Whitelist the people you trust</b> below (you and your real admins), so the bot never touches them. The owner is always safe.</li>
+  </ol>
+  It can't act on the server owner or on roles higher than its own, and it can't bring back deleted channels or roles &mdash; it stops the attacker fast, it doesn't undo the damage.
+</div>
+
+{% if not online %}<div class="empty">The bot is offline right now, so these settings can't all be checked. They're still saved.</div>{% endif %}
+
+{% for sv in servers %}
+<section class="panel">
+  <div class="panel-head">
+    <div><h2>{{ sv.name }}</h2>
+      {% if not sv.joined %}<p>The bot isn't in this server right now.</p>
+      {% elif sv.on %}<p>Watching for {{ sv.limit }} destructive actions within {{ sv.window }} seconds, then: {{ {'strip':'take away their roles','kick':'kick them','ban':'ban them','alert':'alert only'}[sv.punish] }}.</p>
+      {% else %}<p>Turned off. Turn it on below to protect this server.</p>{% endif %}
+    </div>
+    {% if sv.on %}<span class="badge live">On</span>{% else %}<span class="badge off">Off</span>{% endif %}
+  </div>
+  <div class="panel-body">
+    {% if sv.joined and sv.on %}
+    <div class="an-checks">
+      <div class="an-check"><span class="mk {{ 'ok' if sv.status.audit else 'no' }}">{% if sv.status.audit %}&#10003;{% else %}&#10007;{% endif %}</span>
+        {% if sv.status.audit %}The bot can read the audit log (it can tell who did it).{% else %}<b>Missing View Audit Log</b> &mdash; without it the bot can't tell who the attacker is. Add it to the bot's role.{% endif %}</div>
+      <div class="an-check"><span class="mk {{ 'ok' if sv.status.can_act else 'no' }}">{% if sv.status.can_act %}&#10003;{% else %}&#10007;{% endif %}</span>
+        {% if sv.status.can_act %}The bot can ban, kick or remove roles.{% else %}<b>Missing Ban / Kick / Manage Roles</b> &mdash; the bot can warn you but can't stop the attacker. Add these to the bot's role.{% endif %}</div>
+      <div class="an-check"><span class="mk {{ 'ok' if sv.status.high else 'no' }}">{% if sv.status.high %}&#10003;{% else %}&#10007;{% endif %}</span>
+        {% if sv.status.high %}The bot's role is near the top.{% else %}The bot's role is low. It can only stop people <b>below</b> it, so move it near the top of the role list.{% endif %}</div>
+    </div>
+    {% endif %}
+
+    <form method="post" action="/antinuke/save" style="margin-top:14px">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="guild_id" value="{{ sv.id }}">
+      <div class="an-form">
+        <label class="an-chk"><input type="checkbox" name="on" value="1"{{ ' checked' if sv.on }}> Protect this server</label>
+      </div>
+      <div class="an-form{{ '' if sv.on else ' ' }}" style="margin-top:12px">
+        <label class="field">When someone does this many destructive actions<div class="an-num"><input type="number" name="limit" min="2" max="50" value="{{ sv.limit }}"></div></label>
+        <label class="field">within this many seconds<div class="an-num"><input type="number" name="window" min="3" max="600" value="{{ sv.window }}"></div></label>
+        <label class="field">do this to them
+          <select name="punish">{% for k, label in punishes %}<option value="{{ k }}"{{ ' selected' if k == sv.punish }}>{{ label }}</option>{% endfor %}</select></label>
+        <label class="field">Alert channel
+          <select name="log"><option value="">{% if sv.joined %}Same as Security, or none{% else %}None{% endif %}</option>
+            {% for cid, cname in sv.options %}<option value="{{ cid }}"{{ ' selected' if cid == sv.log }}>#{{ cname }}</option>{% endfor %}</select></label>
+      </div>
+      <p class="an-sub">People the bot must never touch</p>
+      <textarea class="an-wl" name="whitelist" placeholder="Paste Discord user IDs, one per line or separated by spaces. You and the server owner are always safe.">{{ sv.whitelist }}</textarea>
+      <p class="an-hint">These are the only people allowed to make big changes. Everyone else who suddenly mass-deletes or mass-bans gets stopped. To get an ID: in Discord turn on Settings &rarr; Advanced &rarr; Developer Mode, then right-click a person &rarr; Copy User ID.</p>
+      <button class="btn primary" style="margin-top:14px">Save</button>
+    </form>
+  </div>
+</section>
+{% else %}
+<div class="empty">No approved servers yet.</div>
+{% endfor %}
+{% endblock %}
