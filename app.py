@@ -31,6 +31,7 @@ import db  # noqa: E402
 import discord_bot  # noqa: E402
 import upload_reports  # noqa: E402  (adds upload-time reports + commands to the bot)
 import security  # noqa: E402  (join gate: new members need approval)
+import botstatus  # noqa: E402,F401  (bot status / health monitor)
 import unsent  # noqa: E402,F401  (logs and reposts deleted/unsent messages)
 import linkguard  # noqa: E402  (link filter, invite lock, link commands)
 import name_history  # noqa: E402,F401  (records every name a member uses, by Discord ID)
@@ -655,6 +656,83 @@ async def unsent_channel_save(request):
     await run(db.set_setting, security.report_key("unsent", ch.guild.id), str(ch.id))
     flash(request, f"Saved. The bot will repost every deleted message, with who wrote it, in #{ch.name}.")
     return redirect("/unsent")
+
+
+# ---------- bot status / health ----------
+def _status_report_info() -> dict:
+    """Channel picker for the status post: channels the bot can post in, and where it posts now."""
+    b = discord_bot.bot
+    cur = []
+    for gid in sorted(db.allowed_guild_ids()):
+        raw = db.get_setting(f"health_ch:{gid}", "")
+        ch = b.get_channel(int(raw)) if raw.isdigit() and b.is_ready() else None
+        if ch is not None:
+            cur.append({"id": str(ch.id), "name": ch.name, "server": ch.guild.name})
+    return {"label": "Post the status in", "servers": panel_info()["servers"],
+            "current": cur, "ids": [c["id"] for c in cur]}
+
+
+async def status_page(request):
+    if not authed(request):
+        return redirect("/login")
+    b = discord_bot.bot
+    data = await run(db.overview)
+    servers = []
+    for s in data["servers"]:
+        guild = b.get_guild(s.guild_id) if b.is_ready() else None
+        servers.append({
+            "id": s.guild_id,
+            "name": (guild.name if guild else s.name) or "Unnamed server",
+            "joined": guild is not None,
+            "on": await run(botstatus.on_sync, s.guild_id),
+        })
+    st = botstatus.state()
+    ctx = {
+        "csrf": csrf_token(request),
+        "flash": request.session.pop("flash", None),
+        "servers": servers,
+        "report": await run(_status_report_info),
+        "online": b.is_ready(),
+        "state": st,
+        "uptime": botstatus.uptime_text(st["uptime"]),
+        "tz": TZ_LABEL,
+    }
+    return templates.TemplateResponse(request=request, name="status.html", context=ctx)
+
+
+async def status_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    gid, _ = await _approved_guild(form)
+    if gid is None:
+        flash(request, "That server is not approved.")
+        return redirect("/status")
+    await run(db.set_setting, f"health_on:{gid}", "1" if form.get("on") else "0")
+    flash(request, "Status monitor saved." if form.get("on") else "Status monitor is OFF for this server.")
+    return redirect("/status")
+
+
+async def status_channel_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    allowed = await run(db.allowed_guild_ids)
+    cid = str(form.get("channel", "")).strip()
+    b = discord_bot.bot
+    if not cid:
+        for gid in allowed:
+            await run(db.set_setting, f"health_ch:{gid}", "")
+        flash(request, "Saved. The bot won't post a status in Discord anymore.")
+        return redirect("/status")
+    ch = b.get_channel(int(cid)) if cid.isdigit() and b.is_ready() else None
+    if ch is None or getattr(ch, "guild", None) is None or ch.guild.id not in allowed:
+        flash(request, "Pick a channel first.")
+        return redirect("/status")
+    await run(db.set_setting, f"health_ch:{ch.guild.id}", str(ch.id))
+    await run(db.set_setting, f"health_msg:{ch.guild.id}", "")   # fresh post in the new channel
+    flash(request, f"Saved. The bot will keep a status message in #{ch.name}.")
+    return redirect("/status")
 
 
 # ---------- security (join gate) ----------
@@ -3302,6 +3380,10 @@ async def lifespan(app):
     else:
         log.error("DISCORD_TOKEN is not set. The dashboard works but the bot is offline.")
     yield
+    try:
+        await asyncio.wait_for(botstatus.post_offline(), timeout=8)
+    except Exception:  # noqa: BLE001
+        pass
     await discord_bot.bot.close()
 
 
@@ -3325,6 +3407,9 @@ app = Starlette(
         Route("/unsent", unsent_page),
         Route("/unsent/save", unsent_save, methods=["POST"]),
         Route("/unsent/channel", unsent_channel_save, methods=["POST"]),
+        Route("/status", status_page),
+        Route("/status/save", status_save, methods=["POST"]),
+        Route("/status/channel", status_channel_save, methods=["POST"]),
         Route("/security", security_page_v2),
         Route("/security/gate", security_gate, methods=["POST"]),
         Route("/security/log", security_log, methods=["POST"]),

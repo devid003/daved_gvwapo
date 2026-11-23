@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Status{% endblock %}
+{% block head %}
+<style>
+.st-banner{display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px;border:1px solid var(--line);border-radius:var(--radius);padding:18px 22px;margin:0 0 20px}
+.st-banner.g{background:color-mix(in srgb,var(--good) 12%,var(--surface));border-color:color-mix(in srgb,var(--good) 45%,var(--line))}
+.st-banner.y{background:color-mix(in srgb,var(--warn) 14%,var(--surface));border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
+.st-banner.r{background:color-mix(in srgb,var(--bad) 12%,var(--surface));border-color:color-mix(in srgb,var(--bad) 50%,var(--line))}
+.st-dot{width:16px;height:16px;border-radius:50%;flex:none;background:currentColor;box-shadow:0 0 0 4px color-mix(in srgb,currentColor 22%,transparent)}
+.st-g{color:var(--good)} .st-y{color:var(--warn)} .st-r{color:var(--bad)}
+.st-word{font-size:22px;font-weight:800;letter-spacing:-.01em}
+.st-sub{color:var(--muted);font-size:13px;margin-top:2px}
+.st-metrics{display:flex;gap:26px;margin-left:auto;flex-wrap:wrap}
+.st-metric .n{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.st-metric .l{color:var(--muted);font-size:12px;margin-top:1px}
+.st-key{display:flex;flex-direction:column;gap:7px;margin:4px 0 0}
+.st-key div{display:flex;align-items:center;gap:9px;font-size:13.5px}
+.st-key .d{width:12px;height:12px;border-radius:50%;flex:none}
+.st-chk{display:inline-flex;align-items:center;gap:8px;min-height:40px;font-size:14px;cursor:pointer;font-weight:600}
+.st-chk input{width:16px;height:16px;margin:0}
+.st-hint{color:var(--muted);font-size:13px;margin:10px 0 0;line-height:1.5}
+.panel-head .badge{align-self:center}
+</style>
+{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Status</h1><p>See at a glance if the bot is up, slow, or down &mdash; with ping and uptime &mdash; and keep a live status message in a Discord channel.</p></div>
+</div>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+
+{% set c = state.color %}
+<div class="st-banner {{ 'g' if c=='green' else 'y' if c=='yellow' else 'r' }}">
+  <span class="st-dot {{ 'st-g' if c=='green' else 'st-y' if c=='yellow' else 'st-r' }}"></span>
+  <div>
+    <div class="st-word {{ 'st-g' if c=='green' else 'st-y' if c=='yellow' else 'st-r' }}">{{ state.label }}</div>
+    <div class="st-sub">{% if c=='green' %}Gumagana lahat &mdash; OK ang prompt at ang website.{% elif c=='yellow' %}Mabagal ang server &mdash; baka maantala ang prompt o website.{% else %}Down &mdash; hindi magagamit ang prompt, at hindi available ang website.{% endif %}</div>
+  </div>
+  <div class="st-metrics">
+    <div class="st-metric"><div class="n">{% if state.ping is not none %}{{ state.ping }} ms{% else %}&mdash;{% endif %}</div><div class="l">Ping</div></div>
+    <div class="st-metric"><div class="n">{{ uptime }}</div><div class="l">Uptime</div></div>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>What the colors mean</h2></div></div>
+  <div class="panel-body">
+    <div class="st-key">
+      <div><span class="d" style="background:var(--good)"></span><b>Green</b> &mdash; online, everything working.</div>
+      <div><span class="d" style="background:var(--warn)"></span><b>Yellow</b> &mdash; slow (high ping); prompts and the website may lag.</div>
+      <div><span class="d" style="background:var(--bad)"></span><b>Red</b> &mdash; down; prompts can't be used and the website is unavailable.</div>
+    </div>
+    <p class="st-hint">The bot updates the Discord message every ~2 minutes. A fully-down bot can't post, so if the time on the message gets old, it's down &mdash; this page always shows the real current color. On a planned restart or deploy the bot posts Red before it goes offline.</p>
+  </div>
+</section>
+
+<section class="panel">
+  {% if report.servers %}
+  <form method="post" action="/status/channel" class="rp-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="rp-lbl" for="rp-ch">{{ report.label }}</label>
+    <select id="rp-ch" name="channel">
+      <option value="">Don't post in Discord</option>
+      {% for s in report.servers %}{% for cat, chans in s.groups %}
+      <optgroup label="{{ s.name ~ ' / ' if report.servers|length > 1 }}{{ cat }}">
+        {% for cid, name in chans %}<option value="{{ cid }}"{{ ' selected' if cid in report.ids }}># {{ name }}</option>{% endfor %}
+      </optgroup>{% endfor %}{% endfor %}
+    </select>
+    <button class="btn primary">Save</button>
+    <span class="rp-now">{% if report.current %}<span class="badge live">On</span> Posting in {% for c in report.current %}<b>#{{ c.name }}</b>{% if report.servers|length > 1 %} ({{ c.server }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}{% else %}Not posting in Discord{% endif %}</span>
+  </form>
+  {% else %}
+  <p class="muted small" style="margin:0;padding:14px 20px">The bot is offline or can't post in any channel right now, so you can't pick a channel yet.</p>
+  {% endif %}
+</section>
+
+{% for sv in servers %}
+<section class="panel">
+  <div class="panel-head">
+    <div><h2>{{ sv.name }}</h2>
+      {% if not sv.joined %}<p>The bot isn't in this server right now.</p>
+      {% elif sv.on %}<p>Keeping a live status message updated here.</p>
+      {% else %}<p>Status message is off for this server.</p>{% endif %}
+    </div>
+    {% if sv.on %}<span class="badge live">On</span>{% else %}<span class="badge off">Off</span>{% endif %}
+  </div>
+  <div class="panel-body">
+    <form method="post" action="/status/save">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="guild_id" value="{{ sv.id }}">
+      <label class="st-chk"><input type="checkbox" name="on" value="1"{{ ' checked' if sv.on }}> Keep a live status message in this server</label>
+      <p class="st-hint">Pick the channel above, then turn this on. Members can also check anytime with <code>/status</code> or <code>/ping</code>.</p>
+      <button class="btn primary" style="margin-top:12px">Save</button>
+    </form>
+  </div>
+</section>
+{% else %}
+<div class="empty">No approved servers yet.</div>
+{% endfor %}
+{% endblock %}
