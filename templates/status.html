@@ -22,6 +22,9 @@
 .st-num{width:76px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
 .st-unit{padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
 .st-num:focus,.st-unit:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.st-chart{display:block;width:100%;height:170px}
+.st-chart .line{fill:none;stroke:var(--accent);stroke-width:2.5;vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}
+.st-chart .area{fill:color-mix(in srgb,var(--accent) 16%,transparent);stroke:none}
 .st-hint{color:var(--muted);font-size:13px;margin:10px 0 0;line-height:1.5}
 .panel-head .badge{align-self:center}
 </style>
@@ -33,17 +36,28 @@
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
 
 {% set c = state.color %}
-<div class="st-banner {{ 'g' if c=='green' else 'y' if c=='yellow' else 'r' }}">
-  <span class="st-dot {{ 'st-g' if c=='green' else 'st-y' if c=='yellow' else 'st-r' }}"></span>
+<div class="st-banner {{ 'g' if c=='green' else 'y' if c=='yellow' else 'r' }}" id="st-banner">
+  <span class="st-dot {{ 'st-g' if c=='green' else 'st-y' if c=='yellow' else 'st-r' }}" id="st-dot"></span>
   <div>
-    <div class="st-word {{ 'st-g' if c=='green' else 'st-y' if c=='yellow' else 'st-r' }}">{{ state.label }}</div>
-    <div class="st-sub">{% if c=='green' %}Everything is working &mdash; prompts and the website are OK.{% elif c=='yellow' %}The server is slow &mdash; prompts or the website may lag.{% else %}Down &mdash; prompts can't be used and the website is unavailable.{% endif %}</div>
+    <div class="st-word {{ 'st-g' if c=='green' else 'st-y' if c=='yellow' else 'st-r' }}" id="st-word">{{ state.label }}</div>
+    <div class="st-sub" id="st-sub">{% if c=='green' %}Everything is working &mdash; prompts and the website are OK.{% elif c=='yellow' %}The server is slow &mdash; prompts or the website may lag.{% else %}Down &mdash; prompts can't be used and the website is unavailable.{% endif %}</div>
   </div>
   <div class="st-metrics">
-    <div class="st-metric"><div class="n">{% if state.ping is not none %}{{ state.ping }} ms{% else %}&mdash;{% endif %}</div><div class="l">Ping</div></div>
-    <div class="st-metric"><div class="n">{{ uptime }}</div><div class="l">Uptime</div></div>
+    <div class="st-metric"><div class="n" id="st-ping">{% if state.ping is not none %}{{ state.ping }} ms{% else %}&mdash;{% endif %}</div><div class="l">Ping</div></div>
+    <div class="st-metric"><div class="n" id="st-uptime">{{ uptime }}</div><div class="l">Uptime (live)</div></div>
   </div>
 </div>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Ping over time</h2><p>Gateway latency for the last {{ graph_hours }} hours &mdash; lower is better. Updates live.</p></div></div>
+  <div class="panel-body">
+    <svg id="st-chart" class="st-chart" viewBox="0 0 640 160" preserveAspectRatio="none" role="img" aria-label="Ping over time">
+      <path id="st-area" class="area"></path>
+      <polyline id="st-line" class="line" points=""></polyline>
+    </svg>
+    <p id="st-chart-empty" class="st-hint" style="display:none">Collecting data&hellip; the graph fills in as the bot runs (a point every couple of minutes).</p>
+  </div>
+</section>
 
 <section class="panel">
   <div class="panel-head"><div><h2>What the colors mean</h2></div></div>
@@ -108,4 +122,73 @@
 {% else %}
 <div class="empty">No approved servers yet.</div>
 {% endfor %}
+
+<script>
+(function(){
+  var boot = {{ boot }};
+  var SUB = {
+    green: "Everything is working \u2014 prompts and the website are OK.",
+    yellow: "The server is slow \u2014 prompts or the website may lag.",
+    red: "Down \u2014 prompts can't be used and the website is unavailable."
+  };
+  var BAN = {green:"g", yellow:"y", red:"r"}, CLS = {green:"st-g", yellow:"st-y", red:"st-r"};
+  function $(id){ return document.getElementById(id); }
+
+  function fmtUptime(s){
+    s = Math.max(0, Math.floor(s));
+    var d = Math.floor(s/86400); s -= d*86400;
+    var h = Math.floor(s/3600);  s -= h*3600;
+    var m = Math.floor(s/60);    var sec = s - m*60;
+    var p = [];
+    if(d) p.push(d+"d");
+    if(h) p.push(h+"h");
+    p.push(m+"m"); p.push(sec+"s");
+    return p.join(" ");
+  }
+  function tickUptime(){
+    var el = $("st-uptime"); if(!el) return;
+    el.textContent = fmtUptime(Date.now()/1000 - boot);
+  }
+
+  function renderChart(vals){
+    var line = $("st-line"), area = $("st-area"), empty = $("st-chart-empty");
+    if(!line) return;
+    if(!vals || vals.length < 2){ line.setAttribute("points",""); area.setAttribute("d",""); if(empty) empty.style.display=""; return; }
+    if(empty) empty.style.display="none";
+    var W=640,H=160,PAD=10, n=vals.length;
+    var lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals); if(hi===lo) hi=lo+1;
+    var X=function(i){ return PAD + (W-2*PAD)*i/(n-1); };
+    var Y=function(v){ return H-PAD - (H-2*PAD)*(v-lo)/(hi-lo); };
+    var pts=[]; for(var i=0;i<n;i++){ pts.push(X(i).toFixed(1)+","+Y(vals[i]).toFixed(1)); }
+    line.setAttribute("points", pts.join(" "));
+    area.setAttribute("d", "M"+X(0).toFixed(1)+","+(H-PAD)+" L"+pts.join(" L")+" L"+X(n-1).toFixed(1)+","+(H-PAD)+" Z");
+  }
+
+  function applyState(d){
+    if(typeof d.boot === "number") boot = d.boot;
+    var col = d.color || "red";
+    var ban = $("st-banner"), dot = $("st-dot"), word = $("st-word"), sub = $("st-sub"), ping = $("st-ping");
+    if(ban)  ban.className  = "st-banner " + (BAN[col]||"r");
+    if(dot)  dot.className  = "st-dot " + (CLS[col]||"st-r");
+    if(word){ word.className = "st-word " + (CLS[col]||"st-r"); word.textContent = d.label || ""; }
+    if(sub)  sub.textContent = SUB[col] || "";
+    if(ping) ping.innerHTML = (d.ping==null ? "\u2014" : (d.ping + " ms"));
+    renderChart(d.samples || []);
+    tickUptime();
+  }
+
+  function poll(){
+    fetch("/status.json", {headers:{Accept:"application/json"}, cache:"no-store"})
+      .then(function(r){ if(r.status===401){ return null; } return r.json(); })
+      .then(function(d){ if(d) applyState(d); })
+      .catch(function(){})
+      .then(function(){ setTimeout(poll, 10000); });
+  }
+
+  renderChart({{ samples|tojson }});
+  tickUptime();
+  setInterval(tickUptime, 1000);
+  setTimeout(poll, 10000);
+})();
+</script>
 {% endblock %}

@@ -14,6 +14,7 @@ updating -- an old "Checked" time means it's down. The website Status page alway
 and on a planned restart/deploy the bot posts RED before it goes offline.
 """
 import asyncio
+import io
 import logging
 import math
 import time
@@ -39,6 +40,9 @@ YELLOW_MS = 1500
 TICK_SECONDS = 60
 DEFAULT_MINS = 360          # 6 hours, until the owner sets their own
 _first_tick = True          # force one post right after the bot starts (shows it's back up)
+SAMPLE_SECONDS = 120        # how often to record a ping sample for the graph
+GRAPH_HOURS = 6             # how much history the graph shows
+_sample_count = 0
 
 
 # ------------------------- settings -------------------------
@@ -138,13 +142,52 @@ def build_embed(st: dict, *, offline: bool = False, footer: str | None = None) -
     ts = int(now.timestamp())
     e = discord.Embed(title=f"{_DOTS[color]} Bot status: {label}", color=_COLORS[color])
     e.add_field(name="Ping", value=(f"{st['ping']} ms" if st["ping"] is not None else "\u2014"), inline=True)
-    e.add_field(name="Uptime", value=uptime_text(st["uptime"]), inline=True)
+    e.add_field(name="Up since", value=f"<t:{int(_BOOT)}:R>", inline=True)
     e.add_field(name="Checked", value=f"<t:{ts}:F>\n<t:{ts}:R>", inline=False)
     e.add_field(name="\u200b", value=(_NOTES["red"] if offline else _NOTES[color]), inline=False)
     if footer:
         e.set_footer(text=footer)
     e.timestamp = now
     return e
+
+
+# ------------------------- graph -------------------------
+def _chart_png(samples):
+    """A compact ping-over-time line chart as PNG bytes (Discord dark theme). None if not enough data."""
+    try:
+        from PIL import Image, ImageDraw
+    except Exception:                            # noqa: BLE001
+        return None
+    vals = [p for _, p in samples if p is not None]
+    if len(vals) < 2:
+        return None
+    W, H, PAD = 640, 180, 16
+    lo, hi = min(vals), max(vals)
+    if hi == lo:
+        hi = lo + 1
+    img = Image.new("RGBA", (W, H), (43, 45, 49, 255))
+    d = ImageDraw.Draw(img)
+    for i in range(1, 4):
+        y = PAD + (H - 2 * PAD) * i / 4
+        d.line([(PAD, y), (W - PAD, y)], fill=(255, 255, 255, 22))
+    n = len(vals)
+    xs = [PAD + (W - 2 * PAD) * i / (n - 1) for i in range(n)]
+    ys = [H - PAD - (H - 2 * PAD) * (v - lo) / (hi - lo) for v in vals]
+    line = list(zip(xs, ys))
+    d.polygon(line + [(xs[-1], H - PAD), (xs[0], H - PAD)], fill=(88, 101, 242, 60))
+    d.line(line, fill=(88, 101, 242, 255), width=3, joint="curve")
+    d.ellipse([xs[-1] - 4, ys[-1] - 4, xs[-1] + 4, ys[-1] + 4], fill=(255, 255, 255, 255))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _graph_bytes():
+    try:
+        return _chart_png(db.ping_samples(hours=GRAPH_HOURS))
+    except Exception:                            # noqa: BLE001
+        log.exception("ping chart failed")
+        return None
 
 
 # ------------------------- posting -------------------------
@@ -154,6 +197,9 @@ async def _upsert(gid: int, ch, *, offline: bool = False) -> None:
               if offline else
               f"Refreshes every {interval_text(interval_mins(gid))}. If the time above gets old, the bot is down.")
     embed = build_embed(st, offline=offline, footer=footer)
+    img = None if offline else await run(_graph_bytes)
+    if img:
+        embed.set_image(url="attachment://ping.png")
     mid = await run(db.get_setting, _s("health_msg", gid), "")
     msg = None
     if mid.isdigit():
@@ -165,12 +211,16 @@ async def _upsert(gid: int, ch, *, offline: bool = False) -> None:
             return
     if msg is not None:
         try:
-            await msg.edit(embed=embed)
+            files = [discord.File(io.BytesIO(img), "ping.png")] if img else []
+            await msg.edit(embed=embed, attachments=files)
             return
         except discord.HTTPException:
             pass
     try:
-        sent = await ch.send(embed=embed)
+        if img:
+            sent = await ch.send(embed=embed, file=discord.File(io.BytesIO(img), "ping.png"))
+        else:
+            sent = await ch.send(embed=embed)
         await run(db.set_setting, _s("health_msg", gid), str(sent.id))
     except discord.HTTPException as ex:
         log.warning("Status post failed in %s: %s", gid, ex)
@@ -233,9 +283,28 @@ async def _wait():
     await bot.wait_until_ready()
 
 
+@tasks.loop(seconds=SAMPLE_SECONDS, reconnect=True)
+async def sampler():
+    global _sample_count
+    try:
+        await run(db.add_ping_sample, ping_ms())
+        _sample_count += 1
+        if _sample_count % 30 == 1:              # ~hourly cleanup
+            await run(db.prune_ping_samples, 48)
+    except Exception:                            # noqa: BLE001
+        log.exception("Ping sampler failed (will retry)")
+
+
+@sampler.before_loop
+async def _wait_sampler():
+    await bot.wait_until_ready()
+
+
 def _start():
     if not heartbeat.is_running():
         heartbeat.start()
+    if not sampler.is_running():
+        sampler.start()
 
 
 discord_bot.EXTRA_SETUP.append(_start)

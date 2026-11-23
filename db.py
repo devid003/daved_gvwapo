@@ -173,6 +173,14 @@ class DeletedMsg(Base):
     deleted_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class PingSample(Base):
+    """One latency reading, for the status graph. Global (the bot has one gateway ping)."""
+    __tablename__ = "ping_samples"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    ping: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
 class WebUser(Base):
     """A member's website account (self-registered with a Discord code). For the videos page."""
     __tablename__ = "web_users"
@@ -1212,6 +1220,26 @@ def deleted_msgs(limit: int = 200, guild_id: int | None = None):
 def deleted_msg_total() -> int:
     with Session() as s:
         return s.scalar(select(func.count()).select_from(DeletedMsg)) or 0
+
+
+def add_ping_sample(ping) -> None:
+    with Session.begin() as s:
+        s.add(PingSample(ping=(int(ping) if ping is not None else None)))
+
+
+def ping_samples(hours: int = 6, limit: int = 400):
+    """Return [(ts, ping), ...] within the last `hours`, oldest first."""
+    since = utcnow() - dt.timedelta(hours=max(1, hours))
+    with Session() as s:
+        rows = s.scalars(select(PingSample).where(PingSample.ts >= since)
+                         .order_by(PingSample.ts.asc()).limit(max(1, min(2000, limit))))
+        return [(r.ts, r.ping) for r in rows]
+
+
+def prune_ping_samples(keep_hours: int = 48) -> None:
+    cutoff = utcnow() - dt.timedelta(hours=keep_hours)
+    with Session.begin() as s:
+        s.execute(delete(PingSample).where(PingSample.ts < cutoff))
 
 
 def member_joins(guild_id: int, user_id: int) -> list:
