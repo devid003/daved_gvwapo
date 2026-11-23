@@ -263,12 +263,9 @@ async def _notify_prompt(gid: int, user, niche_label: str, prompt_text: str) -> 
         ch = guild.get_channel(int(raw)) if guild else None
         if ch is None:
             return
-        text = (prompt_text or "").strip()
-        if len(text) > 1800:
-            text = text[:1800] + "\u2026"
         who = getattr(user, "mention", None) or str(user)
         e = discord.Embed(title="\U0001f4dd Prompt generated", color=0x2747C7,
-                          description=f"**{who}** got a **{niche_label}** prompt:\n\n{text or '(empty)'}")
+                          description=f"**{who}** got a **{niche_label}** prompt.")
         e.set_footer(text=str(user))
         e.timestamp = discord.utils.utcnow()
         await ch.send(embed=e, allowed_mentions=discord.AllowedMentions.none())
