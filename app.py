@@ -711,6 +711,19 @@ async def _reason_page(request, status: str):
                   "Nobody denied yet. When you press Deny on the Security page, they show up here.")})
 
 
+async def prompt_log_page(request):
+    """Prompt log: every prompt a member got from the panel, newest first, plus the notify-channel picker."""
+    if not authed(request):
+        return redirect("/login")
+    names = await _guild_names()
+    rows = await run(db.prompt_logs, 300)
+    return templates.TemplateResponse(request=request, name="prompt_log.html", context={
+        "rows": rows, "names": names, "multi": len(names) > 1, "tz": TZ_LABEL,
+        "total": await run(db.prompt_log_total), "top": await run(db.prompt_user_counts, 8),
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+        "report": await run(_report_info, "prompt")})
+
+
 async def denied_page(request):
     return await _reason_page(request, "denied")
 
@@ -732,8 +745,9 @@ async def joins_page(request):
         "report": await run(_report_info, "join")})
 
 
-REPORT_PAGES = {"deny": "/denied", "ban": "/banned", "join": "/joins"}
-REPORT_LABELS = {"deny": "Post each deny in", "ban": "Post each ban in", "join": "Post each new member in"}
+REPORT_PAGES = {"deny": "/denied", "ban": "/banned", "join": "/joins", "prompt": "/prompt-log"}
+REPORT_LABELS = {"deny": "Post each deny in", "ban": "Post each ban in", "join": "Post each new member in",
+                 "prompt": "Notify each prompt in"}
 
 
 def _report_info(kind: str) -> dict:
@@ -772,7 +786,8 @@ async def report_channel_save(request):
         return redirect(back)
     await run(db.set_setting, security.report_key(kind, ch.guild.id), str(ch.id))
     what = {"deny": "every deny, with the reason,", "ban": "every ban, with the reason,",
-            "join": "every new member, and update it when you decide,"}[kind]
+            "join": "every new member, and update it when you decide,",
+            "prompt": "every prompt a member gets, with who asked and the prompt,"}[kind]
     flash(request, f"Saved. The bot will post {what} in #{ch.name}.")
     return redirect(back)
 
@@ -3144,6 +3159,7 @@ app = Starlette(
         Route("/denied", denied_page),
         Route("/banned", banned_page),
         Route("/joins", joins_page),
+        Route("/prompt-log", prompt_log_page),
         Route("/reports/channel", report_channel_save, methods=["POST"]),
         Route("/api/viewers/live", viewers_live),
         Route("/videos", videos_page),

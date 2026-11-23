@@ -253,6 +253,31 @@ async def _niche_autocomplete(interaction: discord.Interaction, current: str):
     return out
 
 
+async def _notify_prompt(gid: int, user, niche_label: str, prompt_text: str) -> None:
+    """Post a note in the chosen channel each time a member gets a prompt (who + which niche + the prompt)."""
+    try:
+        raw = await run(db.get_setting, security.report_key("prompt", gid), "")
+        if not raw.isdigit():
+            return
+        guild = bot.get_guild(gid)
+        ch = guild.get_channel(int(raw)) if guild else None
+        if ch is None:
+            return
+        text = (prompt_text or "").strip()
+        if len(text) > 1800:
+            text = text[:1800] + "\u2026"
+        who = getattr(user, "mention", None) or str(user)
+        e = discord.Embed(title="\U0001f4dd Prompt generated", color=0x2747C7,
+                          description=f"**{who}** got a **{niche_label}** prompt:\n\n{text or '(empty)'}")
+        e.set_footer(text=str(user))
+        e.timestamp = discord.utils.utcnow()
+        await ch.send(embed=e, allowed_mentions=discord.AllowedMentions.none())
+    except discord.HTTPException as ex:
+        log.warning("Prompt notify failed in %s: %s", gid, ex)
+    except Exception:                        # noqa: BLE001  a bad notify must never break the member's prompt
+        log.exception("Prompt notify error in %s", gid)
+
+
 # ---------- prompt panel: one button per niche, no slash command needed ----------
 BUTTONS_PER_MESSAGE = 25        # Discord's limit for one message
 
@@ -311,7 +336,8 @@ async def _prompt_reply(gid: int, user, niche_key: str) -> dict:
     rows = await run(db.list_prompts, niche_key, True)
     index = next((i + 1 for i, r in enumerate(rows) if r.id == p.id), 0)
     data = await run(render_txt, niche_key, p.text, index, len(rows), n.label)
-    await run(db.log_prompt_use, gid, user.id, niche_key)
+    await run(db.log_prompt, gid, user.id, str(user), niche_key, n.label, p.id, p.text)
+    asyncio.create_task(_notify_prompt(gid, user, n.label, p.text))
     note = (f"\n-# Download it now. This message disappears in {PANEL_DELETE_AFTER // 60} min."
             if PANEL_DELETE_AFTER >= 60 else "")
     return {"content": f"Here's a **{n.label}** prompt:{note}",

@@ -119,6 +119,20 @@ class PromptUse(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class PromptLog(Base):
+    """One prompt a member got from the panel: the full history (who, which niche, the prompt text, when)."""
+    __tablename__ = "prompt_log"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    username: Mapped[str] = mapped_column(String(200), default="")
+    niche: Mapped[str] = mapped_column(String(40), index=True)
+    niche_label: Mapped[str] = mapped_column(String(80), default="")
+    prompt_id: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class WebUser(Base):
     """A member's website account (self-registered with a Discord code). For the videos page."""
     __tablename__ = "web_users"
@@ -548,6 +562,44 @@ def prompt_use_counts() -> dict:
 def prompt_use_total() -> int:
     with Session() as s:
         return s.scalar(select(func.count()).select_from(PromptUse)) or 0
+
+
+def log_prompt(guild_id: int, user_id: int, username: str, niche: str, niche_label: str,
+               prompt_id: int, prompt_text: str) -> None:
+    """Record one prompt a member got: keeps the per-niche count AND the full history."""
+    with Session.begin() as s:
+        s.add(PromptUse(guild_id=guild_id, user_id=user_id, niche=niche))
+        s.add(PromptLog(guild_id=guild_id, user_id=user_id, username=(username or "")[:200], niche=niche,
+                        niche_label=(niche_label or "")[:80], prompt_id=prompt_id or 0,
+                        prompt_text=(prompt_text or "")[:6000]))
+
+
+def prompt_logs(limit: int = 300, guild_id: int | None = None):
+    """Recent prompts members got, newest first."""
+    with Session() as s:
+        q = select(PromptLog).order_by(PromptLog.id.desc()).limit(max(1, min(2000, limit)))
+        if guild_id is not None:
+            q = q.where(PromptLog.guild_id == guild_id)
+        return list(s.scalars(q))
+
+
+def prompt_log_total() -> int:
+    with Session() as s:
+        return s.scalar(select(func.count()).select_from(PromptLog)) or 0
+
+
+def prompt_user_counts(limit: int = 12) -> list:
+    """Who got the most prompts: [(username, user_id, count), ...] newest-name wins, busiest first."""
+    with Session() as s:
+        rows = s.execute(select(PromptLog.user_id, func.count()).group_by(PromptLog.user_id)).all()
+        counts = {uid: c for uid, c in rows}
+        names = {}
+        for pl in s.scalars(select(PromptLog).order_by(PromptLog.id.desc())):
+            if pl.user_id not in names:
+                names[pl.user_id] = pl.username or str(pl.user_id)
+    out = [(names.get(uid, str(uid)), uid, c) for uid, c in counts.items()]
+    out.sort(key=lambda r: r[2], reverse=True)
+    return out[:max(1, limit)]
 
 
 # ---------- web users (members) + videos ----------
