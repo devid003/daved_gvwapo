@@ -49,7 +49,7 @@
 </div>
 
 <section class="panel">
-  <div class="panel-head"><div><h2>Ping over time</h2><p>Gateway latency for the last {{ graph_hours }} hours &mdash; lower is better. Updates live.</p></div></div>
+  <div class="panel-head"><div><h2>Ping over time</h2><p>Gateway latency for the last 6 hours &mdash; lower is better. Updates live.</p></div></div>
   <div class="panel-body">
     <svg id="st-chart" class="st-chart" viewBox="0 0 640 160" preserveAspectRatio="none" role="img" aria-label="Ping over time">
       <path id="st-area" class="area"></path>
@@ -125,7 +125,7 @@
 
 <script>
 (function(){
-  var boot = {{ boot }};
+  var boot = 0;   // filled by the first /status.json poll
   var SUB = {
     green: "Everything is working \u2014 prompts and the website are OK.",
     yellow: "The server is slow \u2014 prompts or the website may lag.",
@@ -146,7 +146,7 @@
     return p.join(" ");
   }
   function tickUptime(){
-    var el = $("st-uptime"); if(!el) return;
+    var el = $("st-uptime"); if(!el || boot <= 0) return;
     el.textContent = fmtUptime(Date.now()/1000 - boot);
   }
 
@@ -185,10 +185,10 @@
       .then(function(){ setTimeout(poll, 10000); });
   }
 
-  renderChart({{ samples|tojson }});
+  renderChart([]);
   tickUptime();
   setInterval(tickUptime, 1000);
-  setTimeout(poll, 10000);
+  poll();
 })();
 </script>
 {% endblock %}

@@ -736,6 +736,19 @@ async def status_channel_save(request):
     return redirect("/status")
 
 
+async def status_data(request):
+    """Live JSON for the Status page (polled by the browser)."""
+    if not authed(request):
+        return JSONResponse({"error": "login"}, status_code=401)
+    st = botstatus.state()
+    samples = await run(db.ping_samples, botstatus.GRAPH_HOURS)
+    return JSONResponse({
+        "color": st["color"], "label": st["label"], "ping": st["ping"],
+        "boot": int(botstatus._BOOT),
+        "samples": [p for _, p in samples if p is not None],
+    })
+
+
 # ---------- security (join gate) ----------
 async def security_page(request):
     if not authed(request):
@@ -3411,6 +3424,7 @@ app = Starlette(
         Route("/status", status_page),
         Route("/status/save", status_save, methods=["POST"]),
         Route("/status/channel", status_channel_save, methods=["POST"]),
+        Route("/status.json", status_data),
         Route("/security", security_page_v2),
         Route("/security/gate", security_gate, methods=["POST"]),
         Route("/security/log", security_log, methods=["POST"]),
