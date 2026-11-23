@@ -163,6 +163,11 @@ async def _on_message(message: discord.Message) -> None:
     except discord.HTTPException as ex:
         log.warning("Delete link failed in %s: %s", gid, ex)
         return
+    try:
+        await run(db.log_link_block, gid, message.author.id, str(message.author), message.content or "",
+                  message.channel.id, getattr(message.channel, "name", ""))
+    except Exception:                        # noqa: BLE001  logging must never break the filter
+        log.exception("log_link_block failed in %s", gid)
     await _report(message)
 
 

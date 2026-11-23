@@ -146,6 +146,19 @@ class PromptLog(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class LinkBlock(Base):
+    """One link the filter deleted: who sent it, what it said, where, and when."""
+    __tablename__ = "link_blocks"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    username: Mapped[str] = mapped_column(String(200), default="")
+    content: Mapped[str] = mapped_column(Text, default="")
+    channel_id: Mapped[int] = mapped_column(BigInteger, default=0)
+    channel_name: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class WebUser(Base):
     """A member's website account (self-registered with a Discord code). For the videos page."""
     __tablename__ = "web_users"
@@ -1145,6 +1158,25 @@ def name_record_total() -> int:
 def name_user_total() -> int:
     with Session() as s:
         return s.scalar(select(func.count(func.distinct(NameRecord.user_id)))) or 0
+
+
+def log_link_block(guild_id: int, user_id: int, username: str, content: str, channel_id: int, channel_name: str) -> None:
+    with Session.begin() as s:
+        s.add(LinkBlock(guild_id=guild_id, user_id=user_id, username=(username or "")[:200],
+                        content=(content or "")[:4000], channel_id=channel_id or 0, channel_name=(channel_name or "")[:120]))
+
+
+def link_blocks(limit: int = 200, guild_id: int | None = None):
+    with Session() as s:
+        q = select(LinkBlock).order_by(LinkBlock.id.desc()).limit(max(1, min(1000, limit)))
+        if guild_id is not None:
+            q = q.where(LinkBlock.guild_id == guild_id)
+        return list(s.scalars(q))
+
+
+def link_block_total() -> int:
+    with Session() as s:
+        return s.scalar(select(func.count()).select_from(LinkBlock)) or 0
 
 
 def member_joins(guild_id: int, user_id: int) -> list:

@@ -19,6 +19,12 @@
 .lk-cmds{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .lk-cmds code{background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-size:12.5px}
 .panel-head .badge{align-self:center}
+.lk-log .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--faint)}
+.lk-log td.msg{max-width:440px}
+.lk-log td.msg .pv,.lk-log td.msg .full{white-space:pre-wrap;word-break:break-word}
+.lk-log details>summary{cursor:pointer;color:var(--brand2);list-style:none}
+.lk-log details>summary::-webkit-details-marker{display:none}
+.lk-stat{color:var(--muted);font-size:13px;margin:0 0 10px}
 </style>
 {% endblock %}
 {% block content %}
@@ -84,4 +90,24 @@
 {% else %}
 <div class="empty">No approved servers yet.</div>
 {% endfor %}
+
+<section class="panel lk-log">
+  <div class="panel-head"><div><h2>Blocked links</h2><p>Every link the filter deleted, newest first. This is also posted in your report channel as it happens.</p></div></div>
+  {% if blocks %}
+  <div class="scroll"><table>
+    <tr><th>Member</th><th>Message</th><th>Channel</th><th>When ({{ tz }})</th>{% if multi %}<th>Server</th>{% endif %}</tr>
+    {% for bk in blocks %}
+    <tr>
+      <td><b>{{ bk.username or bk.user_id }}</b><div class="mono">{{ bk.user_id }}</div></td>
+      <td class="msg">{% if bk.content %}{% if bk.content|length > 200 %}<details><summary><span class="pv">{{ bk.content[:180] }}&hellip; </span></summary><div class="full">{{ bk.content }}</div></details>{% else %}<span class="pv">{{ bk.content }}</span>{% endif %}{% else %}<span class="muted">(no text)</span>{% endif %}</td>
+      <td class="nowrap">{% if bk.channel_name %}#{{ bk.channel_name }}{% else %}&mdash;{% endif %}</td>
+      <td class="nowrap">{{ bk.created_at|local }}</td>
+      {% if multi %}<td>{{ names.get(bk.guild_id, bk.guild_id) }}</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <div class="empty">No links blocked yet. When the filter deletes a link, it shows up here.</div>
+  {% endif %}
+</section>
 {% endblock %}
