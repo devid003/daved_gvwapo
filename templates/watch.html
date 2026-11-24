@@ -202,6 +202,9 @@ a{color:inherit}
 .canvas.wide{width:100%;aspect-ratio:16/9}
 .canvas.has{border-style:solid;border-color:var(--line)}
 .canvas img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;-webkit-touch-callout:default}
+/* result shown at ChatGPT's own size/shape (no cropping, like chatgpt.com) */
+.canvas.nat{width:auto;height:auto;max-width:100%;max-height:min(74vh,800px);aspect-ratio:auto;background:#000}
+.canvas.nat img{position:static;display:block;width:auto;height:auto;max-width:100%;max-height:min(74vh,800px);object-fit:contain}
 .ph,.busy{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:20px;color:var(--faint);font-size:14px}
 .ph svg{color:var(--line2)}
 .ph b{color:var(--muted);font-size:15px}
@@ -893,7 +896,7 @@ a.btn{text-decoration:none}
   if(+left.getAttribute('data-left')<=0)setLeft(0);
   function say(t){msg.textContent=t||'';}
   function showItem(it){
-    shape(it.ratio); img.src=it.src; img.alt=it.prompt; img.hidden=false; ph.hidden=true; canvas.classList.add('has');
+    shape(it.ratio); canvas.classList.add('nat'); img.src=it.src; img.alt=it.prompt; img.hidden=false; ph.hidden=true; canvas.classList.add('has');
     dl.href=it.src; dl.setAttribute('download',it.name); $('gen-info').textContent=it.ratio+', '+it.size.replace('x',' \u00d7 ');
     act.hidden=false;
     Array.prototype.forEach.call(thumbs.children,function(b,i){b.setAttribute('aria-current',String(made[i]===it));});
@@ -913,7 +916,7 @@ a.btn{text-decoration:none}
     if(p.length<3){say('Describe the image you want first.');ta.focus();return;}
     var payload={prompt:p,ratio:r}; if(gk){payload.key=key;if(ref)payload.image=ref.data;}
     working=true; say(''); go.disabled=true; go.textContent='Generating...'; $('gen-again').disabled=true;
-    shape(r); img.hidden=true; ph.hidden=true; busy.hidden=false; act.hidden=true; canvas.classList.remove('has');
+    shape(r); canvas.classList.remove('nat'); img.hidden=true; ph.hidden=true; busy.hidden=false; act.hidden=true; canvas.classList.remove('has');
     var s=0; $('gen-sec').textContent='0s'; tick=setInterval(function(){s++;$('gen-sec').textContent=s+'s';},1000);
     var info={};
     fetch('/watch/imagine',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})

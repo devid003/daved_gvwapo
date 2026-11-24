@@ -3126,21 +3126,23 @@ templates.env.globals["autoedit_member"] = autoedit.member_info
 
 
 def _img_finish(data: bytes, ratio: str) -> tuple:
-    """Check the picture and make it exactly 1080x1920 or 1920x1080 (sharp JPEG).
-    Returns (jpeg bytes, "") or (None, "bad" | "blank")."""
+    """Keep ChatGPT's own picture as-is (no cropping, like chatgpt.com) -- just check it and re-encode sharp.
+    Caps the longest side so files stay reasonable. Returns (jpeg bytes, "", (w, h)) or (None, "bad"|"blank", (0, 0))."""
     try:
-        from PIL import Image, ImageOps, ImageStat
+        from PIL import Image, ImageStat
         with Image.open(io.BytesIO(data)) as src:
             src.load()
             im = src.convert("RGB")
     except Exception:
-        return None, "bad"
+        return None, "bad", (0, 0)
     if ImageStat.Stat(im.convert("L").resize((96, 168))).stddev[0] < 1.5:
-        return None, "blank"          # one flat color (all black, all gray...): a blocked or failed image
-    im = ImageOps.fit(im, _IMG_FINAL[ratio], Image.LANCZOS, centering=(0.5, 0.5))
+        return None, "blank", (0, 0)   # one flat color (all black, all gray...): a blocked or failed image
+    cap = 2048
+    if max(im.size) > cap:
+        im.thumbnail((cap, cap), Image.LANCZOS)
     buf = io.BytesIO()
     im.save(buf, "JPEG", quality=94, subsampling=0, optimize=True)
-    return buf.getvalue(), ""
+    return buf.getvalue(), "", im.size
 
 
 async def _img_problem(msg: str) -> None:
@@ -3276,10 +3278,10 @@ async def watch_imagine(request):
                 status, out = await _imagine_monid(request, key, prompt, ratio, cfg["pic"], ref)
         finally:
             _IMG_BUSY.discard(username)
-        final, why = (await run(_img_finish, out, ratio)) if status == 200 else (None, "bad")
+        final, why, fsize = (await run(_img_finish, out, ratio)) if status == 200 else (None, "bad", (0, 0))
         await run(db.log_image_gen, username, prompt, ratio, "monid:" + cfg["pic"], final is not None)
         if final is not None:
-            fw, fh = _IMG_FINAL[ratio]
+            fw, fh = fsize
             return Response(content=final, media_type="image/jpeg", headers={
                 "Cache-Control": "no-store", "X-Seed": str(secrets.randbelow(900000) + 100000), "X-Size": f"{fw}x{fh}",
                 "X-Left": str(max(0, cfg["limit"] - used - 1))})
@@ -3300,15 +3302,15 @@ async def watch_imagine(request):
                 break
     finally:
         _IMG_BUSY.discard(username)
-    final, why = None, "bad"
+    final, why, fsize = None, "bad", (0, 0)
     if status == 200 and isinstance(out, (bytes, bytearray)) and len(out) <= 20 * 1024 * 1024:
-        final, why = await run(_img_finish, bytes(out), ratio)
+        final, why, fsize = await run(_img_finish, bytes(out), ratio)
     ok = final is not None
     await run(db.log_image_gen, username, prompt, ratio, cfg["model"], ok)
     if ok:
         if await run(db.get_setting, "img_err", ""):
             await run(db.set_setting, "img_err", "")
-        fw, fh = _IMG_FINAL[ratio]
+        fw, fh = fsize
         return Response(content=final, media_type="image/jpeg", headers={
             "Cache-Control": "no-store", "X-Seed": str(seed), "X-Size": f"{fw}x{fh}",
             "X-Left": str(max(0, cfg["limit"] - used - 1))})
