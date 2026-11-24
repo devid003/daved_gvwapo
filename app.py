@@ -3125,6 +3125,147 @@ templates.env.globals["imagine_admin"] = imagine_admin
 templates.env.globals["autoedit_member"] = autoedit.member_info
 
 
+# ---------- AI chat (ChatGPT-style) ----------
+_CHAT_SYS_DEFAULT = "You are a helpful, friendly assistant. Answer clearly and concisely."
+
+
+def _chat_cfg() -> dict:
+    return {"on": db.get_setting("chat_on", "0") == "1",
+            "model": (db.get_setting("chat_model", "") or "").strip(),
+            "system": (db.get_setting("chat_system", "") or "").strip() or _CHAT_SYS_DEFAULT}
+
+
+def chat_admin() -> dict:
+    c = _chat_cfg()
+    return {"on": c["on"], "model": c["model"],
+            "system": "" if c["system"] == _CHAT_SYS_DEFAULT else c["system"]}
+
+
+def chat_ready() -> bool:
+    c = _chat_cfg()
+    return bool(c["on"] and c["model"])
+
+
+templates.env.globals["chat_admin"] = chat_admin
+templates.env.globals["chat_ready"] = chat_ready
+
+
+class _ChatError(Exception):
+    pass
+
+
+def _chat_why(status: int, text: str) -> str:
+    low = (text or "").lower()
+    if status in (401, 403) or "api key" in low or "unauthor" in low or "invalid key" in low:
+        return "Your Monid key was not accepted. Check it in Create images."
+    if status == 402 or "balance" in low or "insufficient" in low or "credit" in low:
+        return "Your Monid balance ran out. Top up at monid.ai, then try again."
+    if status == 404 or "model" in low and ("not found" in low or "unknown" in low or "does not exist" in low):
+        return "That chat model isn't available on Monid. Ask the owner to set a different model."
+    if status == 429 or "rate" in low:
+        return "Monid is busy right now. Wait a moment and try again."
+    return f"Chat failed ({status}). Try again."
+
+
+async def _monid_chat(key: str, model: str, messages: list, system: str):
+    """Yield assistant text pieces from Monid's OpenAI-compatible chat completions (streamed)."""
+    import aiohttp
+    msgs = ([{"role": "system", "content": system}] if system else []) + messages
+    body = {"model": model, "messages": msgs, "stream": True, "temperature": 0.7}
+    url = autoedit._monid_base() + "/v1/chat/completions"
+    timeout = aiohttp.ClientTimeout(total=200, sock_read=90)
+    async with aiohttp.ClientSession(timeout=timeout) as s:
+        async with s.post(url, json=body, headers={"Authorization": f"Bearer {key}",
+                                                   "Accept": "text/event-stream"}) as r:
+            if r.status != 200:
+                raise _ChatError(_chat_why(r.status, (await r.text())[:400]))
+            while True:
+                raw = await r.content.readline()
+                if not raw:
+                    break
+                line = raw.decode("utf-8", "ignore").strip()
+                if not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if payload == "[DONE]":
+                    break
+                try:
+                    obj = json.loads(payload)
+                    delta = obj["choices"][0]["delta"].get("content")
+                except (ValueError, KeyError, IndexError, TypeError):
+                    continue
+                if delta:
+                    yield delta
+
+
+async def watch_chat(request):
+    """POST JSON {key, messages:[{role,content}...]}: stream a ChatGPT-style reply using the member's Monid key."""
+    if not member_authed(request):
+        return JSONResponse({"ok": False}, status_code=401)
+    username = request.session.get("member")
+    check = globals().get("_member_access")
+    if check and await check(username):
+        return JSONResponse({"ok": False}, status_code=401)
+    if not _same_site_json(request):
+        return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
+    cfg = await run(_chat_cfg)
+    if not (cfg["on"] and cfg["model"]):
+        return JSONResponse({"ok": False, "msg": "Chat isn't set up yet. Ask the owner to turn it on."}, status_code=503)
+    body = await request.body()
+    try:
+        data = json.loads(body) if len(body) < 300_000 else None
+        if not isinstance(data, dict):
+            raise ValueError
+    except ValueError:
+        return JSONResponse({"ok": False, "msg": "Bad request."}, status_code=400)
+    key = str(data.get("key", "")).strip()
+    if not autoedit.good_key(key):
+        return JSONResponse({"ok": False, "msg": "Put your Monid key in the box at the top of Create images first."},
+                            status_code=400)
+    raw_msgs = data.get("messages")
+    if not isinstance(raw_msgs, list):
+        return JSONResponse({"ok": False, "msg": "Say something first."}, status_code=400)
+    msgs = []
+    for m in raw_msgs[-24:]:
+        if isinstance(m, dict) and m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str):
+            c = m["content"].strip()[:8000]
+            if c:
+                msgs.append({"role": m["role"], "content": c})
+    if not msgs or msgs[-1]["role"] != "user":
+        return JSONResponse({"ok": False, "msg": "Say something first."}, status_code=400)
+    if _too_many("chat:" + username, limit=20, window=120):
+        return JSONResponse({"ok": False, "msg": "That's a lot of messages. Wait a moment and try again."},
+                            status_code=429)
+    from starlette.responses import StreamingResponse
+
+    async def gen():
+        try:
+            async for piece in _monid_chat(key, cfg["model"], msgs, cfg["system"]):
+                yield piece.encode("utf-8")
+        except _ChatError as e:
+            yield ("\u26a0\ufe0f " + str(e)).encode("utf-8")
+        except Exception:                        # noqa: BLE001
+            log.exception("chat stream failed")
+            yield "\u26a0\ufe0f Something went wrong. Try again.".encode("utf-8")
+
+    return StreamingResponse(gen(), media_type="text/plain; charset=utf-8",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
+async def chat_settings_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    await run(db.set_setting, "chat_on", "1" if form.get("on") else "0")
+    await run(db.set_setting, "chat_model", str(form.get("model", "")).strip()[:80])
+    sysp = str(form.get("system", "")).strip()[:2000]
+    await run(db.set_setting, "chat_system", sysp)
+    model = str(form.get("model", "")).strip()
+    flash(request, "AI chat saved." if (not form.get("on") or model) else
+          "Saved, but add a chat model so members can use it.")
+    return redirect("/videos")
+
+
 def _img_finish(data: bytes, ratio: str) -> tuple:
     """Keep ChatGPT's own picture as-is (no cropping, like chatgpt.com) -- just check it and re-encode sharp.
     Caps the longest side so files stay reasonable. Returns (jpeg bytes, "", (w, h)) or (None, "bad"|"blank", (0, 0))."""
@@ -3484,9 +3625,11 @@ app = Starlette(
         Route("/watch/feedback", watch_feedback, methods=["GET", "POST"]),
         Route("/viewers/feedback/delete", feedback_delete, methods=["POST"]),
         Route("/watch/imagine", watch_imagine, methods=["POST"]),
+        Route("/watch/chat", watch_chat, methods=["POST"]),
         Route("/watch/imagine/key", watch_imagine_key, methods=["POST"]),
         *autoedit.routes(),
         Route("/videos/imagine", imagine_settings_save, methods=["POST"]),
+        Route("/videos/chat", chat_settings_save, methods=["POST"]),
         Route("/watch/ping", watch_ping_1dev, methods=["POST"]),
         Route("/viewers", viewers_page),
         Route("/denied", denied_page),

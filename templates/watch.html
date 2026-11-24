@@ -230,6 +230,37 @@ a.btn{text-decoration:none}
 }
 @media (max-width:520px){.views-in{padding:0 8px;gap:2px}.vt{padding:0 9px;gap:6px;font-size:14px}.gen-act .btn{flex:1;justify-content:center}.gen-act .info{flex-basis:100%;margin:0;text-align:center}}
 @media (prefers-reduced-motion:reduce){.busy,.spin{animation:none}}
+/* ---------- AI chat (ChatGPT-style) ---------- */
+.chat{display:none}
+.v-chat .chat{display:block}
+.v-chat .page{display:none}
+.chatwrap{display:flex;flex-direction:column;height:calc(100dvh - 111px);min-height:420px}
+.chatlog{flex:1;overflow-y:auto;padding:28px 18px 10px;scroll-behavior:smooth}
+.chatlog-in{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
+.cm{display:flex;gap:13px;align-items:flex-start}
+.cm .who{flex:0 0 30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:12.5px;font-weight:700;margin-top:1px}
+.cm.user .who{background:var(--raise);border:1px solid var(--line2);color:var(--ink)}
+.cm.bot .who{background:var(--brand);color:#fff}
+.cm .bub{min-width:0;flex:1;font-size:15.5px;line-height:1.7;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;padding-top:3px;-webkit-user-select:text;user-select:text}
+.cm.user .bub{color:var(--soft)}
+.cm .bub .cur{display:inline-block;width:8px;height:17px;background:var(--brand2);vertical-align:-3px;margin-left:2px;border-radius:1px;animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+.chat-empty{text-align:center;color:var(--muted);padding:11vh 20px 0}
+.chat-empty .big{font-size:27px;font-weight:700;color:var(--ink);letter-spacing:-.02em;margin:0 0 8px}
+.chat-empty p{margin:0;font-size:15px}
+.chat-sugg{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:24px}
+.chat-sugg button{border:1px solid var(--line2);background:var(--panel);color:var(--soft);border-radius:12px;padding:11px 15px;font-size:14px;cursor:pointer;font-weight:500}
+.chat-sugg button:hover{background:var(--raise);color:var(--ink)}
+.composer{border-top:1px solid var(--line);background:var(--bg);padding:14px 18px calc(12px + env(safe-area-inset-bottom))}
+.composer-in{max-width:760px;margin:0 auto;display:flex;align-items:flex-end;gap:9px;background:var(--panel);border:1px solid var(--line2);border-radius:20px;padding:7px 7px 7px 17px;transition:border-color .15s}
+.composer-in:focus-within{border-color:var(--brand)}
+.composer textarea{flex:1;border:0;background:transparent;color:var(--ink);font:inherit;font-size:15.5px;line-height:1.5;resize:none;max-height:184px;outline:none;padding:9px 0;-webkit-user-select:text;user-select:text}
+.composer textarea::placeholder{color:var(--faint)}
+.send{flex:0 0 40px;height:40px;border-radius:50%;border:0;background:var(--brand);color:#fff;cursor:pointer;display:grid;place-items:center}
+.send:hover{background:var(--brand2)}
+.send:disabled{opacity:.4;cursor:default;background:var(--line2);color:var(--muted)}
+.chat-note{max-width:760px;margin:9px auto 0;text-align:center;color:var(--faint);font-size:12px}
+@media (max-width:640px){.chatwrap{height:calc(100dvh - 99px)}.chatlog{padding:20px 14px 8px}.composer{padding:12px 14px calc(10px + env(safe-area-inset-bottom))}}
 
 /* ---------- auto edit ---------- */
 .ae{display:none}
@@ -363,7 +394,7 @@ a.btn{text-decoration:none}
 </div></header>
 {% set ig = imagine_member(username) if imagine_member is defined else {} %}
 {% set ae = autoedit_member(username) if autoedit_member is defined else {} %}
-{% if ig.show or ae.show %}
+{% if ig.show or ae.show or chat_ready() %}
 <nav class="views" aria-label="Sections"><div class="views-in" role="tablist">
   <button class="vt" type="button" role="tab" id="tab-lessons" aria-selected="true" aria-controls="lessons-view">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg>Lessons</button>
@@ -371,6 +402,8 @@ a.btn{text-decoration:none}
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>Create images</button>{% endif %}
   {% if ae.show %}<button class="vt" type="button" role="tab" id="tab-auto" aria-selected="false" aria-controls="ae">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h11a3 3 0 0 1 3 3v7H7a3 3 0 0 1-3-3V7z"/><path d="M18 11l3-2v8l-3-2"/><path d="M8 3.5l.7 1.6 1.6.7-1.6.7L8 8.1l-.7-1.6-1.6-.7 1.6-.7z" fill="currentColor"/></svg>Auto edit</button>{% endif %}
+  {% if chat_ready() %}<button class="vt" type="button" role="tab" id="tab-chat" aria-selected="false" aria-controls="chat-view">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-11.6 7.8L4 21l1.7-5.3A8.4 8.4 0 1 1 21 11.5z"/></svg>Chat</button>{% endif %}
 </div></nav>
 {% endif %}
 
@@ -652,6 +685,30 @@ a.btn{text-decoration:none}
 <script src="/static/autoedit.js" defer></script>
 {% endif %}
 
+{% if chat_ready() %}
+<section class="chat" id="chat-view" role="tabpanel" aria-labelledby="tab-chat">
+  <div class="chatwrap">
+    <div class="chatlog" id="chatlog"><div class="chatlog-in" id="chatlog-in">
+      <div class="chat-empty" id="chat-empty">
+        <p class="big">What can I help with?</p>
+        <p>Ask anything &mdash; ideas, captions, questions, scripts.</p>
+        <div class="chat-sugg" id="chat-sugg">
+          <button type="button">Give me 5 short-video ideas</button>
+          <button type="button">Write a catchy caption</button>
+          <button type="button">Explain this simply</button>
+        </div>
+      </div>
+    </div></div>
+    <div class="composer">
+      <div class="composer-in">
+        <textarea id="chat-in" rows="1" placeholder="Message\u2026" aria-label="Message" enterkeyhint="send"></textarea>
+        <button class="send" id="chat-send" type="button" aria-label="Send"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+      </div>
+      <p class="chat-note">Uses your Monid key. AI can make mistakes &mdash; double-check important info.</p>
+    </div>
+  </div>
+</section>
+{% endif %}
 <div id="res" class="">
   <div class="veil" id="veil"></div>
   <section class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="res-h" aria-hidden="true">
@@ -727,7 +784,7 @@ a.btn{text-decoration:none}
     timer=setTimeout(function(){seen[vid]=1;store('watched',JSON.stringify(Object.keys(seen)));paintProgress();},30000);
   }
   function ping(){
-    var vid=btn(cur).getAttribute('data-vid'); if(document.hidden||/\bv-(create|auto)\b/.test(document.body.className))return;
+    var vid=btn(cur).getAttribute('data-vid'); if(document.hidden||/\bv-(create|auto|chat)\b/.test(document.body.className))return;
     var f=new FormData(); f.append('csrf',csrf); f.append('vid',vid);
     fetch('/watch/ping',{method:'POST',body:f,credentials:'same-origin',cache:'no-store'})
       .then(function(r){if(r.status===401)location.href='/members/login';}).catch(function(){});
@@ -801,9 +858,9 @@ a.btn{text-decoration:none}
 <script>
 (function(){
   var tabs=[].slice.call(document.querySelectorAll('.views .vt')); if(!tabs.length)return;
-  var body=document.body, vid=document.getElementById('vid'), vidSrc='', names={'tab-lessons':'','tab-create':'create','tab-auto':'auto'};
+  var body=document.body, vid=document.getElementById('vid'), vidSrc='', names={'tab-lessons':'','tab-create':'create','tab-auto':'auto','tab-chat':'chat'};
   function view(name,push){
-    body.classList.toggle('v-create',name==='create'); body.classList.toggle('v-auto',name==='auto');
+    body.classList.toggle('v-create',name==='create'); body.classList.toggle('v-auto',name==='auto'); body.classList.toggle('v-chat',name==='chat');
     tabs.forEach(function(t){t.setAttribute('aria-selected',String(names[t.id]===name));});
     if(vid){ if(name){ if(vid.getAttribute('src')){vidSrc=vid.getAttribute('src');vid.removeAttribute('src');} }
              else if(vidSrc&&!vid.getAttribute('src')){vid.setAttribute('src',vidSrc);} }
@@ -816,7 +873,7 @@ a.btn{text-decoration:none}
     t.addEventListener('keydown',function(e){if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();
       var o=tabs[(i+(e.key==='ArrowRight'?1:tabs.length-1))%tabs.length];o.focus();o.click();}});
   });
-  function fromHash(){var h=location.hash.slice(1);return (h==='create'&&document.getElementById('gen'))||(h==='auto'&&document.getElementById('ae'))?h:'';}
+  function fromHash(){var h=location.hash.slice(1);return (h==='create'&&document.getElementById('gen'))||(h==='auto'&&document.getElementById('ae'))||(h==='chat'&&document.getElementById('chat-view'))?h:'';}
   if(fromHash())view(fromHash(),false);
   window.addEventListener('hashchange',function(){view(fromHash(),false);});
 })();
@@ -951,5 +1008,72 @@ a.btn{text-decoration:none}
   $('gen-again').addEventListener('click',make);
 })();
 </script>
+{% if chat_ready() %}
+<script>
+(function(){
+  var view=document.getElementById('chat-view'); if(!view)return;
+  var logIn=document.getElementById('chatlog-in'), log=document.getElementById('chatlog'),
+      input=document.getElementById('chat-in'), send=document.getElementById('chat-send'),
+      empty=document.getElementById('chat-empty'), sug=document.getElementById('chat-sugg');
+  var ME={{ (username[:1]|upper)|tojson }};
+  function key(){try{return localStorage.getItem('aeMonidKey')||'';}catch(e){return '';}}
+  var messages=[], busy=false;
+  function down(){log.scrollTop=log.scrollHeight;}
+  function bubble(role,text){
+    if(empty){empty.parentNode&&empty.parentNode.removeChild(empty);empty=null;}
+    var cm=document.createElement('div'); cm.className='cm '+(role==='user'?'user':'bot');
+    var who=document.createElement('div'); who.className='who'; who.textContent=(role==='user'?ME:'AI');
+    var bub=document.createElement('div'); bub.className='bub'; bub.textContent=text||'';
+    cm.appendChild(who); cm.appendChild(bub); logIn.appendChild(cm); down(); return bub;
+  }
+  function autosize(){input.style.height='auto'; input.style.height=Math.min(184,input.scrollHeight)+'px';}
+  input.addEventListener('input',autosize);
+  if(sug){Array.prototype.forEach.call(sug.querySelectorAll('button'),function(b){
+    b.addEventListener('click',function(){input.value=b.textContent;autosize();input.focus();});});}
+  function setBusy(b){busy=b; send.disabled=b;}
+  function ask(){
+    if(busy)return;
+    var k=key();
+    if(!k){bubble('bot','Add your Monid key first \u2014 open Create images, paste your key, then come back here to chat.');return;}
+    var text=input.value.trim(); if(!text)return;
+    input.value=''; autosize();
+    bubble('user',text); messages.push({role:'user',content:text});
+    setBusy(true);
+    var bub=bubble('bot',''); var cur=document.createElement('span'); cur.className='cur'; bub.appendChild(cur);
+    var acc='';
+    fetch('/watch/chat',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({key:k,messages:messages})})
+      .then(function(res){
+        if(res.status===401){location.href='/members/login';throw 0;}
+        var ct=res.headers.get('Content-Type')||'';
+        if(!res.ok||ct.indexOf('application/json')===0){
+          return res.json().then(function(j){throw new Error((j&&j.msg)||'Chat is not available right now.');});
+        }
+        if(!res.body||!res.body.getReader){ return res.text().then(function(tx){acc=tx; bub.textContent=acc;}); }
+        var reader=res.body.getReader(), dec=new TextDecoder();
+        function pump(){return reader.read().then(function(r){
+          if(r.done)return;
+          acc+=dec.decode(r.value,{stream:true});
+          bub.textContent=acc; bub.appendChild(cur); down(); return pump();
+        });}
+        return pump();
+      })
+      .then(function(){
+        if(cur.parentNode)cur.parentNode.removeChild(cur);
+        if(acc)messages.push({role:'assistant',content:acc}); else bub.textContent='(no reply) Try again.';
+        setBusy(false); input.focus(); down();
+      })
+      .catch(function(e){
+        if(cur.parentNode)cur.parentNode.removeChild(cur);
+        if(e!==0)bub.textContent=acc||((e&&e.message)||'Could not reach the server. Try again.');
+        setBusy(false);
+      });
+  }
+  send.addEventListener('click',ask);
+  input.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask();}});
+  document.addEventListener('viewchange',function(e){if(e.detail==='chat'){setTimeout(function(){input.focus();},60);}});
+})();
+</script>
+{% endif %}
 </body>
 </html>

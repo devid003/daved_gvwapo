@@ -145,6 +145,25 @@
   </div>
 </section>
 
+{% set ca = chat_admin() %}
+<section class="panel" id="aichat">
+  <div class="panel-head"><div><h2>AI chat</h2><p>A ChatGPT-style <b>Chat</b> tab on the tutorials page. It runs on each member's own Monid key (paid from their balance), so enter a chat model your Monid account supports.</p></div>
+    {% if ca.on and ca.model %}<span class="badge live">On for members</span>{% elif ca.on %}<span class="badge pending">Needs model</span>{% else %}<span class="badge off">Off</span>{% endif %}
+  </div>
+  <div class="panel-body">
+    <form method="post" action="/videos/chat" class="ig-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="ig-chk"><input type="checkbox" name="on" value="1"{{ ' checked' if ca.on }}> Show the Chat tab to members</label>
+      <label class="field">Chat model (Monid)
+        <input type="text" name="model" value="{{ ca.model }}" placeholder="e.g. gpt-5-mini" autocapitalize="off" autocomplete="off" spellcheck="false" style="width:200px"></label>
+      <button class="btn primary">Save</button>
+      <label class="field" style="flex-basis:100%">Instructions for the AI (optional)
+        <input type="text" name="system" value="{{ ca.system }}" placeholder="You are a helpful assistant for our members." style="width:100%;max-width:560px"></label>
+    </form>
+    <p class="small muted" style="margin:12px 0 0">Not sure of the model name? Open your Monid dashboard, copy a chat model id, and paste it here. If a model isn't accepted, members see a clear message and you can change it.</p>
+  </div>
+</section>
+
 <section class="panel">
   <div class="panel-head"><div><h2>Videos</h2><p>{{ videos|length }} total. Only active ones show to members.</p></div></div>
   {% if videos %}
