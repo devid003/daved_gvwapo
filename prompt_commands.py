@@ -188,6 +188,11 @@ def panel_message(guild_name: str, keys: list) -> tuple:
 
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
+    _cid = str((interaction.data or {}).get("custom_id", ""))
+    if _cid.startswith("tkt:"):
+        import tickets
+        await tickets.on_component(interaction, _cid)
+        return
     if interaction.type != discord.InteractionType.component:
         return
     cid = str((interaction.data or {}).get("custom_id", ""))

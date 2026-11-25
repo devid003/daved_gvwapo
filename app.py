@@ -38,6 +38,7 @@ import linkguard  # noqa: E402  (link filter, invite lock, link commands)
 import name_history  # noqa: E402,F401  (records every name a member uses, by Discord ID)
 import antinuke  # noqa: E402  (stops someone from wrecking the server fast)
 import prompt_commands  # noqa: E402,F401  (adds /ghibli, /cooking, ... commands)
+import tickets  # noqa: E402,F401  (support tickets: panel, AI first reply, mod notify)
 import prompts as promptlib  # noqa: E402
 import daily_word  # noqa: E402  (motivation + Bible verse at 6 AM, 3 PM, 10 PM)
 import autoedit  # noqa: E402  (Auto edit: whole videos from a niche, for members the owner picks)

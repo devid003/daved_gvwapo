@@ -344,6 +344,49 @@ class DenyReason(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class Ticket(Base):
+    """One support ticket = one private channel opened from the ticket panel."""
+    __tablename__ = "tickets"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    channel_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    member_id: Mapped[int] = mapped_column(BigInteger, default=0, index=True)
+    member_name: Mapped[str] = mapped_column(String(200), default="")
+    topic: Mapped[str] = mapped_column(String(20), default="")
+    lang: Mapped[str] = mapped_column(String(8), default="en")
+    reason: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(12), default="open", index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+def create_ticket(guild_id: int, channel_id: int, member_id: int, member_name: str,
+                  topic: str, lang: str, reason: str) -> None:
+    with Session.begin() as s:
+        s.add(Ticket(guild_id=guild_id, channel_id=channel_id, member_id=member_id,
+                     member_name=(member_name or "")[:200], topic=(topic or "")[:20],
+                     lang=(lang or "en")[:8], reason=(reason or "")[:2000]))
+
+
+def get_ticket(channel_id: int):
+    with Session() as s:
+        return s.scalars(select(Ticket).where(Ticket.channel_id == channel_id)).first()
+
+
+def close_ticket(channel_id: int) -> bool:
+    with Session.begin() as s:
+        t = s.scalars(select(Ticket).where(Ticket.channel_id == channel_id)).first()
+        if t is None or t.status != "open":
+            return False
+        t.status = "closed"
+        return True
+
+
+def open_ticket_count(guild_id: int, member_id: int) -> int:
+    with Session() as s:
+        return len(s.scalars(select(Ticket).where(Ticket.guild_id == guild_id,
+                   Ticket.member_id == member_id, Ticket.status == "open")).all())
+
+
 def init() -> None:
     Base.metadata.create_all(engine)
 
