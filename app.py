@@ -42,6 +42,10 @@ import prompts as promptlib  # noqa: E402
 import daily_word  # noqa: E402  (motivation + Bible verse at 6 AM, 3 PM, 10 PM)
 import autoedit  # noqa: E402  (Auto edit: whole videos from a niche, for members the owner picks)
 
+# Accept either POLLINATIONS_KEY or POLLINATIONS_TOKEN (render.yaml set TOKEN; the code reads KEY).
+if not os.getenv("POLLINATIONS_KEY", "").strip() and os.getenv("POLLINATIONS_TOKEN", "").strip():
+    os.environ["POLLINATIONS_KEY"] = os.environ["POLLINATIONS_TOKEN"].strip()
+
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 if not ADMIN_PASSWORD:
     raise SystemExit("Set ADMIN_PASSWORD in your .env file (this is the dashboard login password).")
