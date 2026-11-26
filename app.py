@@ -282,6 +282,7 @@ async def tickets_page(request):
         "ai_model": await run(db.get_setting, f"tkt_ai_model:{gid}", "") if gid else "",
         "ai_system": await run(db.get_setting, f"tkt_sys:{gid}", "") if gid else "",
         "ai_key_set": bool(await run(db.get_setting, f"tkt_ai_key:{gid}", "")) if gid else False,
+        "ai_model_set": bool(await run(db.get_setting, f"tkt_ai_model:{gid}", "").strip()) if gid else False,
     }
     return templates.TemplateResponse(request=request, name="tickets.html", context={
         "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
