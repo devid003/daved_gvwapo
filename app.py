@@ -2251,8 +2251,9 @@ def _login_device_details(request):
 
 async def _record_member_login(request, username, result='login_success'):
     platform, browser, device, ua = _login_device_details(request)
+    # Record the public IP seen by the server for account-security auditing.
     await run(db.add_device_log, platform, browser, device, result,
-              'Member: ' + str(username)[:200], '/members/login', ua)
+              'Member: ' + str(username)[:200], '/members/login', ua, _client_ip(request))
 
 async def member_login_submit(request):
     form, resp = await public_post(request)
@@ -2895,6 +2896,36 @@ async def member_device_reset(request):
             note += " Discord DM was not sent (the bot may be offline or the member's DMs may be closed)."
         flash(request, note)
     return redirect("/videos")
+async def member_device_reset_all(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    reason = str(form.get("reason", "")).strip()[:500]
+    if len(reason) < 3:
+        flash(request, "Please enter a reason (at least 3 characters) before resetting all devices.")
+        return redirect("/videos")
+    members = await run(db.list_web_users, 500)
+    reset_count = 0
+    dm_sent = 0
+    dm_failed = 0
+    for member in members:
+        await run(db.device_reset, member.username)
+        reset_count += 1
+        ok = await _notify_member_action(
+            int(member.discord_user_id or 0),
+            "Member account device reset",
+            "An administrator reset the linked device for all member accounts. "
+            "Your account and password are unchanged. Please log in again and link your preferred device.\n\n"
+            f"Reason: {reason}"
+        )
+        if ok:
+            dm_sent += 1
+        else:
+            dm_failed += 1
+    flash(request, f"Reset {reset_count} member device(s). Discord DMs sent: {dm_sent}; not sent: {dm_failed}. Reason: {reason}")
+    return redirect("/videos")
+
+
 async def one_device_toggle(request):
     form, resp = await guarded_post(request)
     if resp:
@@ -4054,6 +4085,7 @@ app = Starlette(
         Route("/videos/resource/toggle", resource_toggle, methods=["POST"]),
         Route("/videos/resource/delete", resource_delete, methods=["POST"]),
         Route("/videos/member-device-reset", member_device_reset, methods=["POST"]),
+        Route("/videos/member-device-reset-all", member_device_reset_all, methods=["POST"]),
         Route("/videos/one-device", one_device_toggle, methods=["POST"]),
         Route("/videos/member-delete", member_delete, methods=["POST"]),
         Route("/v/r/{token}", reg_verify_page),
