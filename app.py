@@ -42,6 +42,7 @@ import tickets  # noqa: E402,F401  (support tickets: panel, AI first reply, mod 
 import prompts as promptlib  # noqa: E402
 import daily_word  # noqa: E402  (motivation + Bible verse at 6 AM, 3 PM, 10 PM)
 import autoedit  # noqa: E402  (Auto edit: whole videos from a niche, for members the owner picks)
+import autoclip  # noqa: E402 (free watermark-free source video clipping)
 
 # Accept either POLLINATIONS_KEY or POLLINATIONS_TOKEN (render.yaml set TOKEN; the code reads KEY).
 if not os.getenv("POLLINATIONS_KEY", "").strip() and os.getenv("POLLINATIONS_TOKEN", "").strip():
@@ -4141,6 +4142,7 @@ app = Starlette(
         Route("/watch/chat", watch_chat, methods=["POST"]),
         Route("/watch/imagine/key", watch_imagine_key, methods=["POST"]),
         *autoedit.routes(),
+        *autoclip.routes(),
         Route("/videos/imagine", imagine_settings_save, methods=["POST"]),
         Route("/videos/chat", chat_settings_save, methods=["POST"]),
         Route("/watch/ping", watch_ping_1dev, methods=["POST"]),
