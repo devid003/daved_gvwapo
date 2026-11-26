@@ -402,15 +402,21 @@ async def tickets_ai_save(request):
     model = str(form.get("ai_model", "")).strip()[:100]
     system = str(form.get("ai_system", "")).strip()[:490]
     enabled = "1" if form.get("ai_on") else "0"
+    api_key = str(form.get("ai_key", "")).strip()
+    if api_key and not autoedit.good_key(api_key):
+        flash(request, "That doesn't look like a valid Monid API key. Check it and try again.")
+        return redirect("/tickets")
     try:
         await run(db.set_setting, f"tkt_ai_on:{gid}", enabled)
         await run(db.set_setting, f"tkt_ai_model:{gid}", model)
         await run(db.set_setting, f"tkt_sys:{gid}", system)
+        if api_key:
+            await run(db.set_setting, f"tkt_ai_key:{gid}", api_key)
     except Exception:
         log.exception("ticket AI settings save failed for guild %s", gid)
         flash(request, "Couldn't save ticket AI settings. Check the server logs.")
         return redirect("/tickets")
-    flash(request, f"Ticket AI settings saved for server {gid}. Set the private Monid key with /ticketai in Discord.")
+    flash(request, f"Ticket AI settings saved for server {gid}." + (" Monid API key updated." if api_key else ""))
     return redirect("/tickets")
 
 
