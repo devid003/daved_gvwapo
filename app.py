@@ -391,6 +391,29 @@ async def tickets_save(request):
     return redirect("/tickets")
 
 
+async def tickets_ai_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    gid = parse_id(form.get("guild_id"))
+    if gid is None:
+        flash(request, "Enter a valid Discord Server ID first.")
+        return redirect("/tickets")
+    model = str(form.get("ai_model", "")).strip()[:100]
+    system = str(form.get("ai_system", "")).strip()[:490]
+    enabled = "1" if form.get("ai_on") else "0"
+    try:
+        await run(db.set_setting, f"tkt_ai_on:{gid}", enabled)
+        await run(db.set_setting, f"tkt_ai_model:{gid}", model)
+        await run(db.set_setting, f"tkt_sys:{gid}", system)
+    except Exception:
+        log.exception("ticket AI settings save failed for guild %s", gid)
+        flash(request, "Couldn't save ticket AI settings. Check the server logs.")
+        return redirect("/tickets")
+    flash(request, f"Ticket AI settings saved for server {gid}. Set the private Monid key with /ticketai in Discord.")
+    return redirect("/tickets")
+
+
 async def members_set(request):
     form, resp = await guarded_post(request)
     if resp:
@@ -3684,6 +3707,7 @@ app = Starlette(
         Route("/servers/remove", servers_remove, methods=["POST"]),
         Route("/tickets", tickets_page),
         Route("/tickets/save", tickets_save, methods=["POST"]),
+        Route("/tickets/ai/save", tickets_ai_save, methods=["POST"]),
         Route("/members/set", members_set, methods=["POST"]),
         Route("/image/toggle", image_toggle, methods=["POST"]),
         Route("/uploads", uploads),
