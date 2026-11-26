@@ -35,7 +35,7 @@
 </div>
 {% else %}
 <div class="locator">
- <div class="head"><div><h1>⌖ IP Address Locator</h1><p>Approximate public IP locations from recorded verification and browser diagnostic events.</p></div><a class="btn" href="/ip-locator">↻ Refresh</a></div>
+ <div class="head"><div><h1>⌖ IP Address Locator</h1><p>Approximate public IP locations from member login, prompt activity, verification, and browser diagnostic events.</p></div><a class="btn" href="/ip-locator">↻ Refresh</a></div>
  <section class="loc-card">
   <div class="loc-head"><h2>Look up an IP address</h2><p class="muted small">Choose a recorded IP or enter a public IP manually. The lookup sends the IP to ipwho.is for approximate geolocation.</p></div>
   <div class="loc-body">
@@ -45,7 +45,7 @@
   </div>
  </section>
  <section class="loc-card">
-  <div class="loc-head"><h2>Recorded IP history</h2><p class="muted small">{{ records|length }} recent IP events, including their Discord server tags.</p></div>
+  <div class="loc-head"><h2>Recorded IP history</h2><p class="muted small">{{ records|length }} recent IP events. Member access records are visible only to administrators.</p></div>
   <div class="loc-body"><input id="loc-filter" type="search" placeholder="Filter IP, member, Discord ID, server name or ID…" style="width:100%;max-width:420px"></div>
   <div class="scroll"><table class="loc-table"><thead><tr><th>IP address</th><th>Member / source</th><th>Discord ID</th><th>Discord Server</th><th>Server ID</th><th>Source</th><th>Recorded</th><th></th></tr></thead><tbody id="loc-rows">
   {% for r in records %}<tr data-filter="{{ (r.ip ~ ' ' ~ r.member ~ ' ' ~ r.user_id ~ ' ' ~ r.server_name ~ ' ' ~ r.guild_id)|lower }}"><td><code>{{ r.ip }}</code></td><td>{{ r.member }}</td><td>{{ r.user_id }}</td><td><span class="server-tag">{{ r.server_name }}</span></td><td><code>{{ r.guild_id or '—' }}</code></td><td>{{ r.source }}</td><td>{{ r.created_at|local }}</td><td><button class="btn sm loc-one" type="button" data-ip="{{ r.ip }}">Locate</button></td></tr>
