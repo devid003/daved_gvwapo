@@ -19,6 +19,7 @@ MAX_UPLOAD = 200 * 1024 * 1024
 MAX_SOURCE_SECONDS = 600
 ALLOWED = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
+JOBS = {}
 
 
 def _user_dir(username: str) -> Path:
@@ -51,7 +52,7 @@ def _duration(path: Path) -> float:
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
-def _process(source: Path, folder: Path, orientation: str, clip_seconds: int) -> list:
+def _process(source: Path, folder: Path, orientation: str, clip_seconds: int, progress=None) -> list:
     duration = _duration(source)
     if duration <= 0 or duration > MAX_SOURCE_SECONDS:
         raise ValueError("Hanggang 10 minutes lang ang source video sa free beta.")
@@ -63,6 +64,8 @@ def _process(source: Path, folder: Path, orientation: str, clip_seconds: int) ->
     start = 0.0
     index = 1
     while start < duration and index <= 30:
+        if progress:
+            progress({'stage': 'processing', 'current': index, 'total': min(30, int((duration + clip_seconds - 1) // clip_seconds))})
         length = min(float(clip_seconds), duration - start)
         if length < 3:
             break
@@ -75,7 +78,7 @@ def _process(source: Path, folder: Path, orientation: str, clip_seconds: int) ->
                "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
                "-threads", "2", "-c:a", "aac", "-b:a", "160k",
                "-movflags", "+faststart", str(target)]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if result.returncode != 0 or not target.exists() or target.stat().st_size == 0:
             target.unlink(missing_ok=True)
             raise RuntimeError((result.stderr or "FFmpeg export failed")[-700:])
@@ -88,6 +91,20 @@ def _process(source: Path, folder: Path, orientation: str, clip_seconds: int) ->
                 (folder / item["name"]).unlink(missing_ok=True)
             raise ValueError("Naabot na ang 1 GB storage cap. I-download at burahin muna ang lumang clips.")
     return outputs
+
+
+def _run_job(job_id: str, source: Path, folder: Path, orientation: str, clip_seconds: int):
+    job = JOBS[job_id]
+    try:
+        job["stage"] = "processing"
+        clips = _process(source, folder, orientation, clip_seconds, progress=lambda p: job.update(p))
+        job.update({"ok": True, "done": True, "stage": "done", "clips": clips,
+                    "message": f"Tapos na! {len(clips)} clip(s) ang nagawa. Walang watermark."})
+    except Exception as exc:
+        job.update({"ok": False, "done": True, "stage": "error",
+                    "message": f"Processing failed: {str(exc)[:400]}"})
+    finally:
+        source.unlink(missing_ok=True)
 
 
 async def create_clips(request):
@@ -134,15 +151,28 @@ async def create_clips(request):
                 out.write(chunk)
         if size == 0:
             raise ValueError("Empty o invalid ang video file.")
-        clips = await asyncio.to_thread(_process, source, folder, orientation, clip_seconds)
-        return JSONResponse({"ok": True, "clips": clips,
-                             "message": f"Tapos na! {len(clips)} clip(s) ang nagawa. Walang watermark."})
+        job_id = uuid.uuid4().hex
+        JOBS[job_id] = {"owner": username, "done": False, "ok": False,
+                        "stage": "queued", "current": 0, "total": 0}
+        asyncio.create_task(asyncio.to_thread(_run_job, job_id, source, folder, orientation, clip_seconds))
+        return JSONResponse({"ok": True, "job_id": job_id, "message": "Upload complete. Processing started."})
     except ValueError as exc:
+        source.unlink(missing_ok=True)
         return JSONResponse({"ok": False, "message": str(exc)}, status_code=400)
     except Exception as exc:
-        return JSONResponse({"ok": False, "message": f"Processing failed: {str(exc)[:400]}"}, status_code=500)
-    finally:
         source.unlink(missing_ok=True)
+        return JSONResponse({"ok": False, "message": f"Upload failed: {str(exc)[:400]}"}, status_code=500)
+
+
+async def job_status(request):
+    username = request.session.get("member")
+    if not username:
+        return JSONResponse({"ok": False, "message": "Mag-login muna."}, status_code=401)
+    job_id = request.path_params.get("job_id", "")
+    job = JOBS.get(job_id)
+    if not job or job.get("owner") != username:
+        return JSONResponse({"ok": False, "message": "Processing job not found. Subukan ulit."}, status_code=404)
+    return JSONResponse({k: v for k, v in job.items() if k != "owner"})
 
 
 async def get_clip(request):
@@ -180,5 +210,6 @@ def routes():
     return [
         Route("/watch/autoclip/create", create_clips, methods=["POST"]),
         Route("/watch/autoclip/file/{filename}", get_clip),
+        Route("/watch/autoclip/status/{job_id}", job_status),
         Route("/watch/autoclip/delete/{filename}", delete_clip, methods=["POST"]),
     ]
