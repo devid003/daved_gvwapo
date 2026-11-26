@@ -1321,6 +1321,7 @@ async def ip_lookup(request):
         return JSONResponse({"ok": False, "error": "Authentication required"}, status_code=401)
     import ipaddress
     import urllib.request
+
     raw = str(request.query_params.get("ip", "")).strip()
     try:
         addr = ipaddress.ip_address(raw)
@@ -1329,19 +1330,61 @@ async def ip_lookup(request):
     if not addr.is_global:
         return JSONResponse({"ok": False, "error": "Private, local, and reserved IP addresses do not have public geolocation."}, status_code=400)
 
-    def fetch_location():
-        req = urllib.request.Request("https://ipwho.is/" + raw,
-            headers={"User-Agent": "DabidBots-IP-Locator/1.0"})
-        with urllib.request.urlopen(req, timeout=8) as response:
-            return json.loads(response.read(12000).decode("utf-8"))
+    def fetch_json(url):
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "DabidBots-IP-Locator/1.1",
+            "Accept": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return json.loads(response.read(16000).decode("utf-8"))
 
-    try:
-        data = await run(fetch_location)
-    except Exception:
-        return JSONResponse({"ok": False, "error": "IP lookup service is unavailable. Try again later."}, status_code=502)
-    if not data.get("success"):
-        return JSONResponse({"ok": False, "error": str(data.get("message", "Location unavailable"))[:180]}, status_code=502)
-    conn = data.get("connection") or {}
+    def fetch_location():
+        # Try the primary provider first, then use a separate HTTPS provider
+        # if it is down, rate-limited, or unreachable from the hosting region.
+        errors = []
+        try:
+            data = fetch_json("https://ipwho.is/" + raw)
+            if data.get("success"):
+                conn = data.get("connection") or {}
+                return {
+                    "city": data.get("city"), "region": data.get("region"),
+                    "country": data.get("country"), "postal": data.get("postal"),
+                    "latitude": data.get("latitude"), "longitude": data.get("longitude"),
+                    "isp": conn.get("isp"), "org": conn.get("org"),
+                    "provider": "ipwho.is",
+                }
+            errors.append("ipwho.is: " + str(data.get("message", "lookup unsuccessful"))[:160])
+        except Exception as exc:
+            log.warning("IP geolocation provider ipwho.is failed: %s", exc)
+            errors.append("ipwho.is: " + type(exc).__name__)
+
+        try:
+            data = fetch_json("https://ipapi.co/" + raw + "/json/")
+            if data.get("error"):
+                errors.append("ipapi.co: " + str(data.get("reason", "lookup unsuccessful"))[:160])
+            else:
+                org = data.get("org")
+                return {
+                    "city": data.get("city"), "region": data.get("region"),
+                    "country": data.get("country_name") or data.get("country"),
+                    "postal": data.get("postal"), "latitude": data.get("latitude"),
+                    "longitude": data.get("longitude"), "isp": org, "org": org,
+                    "provider": "ipapi.co",
+                }
+        except Exception as exc:
+            log.warning("IP geolocation provider ipapi.co failed: %s", exc)
+            errors.append("ipapi.co: " + type(exc).__name__)
+
+        log.error("All IP geolocation providers failed (%s)", "; ".join(errors))
+        return None
+
+    data = await run(fetch_location)
+    if not data:
+        return JSONResponse({
+            "ok": False,
+            "error": "All IP lookup providers are currently unavailable. Check the Render service logs and try again later."
+        }, status_code=502)
+
     lat, lon = data.get("latitude"), data.get("longitude")
     map_url = ""
     if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
@@ -1349,7 +1392,8 @@ async def ip_lookup(request):
     return JSONResponse({"ok": True, "ip": raw, "city": data.get("city"),
         "region": data.get("region"), "country": data.get("country"),
         "postal": data.get("postal"), "latitude": lat, "longitude": lon,
-        "isp": conn.get("isp"), "org": conn.get("org"), "map_url": map_url})
+        "isp": data.get("isp"), "org": data.get("org"),
+        "provider": data.get("provider"), "map_url": map_url})
 
 
 
