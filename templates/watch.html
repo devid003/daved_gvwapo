@@ -51,7 +51,6 @@ a{color:inherit}
 .frame:fullscreen{border-radius:0;border:0;aspect-ratio:auto;width:100vw;height:100vh}
 .frame:-webkit-full-screen{border-radius:0;border:0;aspect-ratio:auto;width:100vw;height:100vh}
 .frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-.player-fallback{margin:10px 0 0;text-align:right;font-size:13px}.player-fallback a{color:#9bbcff;text-decoration:none}.player-fallback a:hover{text-decoration:underline}
 .notop{position:absolute;top:0;left:0;right:0;height:60px;z-index:4}
 .wm{position:absolute;z-index:5;pointer-events:none;color:rgba(255,255,255,.55);font-size:13px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.75)}
 .wm.tl{top:12px;left:14px}.wm.br{bottom:52px;right:14px}
@@ -419,7 +418,6 @@ a.btn{text-decoration:none}
       <div class="wm mid">{{ watermark }} &middot; {{ username }}</div>
       <div class="wm br">{{ watermark }}</div>
     </div>
-    <p class="player-fallback"><a id="drive-open" href="https://drive.google.com/file/d/{{ vids[0].drive_id }}/view" target="_blank" rel="noopener noreferrer">Having trouble playing? Open this lesson in Google Drive ↗</a></p>
     <section class="about" aria-live="polite">
       <p class="count" id="count">Lesson 1 of {{ vids|length }}</p>
       <h1 id="title">{{ vids[0].title }}</h1>
