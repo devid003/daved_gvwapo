@@ -37,7 +37,7 @@
 <div class="locator">
  <div class="head"><div><h1>⌖ IP Address Locator</h1><p>Approximate public IP locations from member login, prompt activity, verification, and browser diagnostic events.</p></div><a class="btn" href="/ip-locator">↻ Refresh</a></div>
  <section class="loc-card">
-  <div class="loc-head"><h2>Look up an IP address</h2><p class="muted small">Choose a recorded IP or enter a public IP manually. The lookup sends the IP to ipwho.is for approximate geolocation.</p></div>
+  <div class="loc-head"><h2>Look up an IP address</h2><p class="muted small">Choose a recorded IP or enter a public IP manually. The lookup sends the IP to ipwho.is, with ipapi.co as a backup provider, for approximate geolocation.</p></div>
   <div class="loc-body">
    <form id="loc-form" class="loc-form"><input id="loc-ip" type="text" placeholder="Example: 8.8.8.8" autocomplete="off" required><button class="btn primary" type="submit">Locate IP</button></form>
    <p id="loc-status" class="loc-note" aria-live="polite"></p>
@@ -64,7 +64,7 @@
    const response=await fetch('/ip-locator/lookup?ip='+encodeURIComponent(ip),{credentials:'same-origin'});
    const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Lookup failed');
    document.getElementById('loc-title').textContent=data.ip;
-   document.getElementById('loc-details').textContent=[data.city,data.region,data.country,data.postal?'Postal '+data.postal:'',data.isp?'ISP: '+data.isp:'',data.org?'Organization: '+data.org:'',data.latitude!=null?data.latitude+', '+data.longitude:''].filter(Boolean).join(' · ');
+   document.getElementById('loc-details').textContent=[data.city,data.region,data.country,data.postal?'Postal '+data.postal:'',data.isp?'ISP: '+data.isp:'',data.org?'Organization: '+data.org:'',data.provider?'Source: '+data.provider:'',data.latitude!=null?data.latitude+', '+data.longitude:''].filter(Boolean).join(' · ');
    document.getElementById('loc-open').href=data.map_url||'#';
    if(data.latitude!=null&&data.longitude!=null){
     document.getElementById('loc-open').href='https://www.openstreetmap.org/?mlat='+encodeURIComponent(data.latitude)+'&mlon='+encodeURIComponent(data.longitude)+'#map=12/'+encodeURIComponent(data.latitude)+'/'+encodeURIComponent(data.longitude);
