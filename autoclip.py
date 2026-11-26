@@ -84,6 +84,8 @@ def _process(source: Path, folder: Path, orientation: str, clip_seconds: int) ->
         start += clip_seconds
         index += 1
         if _storage_used() > MAX_STORAGE:
+            for item in outputs:
+                (folder / item["name"]).unlink(missing_ok=True)
             raise ValueError("Naabot na ang 1 GB storage cap. I-download at burahin muna ang lumang clips.")
     return outputs
 
@@ -161,6 +163,11 @@ async def delete_clip(request):
     username = request.session.get("member")
     if not username:
         return JSONResponse({"ok": False}, status_code=401)
+    import hmac
+    expected = request.session.get("csrf", "")
+    supplied = request.headers.get("x-csrf-token", "")
+    if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+        return JSONResponse({"ok": False, "message": "Bad CSRF token."}, status_code=400)
     name = request.path_params.get("filename", "")
     if not re.fullmatch(r"clip_[a-f0-9]{12}\.mp4", name):
         return JSONResponse({"ok": False}, status_code=404)
