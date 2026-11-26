@@ -31,7 +31,7 @@
   <div class="panel-head"><div><h2>Ticket AI assistant</h2><p>Configure the AI that replies inside each private ticket channel.</p></div><span class="badge">AI</span></div>
   <div class="panel-body">
     <div class="row" style="margin-bottom:14px"><span class="badge {{ 'ok' if ticket_config.ai_on else 'off' }}">{{ 'AI enabled' if ticket_config.ai_on else 'AI disabled' }}</span><span class="muted small">Monid key: {{ 'Configured' if ticket_config.ai_key_set else 'Not configured' }}</span></div>
-    <form method="post" action="/tickets/save" style="display:grid;gap:14px">
+    <form method="post" action="/tickets/ai/save" style="display:grid;gap:14px">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="guild_id" value="{{ ticket_config.guild_id }}">
       <label class="row" style="gap:9px"><input type="checkbox" name="ai_on" value="1" {{ 'checked' if ticket_config.ai_on else '' }}> Enable AI replies in tickets</label>
