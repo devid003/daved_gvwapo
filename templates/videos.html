@@ -197,6 +197,17 @@
   <div class="panel-head"><div><h2>Member accounts</h2><p>People who created a website account with Open tutorials. {{ members|length }} total.{% if one_device %} Each account works on one device only.{% endif %}</p></div>
     <form method="post" action="/videos/one-device" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><span class="badge {{ 'live' if one_device else 'off' }}" style="margin-right:8px">1 device per account {{ 'on' if one_device else 'off' }}</span><button class="btn sm">{{ 'Turn off' if one_device else 'Turn on' }}</button></form>
   </div>
+  <div class="panel-body" style="border-top:1px solid var(--line)">
+    <form method="post" action="/videos/member-device-reset-all"
+          onsubmit="return confirm('Reset every member device? All members will need to log in again. A Discord DM will be attempted for each account.')">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field" style="margin-bottom:10px">Reason for resetting all member devices
+        <textarea name="reason" maxlength="500" rows="2" required placeholder="Explain why all members need to log in again"></textarea>
+      </label>
+      <button class="btn bad" type="submit">Reset All Devices &amp; Notify Members</button>
+      <p class="muted small" style="margin:8px 0 0">Accounts and passwords stay active. The next successful login can link a device again. The bot will DM each member with the reason; delivery depends on Discord DM settings and bot availability.</p>
+    </form>
+  </div>
   {% if members %}
   <div class="scroll"><table>
     <tr><th>Username</th><th>Discord</th><th>Device</th><th class="nowrap">Blocked tries</th><th>Created</th><th></th></tr>
