@@ -278,6 +278,10 @@ async def tickets_page(request):
         "fba_cat": await run(db.get_setting, f"tkt_cat_fba:{gid}", "") if gid else "",
         "mod_role": await run(db.get_setting, f"tkt_mod_role:{gid}", "") if gid else "",
         "staff_ch": await run(db.get_setting, f"tkt_staff_ch:{gid}", "") if gid else "",
+        "ai_on": (await run(db.get_setting, f"tkt_ai_on:{gid}", "1") != "0") if gid else False,
+        "ai_model": await run(db.get_setting, f"tkt_ai_model:{gid}", "") if gid else "",
+        "ai_system": await run(db.get_setting, f"tkt_sys:{gid}", "") if gid else "",
+        "ai_key_set": bool(await run(db.get_setting, f"tkt_ai_key:{gid}", "")) if gid else False,
     }
     return templates.TemplateResponse(request=request, name="tickets.html", context={
         "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
@@ -370,14 +374,43 @@ async def tickets_save(request):
             flash(request, f"Invalid Discord ID for {field.replace('_', ' ')}.")
             return redirect("/tickets")
         values[key] = raw
+    ai_model = str(form.get("ai_model", "")).strip()[:100]
+    ai_system = str(form.get("ai_system", "")).strip()[:490]
+    ai_on = "1" if form.get("ai_on") else "0"
     try:
         for key, value in values.items():
             await run(db.set_setting, f"{key}:{gid}", value)
+        await run(db.set_setting, f"tkt_ai_on:{gid}", ai_on)
+        await run(db.set_setting, f"tkt_ai_model:{gid}", ai_model)
+        await run(db.set_setting, f"tkt_sys:{gid}", ai_system)
     except Exception:
         log.exception("ticket dashboard settings save failed for guild %s", gid)
         flash(request, "Couldn't save ticket settings. Check the server logs.")
         return redirect("/tickets")
     flash(request, f"Ticket settings saved for server {gid}. Run /ticketpanel in Discord to publish the panel.")
+    return redirect("/tickets")
+
+
+async def tickets_ai_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    gid = parse_id(form.get("guild_id"))
+    if gid is None:
+        flash(request, "Enter a valid Discord Server ID first.")
+        return redirect("/tickets")
+    model = str(form.get("ai_model", "")).strip()[:100]
+    system = str(form.get("ai_system", "")).strip()[:490]
+    enabled = "1" if form.get("ai_on") else "0"
+    try:
+        await run(db.set_setting, f"tkt_ai_on:{gid}", enabled)
+        await run(db.set_setting, f"tkt_ai_model:{gid}", model)
+        await run(db.set_setting, f"tkt_sys:{gid}", system)
+    except Exception:
+        log.exception("ticket AI settings save failed for guild %s", gid)
+        flash(request, "Couldn't save ticket AI settings. Check the server logs.")
+        return redirect("/tickets")
+    flash(request, f"Ticket AI settings saved for server {gid}. Set the private Monid key with /ticketai in Discord.")
     return redirect("/tickets")
 
 
@@ -3674,6 +3707,7 @@ app = Starlette(
         Route("/servers/remove", servers_remove, methods=["POST"]),
         Route("/tickets", tickets_page),
         Route("/tickets/save", tickets_save, methods=["POST"]),
+        Route("/tickets/ai/save", tickets_ai_save, methods=["POST"]),
         Route("/members/set", members_set, methods=["POST"]),
         Route("/image/toggle", image_toggle, methods=["POST"]),
         Route("/uploads", uploads),
