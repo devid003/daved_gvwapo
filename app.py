@@ -1234,7 +1234,7 @@ async def device_logs_ingest(request):
     import re
     message = str(data.get("message", ""))[:2000]
     message = re.sub(r"(?i)(token|password|authorization|api[_-]?key)\s*[:=]\s*[^\s,;]+", r"\1=[redacted]", message)
-    await run(db.add_device_log, str(data.get("platform", "unknown")), str(data.get("browser", "")), str(data.get("device", "")), str(data.get("type", "error")), message, str(data.get("page", "")), request.headers.get("user-agent", ""))
+    await run(db.add_device_log, str(data.get("platform", "unknown")), str(data.get("browser", "")), str(data.get("device", "")), str(data.get("type", "error")), message, str(data.get("page", "")), request.headers.get("user-agent", ""), _client_ip(request))
     return JSONResponse({"ok": True})
 
 

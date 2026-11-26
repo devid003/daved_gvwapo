@@ -1533,12 +1533,28 @@ class DeviceLog(Base):
     message: Mapped[str] = mapped_column(Text, default="")
     page: Mapped[str] = mapped_column(String(200), default="")
     user_agent: Mapped[str] = mapped_column(String(500), default="")
+    ip_address: Mapped[str] = mapped_column(String(64), default="")
 
 
-def add_device_log(platform, browser, device, event_type, message, page, user_agent):
+def add_device_log(platform, browser, device, event_type, message, page, user_agent, ip_address=""):
     with Session.begin() as s:
-        s.add(DeviceLog(platform=(platform or "unknown")[:20], browser=(browser or "")[:80], device=(device or "")[:120], event_type=(event_type or "error")[:40], message=(message or "")[:2000], page=(page or "")[:200], user_agent=(user_agent or "")[:500]))
+        s.add(DeviceLog(platform=(platform or "unknown")[:20], browser=(browser or "")[:80], device=(device or "")[:120], event_type=(event_type or "error")[:40], message=(message or "")[:2000], page=(page or "")[:200], user_agent=(user_agent or "")[:500], ip_address=(ip_address or "")[:64]))
 
+
+
+
+def migrate_device_log_ip_column() -> None:
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    if "device_logs" not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns("device_logs")}
+    if "ip_address" not in existing:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE device_logs ADD COLUMN ip_address VARCHAR(64) NOT NULL DEFAULT ''"))
+
+
+migrate_device_log_ip_column()
 
 def list_device_logs(limit=300):
     with Session() as s:
