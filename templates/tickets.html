@@ -30,7 +30,7 @@
 <section class="panel">
   <div class="panel-head"><div><h2>Ticket AI assistant</h2><p>Configure the AI that replies inside each private ticket channel.</p></div><span class="badge">AI</span></div>
   <div class="panel-body">
-    <div class="row" style="margin-bottom:14px"><span class="badge {{ 'ok' if ticket_config.ai_on else 'off' }}">{{ 'AI enabled' if ticket_config.ai_on else 'AI disabled' }}</span><span class="muted small">Monid key: {{ 'Configured' if ticket_config.ai_key_set else 'Not configured' }}</span></div>
+    <div class="row" style="margin-bottom:14px"><span class="badge {{ 'live' if ticket_config.ai_on and ticket_config.ai_key_set and ticket_config.ai_model_set else 'pending' if ticket_config.ai_on else 'off' }}">{{ 'AI ready' if ticket_config.ai_on and ticket_config.ai_key_set and ticket_config.ai_model_set else 'AI setup incomplete' if ticket_config.ai_on else 'AI disabled' }}</span><span class="muted small">Monid key: {{ 'Configured' if ticket_config.ai_key_set else 'Not configured' }} · Model: {{ 'Configured' if ticket_config.ai_model_set else 'Missing' }}</span></div>
     <form method="post" action="/tickets/ai/save" style="display:grid;gap:14px">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="guild_id" value="{{ ticket_config.guild_id }}">
