@@ -427,9 +427,6 @@ a.btn{text-decoration:none}
 </div></nav>
 {% endif %}
 
-<div role="note" style="max-width:1320px;margin:14px auto 0;padding:10px 22px;color:var(--muted);font-size:13px">
-  Account security notice: this site records member access activity, including public IP address, access time, and available browser/device information, for security and authorized administration. IP-based location is approximate and is not an exact address.
-</div>
 <div class="page" id="lessons-view">
 {% if vids %}
   <main class="stage">
@@ -499,7 +496,6 @@ a.btn{text-decoration:none}
   <div style="max-width:1100px;margin:0 auto;padding:24px 22px 64px">
 <section class="ac-wrap" id="autoclip-panel" aria-labelledby="autoclip-title">
       <h2 id="autoclip-title">Auto Clip <span style="font-size:12px;font-weight:600;color:#38bdf8">FREE BETA</span></h2>
-      <p class="ac-muted">Upload a video and split it into short MP4 clips. Walang watermark. Piliin kung portrait o landscape ang output.</p>
       <form id="autoclip-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label class="ac-field"><b>Source video</b><input type="file" name="video" accept="video/mp4,video/quicktime,video/x-m4v,video/x-matroska,video/webm" required><span class="ac-muted">MP4 / MOV / M4V / MKV / WEBM · max 200 MB · max 10 minutes</span></label>
