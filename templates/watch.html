@@ -1135,8 +1135,20 @@ a.btn{text-decoration:none}
   results.innerHTML='';
   try{
    const res=await fetch('/watch/autoclip/create',{method:'POST',body:new FormData(form),credentials:'same-origin'});
-   const data=await res.json();
-   if(!res.ok||!data.ok)throw new Error(data.message||'Hindi natuloy ang processing.');
+   const started=await res.json();
+   if(!res.ok||!started.ok)throw new Error(started.message||'Hindi natuloy ang upload.');
+   let data;
+   while(true){
+    await new Promise(resolve=>setTimeout(resolve,2000));
+    const check=await fetch('/watch/autoclip/status/'+encodeURIComponent(started.job_id),{credentials:'same-origin',cache:'no-store'});
+    data=await check.json();
+    if(!check.ok||!data.ok)throw new Error(data.message||'Nawala ang processing job. Pakisubukang muli.');
+    if(data.done)break;
+    status.textContent=data.stage==='processing'
+      ? 'Processing clip '+(data.current||1)+' of '+(data.total||'?')+'… Please keep this page open.'
+      : 'Preparing video…';
+   }
+   if(!data.ok)throw new Error(data.message||'Hindi natapos ang video processing.');
    status.textContent=data.message;
    data.clips.forEach((clip,i)=>{
     const row=document.createElement('div');row.className='ac-result';
