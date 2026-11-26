@@ -1289,6 +1289,12 @@ async def ip_locator_page(request):
                             "source": "Consent-based public verification",
                             "guild_id": "", "server_name": "Public / outsider",
                             "created_at": item.created_at})
+        elif item.event_type in ("login_success", "login_failed"):
+            member_name = (item.message or "").removeprefix("Member: ").strip() or "Member"
+            records.append({"ip": ip, "member": member_name,
+                            "user_id": "", "source": "Member login" if item.event_type == "login_success" else "Failed member login",
+                            "guild_id": "", "server_name": "Member accounts",
+                            "created_at": item.created_at})
         else:
             records.append({"ip": ip, "member": "Browser diagnostics",
                             "user_id": "", "source": "Diagnostics",
