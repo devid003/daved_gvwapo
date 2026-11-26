@@ -1228,20 +1228,33 @@ async def device_logs_page(request):
     joins = await run(db.list_joins, None, False, 400)
     join_map = {j.id: j for j in joins}
     verification_rows = []
+    verification_android = 0
+    verification_ios = 0
     for check in checks:
         join = join_map.get(check.join_id)
+        ua = (check.user_agent or "").lower()
+        device_text = (check.device or "").lower()
+        platform = "iOS" if any(x in ua for x in ("iphone", "ipad", "ipod")) else ("Android" if "android" in ua or "android" in device_text else "Other")
+        if platform == "Android":
+            verification_android += 1
+        elif platform == "iOS":
+            verification_ios += 1
         verification_rows.append({
             "username": check.username or (join.username if join else ""),
             "user_id": check.user_id,
             "status": join.status if join else "recorded",
             "ip_address": check.ip_address,
             "device": check.device,
-            "platform": check.tz,
+            "platform": platform,
             "created_at": check.created_at,
             "result": check.result,
         })
+    android_events = sum(1 for r in rows if (r.platform or "").lower() == "android") + verification_android
+    ios_events = sum(1 for r in rows if (r.platform or "").lower() == "ios") + verification_ios
+    total_events = len(rows) + len(checks)
     return templates.TemplateResponse(request=request, name="device_logs.html", context={
         "csrf": csrf_token(request), "rows": rows, "verification_rows": verification_rows,
+        "total_events": total_events, "android_events": android_events, "ios_events": ios_events,
         "pending_joins": [j for j in joins if j.status == "pending"],
         "flash": request.session.pop("flash", None)})
 
