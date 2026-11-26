@@ -2927,6 +2927,33 @@ async def watch_page_1dev(request):
     return resp
 
 
+async def autoclip_create_1dev(request):
+    ok, new = await _watch_device_ok(request)
+    if not ok:
+        return JSONResponse({"ok": False, "message": "Please sign in on your approved device."}, status_code=401)
+    resp = await autoclip.create_clips(request)
+    _set_dev_cookie(resp, new)
+    return resp
+
+
+async def autoclip_file_1dev(request):
+    ok, new = await _watch_device_ok(request)
+    if not ok:
+        return JSONResponse({"ok": False}, status_code=401)
+    resp = await autoclip.get_clip(request)
+    _set_dev_cookie(resp, new)
+    return resp
+
+
+async def autoclip_delete_1dev(request):
+    ok, new = await _watch_device_ok(request)
+    if not ok:
+        return JSONResponse({"ok": False}, status_code=401)
+    resp = await autoclip.delete_clip(request)
+    _set_dev_cookie(resp, new)
+    return resp
+
+
 async def watch_ping_1dev(request):
     ok, new = await _watch_device_ok(request)
     if not ok:
@@ -4142,7 +4169,9 @@ app = Starlette(
         Route("/watch/chat", watch_chat, methods=["POST"]),
         Route("/watch/imagine/key", watch_imagine_key, methods=["POST"]),
         *autoedit.routes(),
-        *autoclip.routes(),
+        Route("/watch/autoclip/create", autoclip_create_1dev, methods=["POST"]),
+        Route("/watch/autoclip/file/{filename}", autoclip_file_1dev),
+        Route("/watch/autoclip/delete/{filename}", autoclip_delete_1dev, methods=["POST"]),
         Route("/videos/imagine", imagine_settings_save, methods=["POST"]),
         Route("/videos/chat", chat_settings_save, methods=["POST"]),
         Route("/watch/ping", watch_ping_1dev, methods=["POST"]),
