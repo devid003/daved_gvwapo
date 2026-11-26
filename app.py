@@ -2564,17 +2564,41 @@ async def watch_ping_1dev(request):
     return resp
 
 
+async def _notify_member_action(discord_user_id: int, title: str, message: str) -> bool:
+    """DM a member about an admin action. Returns False if Discord cannot deliver it."""
+    if not discord_user_id:
+        return False
+    bot = discord_bot.bot
+    if not bot.is_ready():
+        log.warning("Cannot DM member %s: Discord bot is not ready", discord_user_id)
+        return False
+    try:
+        user = bot.get_user(discord_user_id) or await bot.fetch_user(discord_user_id)
+        await user.send(f"**{title}**\n{message}")
+        return True
+    except Exception as exc:
+        log.warning("Could not DM member %s about %s: %s", discord_user_id, title, exc)
+        return False
+
+
 async def member_device_reset(request):
     form, resp = await guarded_post(request)
     if resp:
         return resp
     name = str(form.get("username", "")).strip()[:40]
     if name:
+        member = await run(db.get_web_user, name)
         await run(db.device_reset, name)
-        flash(request, f"Device reset for {name}. The next device they log in on becomes their device.")
+        dm_ok = await _notify_member_action(
+            int(member.discord_user_id or 0) if member else 0,
+            "Device reset",
+            "An admin reset the device linked to your lesson account. You can now log in on the device you want to use. Your account is still active."
+        )
+        note = f"Device reset for {name}. The next device they log in on becomes their device."
+        if not dm_ok:
+            note += " Discord DM was not sent (the bot may be offline or the member's DMs may be closed)."
+        flash(request, note)
     return redirect("/videos")
-
-
 async def one_device_toggle(request):
     form, resp = await guarded_post(request)
     if resp:
@@ -3570,9 +3594,18 @@ async def member_delete(request):
         return resp
     mid = parse_int(form.get("id"))
     if mid:
+        member = await run(db.get_web_user_by_id, mid)
+        dm_ok = await _notify_member_action(
+            int(member.discord_user_id or 0) if member else 0,
+            "Lesson account removed",
+            "An admin has removed your lesson account. If you believe this was a mistake, please contact the server administrators."
+        )
         await run(db.delete_web_user, mid)
         _ACCESS_CACHE.clear()
-        flash(request, "Member account removed.")
+        note = "Member account removed."
+        if not dm_ok:
+            note += " Discord DM was not sent (the bot may be offline or the member's DMs may be closed)."
+        flash(request, note)
     return redirect("/videos")
 
 
