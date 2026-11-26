@@ -731,6 +731,14 @@ def get_web_user(username: str):
         return u
 
 
+def get_web_user_by_id(uid: int):
+    with Session() as s:
+        u = s.get(WebUser, uid)
+        if u is not None:
+            s.expunge(u)
+        return u
+
+
 def web_user_exists_for_discord(discord_user_id: int) -> bool:
     with Session() as s:
         return (s.scalar(select(func.count()).select_from(WebUser)
