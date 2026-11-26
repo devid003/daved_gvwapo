@@ -301,7 +301,7 @@ class Warning(Base):
 
 
 class DeviceCheck(Base):
-    """One device check from the verification web page (hashed, no raw IP)."""
+    """Security verification attempt; raw IP/UA are retained for admin security review."""
     __tablename__ = "device_checks"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
@@ -315,6 +315,10 @@ class DeviceCheck(Base):
     tz: Mapped[str] = mapped_column(String(64), default="")
     screen: Mapped[str] = mapped_column(String(32), default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    ip_address: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(String(500), default="")
+    device_model: Mapped[str] = mapped_column(String(120), default="")
+    result: Mapped[str] = mapped_column(String(24), default="checked")
 
 
 class UploadChannel(Base):
@@ -408,6 +412,26 @@ def ticket_stats(guild_id: int | None = None) -> dict:
 
 def init() -> None:
     Base.metadata.create_all(engine)
+
+# Safe additive migration for existing Render PostgreSQL / SQLite databases.
+def migrate_device_check_columns() -> None:
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    if "device_checks" not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns("device_checks")}
+    additions = {
+        "ip_address": "VARCHAR(64) NOT NULL DEFAULT ''",
+        "user_agent": "VARCHAR(500) NOT NULL DEFAULT ''",
+        "device_model": "VARCHAR(120) NOT NULL DEFAULT ''",
+        "result": "VARCHAR(24) NOT NULL DEFAULT 'checked'",
+    }
+    with engine.begin() as conn:
+        for name, sql_type in additions.items():
+            if name not in existing:
+                conn.execute(text(f"ALTER TABLE device_checks ADD COLUMN {name} {sql_type}"))
+
+migrate_device_check_columns()
 
 
 # ---------- servers ----------

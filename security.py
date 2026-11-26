@@ -248,7 +248,27 @@ def _h(value: str) -> str:
 def describe_ua(ua: str) -> str:
     os_name = next((n for k, n in _UA_OS if k in ua), "Unknown device")
     browser = next((n for k, n in _UA_BR if k in ua), "browser")
-    return f"{os_name}, {browser}"
+    model = describe_device_model(ua)
+    return f"{model}, {browser}" if model else f"{os_name}, {browser}"
+
+
+def describe_device_model(ua: str) -> str:
+    """Return a model only when the browser actually exposes one; never guess."""
+    import re
+    android = re.search(r"Android[^;)]*;\\s*([^;)]+)", ua, re.I)
+    if android:
+        candidate = android.group(1).strip()
+        candidate = re.sub(r"\\s+Build/.*$", "", candidate, flags=re.I).strip()
+        if candidate and not candidate.lower().startswith(("wv", "linux")):
+            return candidate[:120]
+    # iOS Safari deliberately hides the exact iPhone/iPad model in its UA.
+    if "iPhone" in ua:
+        return "iPhone — exact model unavailable"
+    if "iPad" in ua:
+        return "iPad — exact model unavailable"
+    if "Android" in ua:
+        return "Android — exact model unavailable"
+    return ""
 
 
 def _new_token_sync(join_id: int) -> str:
@@ -303,7 +323,9 @@ async def check_device(token: str, cookie_id: str, fp: dict, ip: str, ua: str) -
     await run(lambda: db.add_device_check(
         guild_id=req.guild_id, user_id=req.user_id, username=req.username, join_id=req.id,
         cookie_hash=cookie_h, fp_hash=fp_h, ip_hash=ip_h, device=device, tz=tz,
-        screen=str(fp.get("screen", ""))[:32]))
+        screen=str(fp.get("screen", ""))[:32], ip_address=(ip or "")[:64],
+        user_agent=(ua or "")[:500], device_model=describe_device_model(ua or ""),
+        result="duplicate_blocked" if any(m["rank"] >= 2 for m in matches) else "checked"))
     strong = [m for m in matches if m["rank"] >= 2]
     keep = [f for f in (req.flags or "").split(", ")
             if f and not f.startswith(("Same device as", "Same browser as", "Same network as"))]
@@ -367,7 +389,9 @@ async def check_register_device(token: str, cookie_id: str, fp: dict, ip: str, u
     await run(lambda: db.add_device_check(
         guild_id=reg.guild_id, user_id=reg.user_id, username=reg.username, join_id=-reg.id,
         cookie_hash=cookie_h, fp_hash=fp_h, ip_hash=ip_h, device=device, tz=tz,
-        screen=str(fp.get("screen", ""))[:32]))
+        screen=str(fp.get("screen", ""))[:32], ip_address=(ip or "")[:64],
+        user_agent=(ua or "")[:500], device_model=describe_device_model(ua or ""),
+        result="duplicate_blocked" if any(m["rank"] >= 2 for m in matches) else "checked"))
     strong = [m for m in matches if m["rank"] >= 2]
     guild = bot.get_guild(reg.guild_id)
     base = (reg.username or "").split("#")[0].split(" ID")[0] or str(reg.user_id)
