@@ -1560,3 +1560,35 @@ def list_device_logs(limit=300):
     with Session() as s:
         q = select(DeviceLog).order_by(DeviceLog.created_at.desc()).limit(max(1, min(1000, limit)))
         return list(s.scalars(q))
+
+
+class AndroidLogcatEntry(Base):
+    """Opt-in Android Logcat lines sent by a paired companion app."""
+    __tablename__ = "android_logcat_entries"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    device_id: Mapped[str] = mapped_column(String(100), default="", index=True)
+    device_name: Mapped[str] = mapped_column(String(160), default="")
+    app_version: Mapped[str] = mapped_column(String(40), default="")
+    priority: Mapped[str] = mapped_column(String(12), default="I", index=True)
+    tag: Mapped[str] = mapped_column(String(120), default="")
+    message: Mapped[str] = mapped_column(Text, default="")
+
+
+def add_android_logcat_entries(entries):
+    with Session.begin() as s:
+        for item in entries[:100]:
+            s.add(AndroidLogcatEntry(
+                device_id=str(item.get("device_id", ""))[:100],
+                device_name=str(item.get("device_name", ""))[:160],
+                app_version=str(item.get("app_version", ""))[:40],
+                priority=str(item.get("priority", "I"))[:12],
+                tag=str(item.get("tag", ""))[:120],
+                message=str(item.get("message", ""))[:4000],
+            ))
+
+
+def list_android_logcat_entries(limit=300):
+    with Session() as s:
+        q = select(AndroidLogcatEntry).order_by(AndroidLogcatEntry.created_at.desc()).limit(max(1, min(1000, limit)))
+        return list(s.scalars(q))
