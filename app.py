@@ -1224,7 +1224,26 @@ async def report_channel_save(request):
 async def device_logs_page(request):
     if not authed(request): return redirect("/login")
     rows = await run(db.list_device_logs, 400)
-    return templates.TemplateResponse(request=request, name="device_logs.html", context={"csrf": csrf_token(request), "rows": rows, "flash": request.session.pop("flash", None)})
+    checks = await run(db.list_device_checks, 400)
+    joins = await run(db.list_joins, None, False, 400)
+    join_map = {j.id: j for j in joins}
+    verification_rows = []
+    for check in checks:
+        join = join_map.get(check.join_id)
+        verification_rows.append({
+            "username": check.username or (join.username if join else ""),
+            "user_id": check.user_id,
+            "status": join.status if join else "recorded",
+            "ip_address": check.ip_address,
+            "device": check.device,
+            "platform": check.tz,
+            "created_at": check.created_at,
+            "result": check.result,
+        })
+    return templates.TemplateResponse(request=request, name="device_logs.html", context={
+        "csrf": csrf_token(request), "rows": rows, "verification_rows": verification_rows,
+        "pending_joins": [j for j in joins if j.status == "pending"],
+        "flash": request.session.pop("flash", None)})
 
 
 async def device_logs_ingest(request):
