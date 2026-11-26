@@ -1255,7 +1255,7 @@ async def public_ip_verify_submit(request):
     label = str(form.get("username", "")).strip()[:100]
     payload = json.dumps({"discord_id": user_id, "username": label,
         "consent": True, "identity_note": "Self-submitted; Discord account ownership not independently verified."})
-    await run(db.add_device_log, "public", "web", "Public IP verification",
+    await run(db.add_device_log, "web", "browser", "web", "Public IP verification",
                payload, "/ip-verify", request.headers.get("user-agent", ""), ip)
     return templates.TemplateResponse(request=request, name="ip_verify.html",
         context={"csrf": csrf_token(request), "error": None,
