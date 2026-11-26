@@ -1219,6 +1219,25 @@ async def report_channel_save(request):
     return redirect(back)
 
 
+
+
+async def device_logs_page(request):
+    if not authed(request): return redirect("/login")
+    rows = await run(db.list_device_logs, 400)
+    return templates.TemplateResponse(request=request, name="device_logs.html", context={"csrf": csrf_token(request), "rows": rows, "flash": request.session.pop("flash", None)})
+
+
+async def device_logs_ingest(request):
+    try: data = await request.json()
+    except Exception: return JSONResponse({"ok": False}, status_code=400)
+    if not isinstance(data, dict) or data.get("consent") is not True: return JSONResponse({"ok": False}, status_code=400)
+    import re
+    message = str(data.get("message", ""))[:2000]
+    message = re.sub(r"(?i)(token|password|authorization|api[_-]?key)\s*[:=]\s*[^\s,;]+", r"\1=[redacted]", message)
+    await run(db.add_device_log, str(data.get("platform", "unknown")), str(data.get("browser", "")), str(data.get("device", "")), str(data.get("type", "error")), message, str(data.get("page", "")), request.headers.get("user-agent", ""))
+    return JSONResponse({"ok": True})
+
+
 async def security_page_v2(request):
     if not authed(request):
         return redirect("/login")
@@ -3729,6 +3748,8 @@ app = Starlette(
         Route("/status/save", status_save, methods=["POST"]),
         Route("/status/channel", status_channel_save, methods=["POST"]),
         Route("/status.json", status_data),
+        Route("/device-logs", device_logs_page),
+        Route("/api/device-logs", device_logs_ingest, methods=["POST"]),
         Route("/security", security_page_v2),
         Route("/security/gate", security_gate, methods=["POST"]),
         Route("/security/log", security_log, methods=["POST"]),
