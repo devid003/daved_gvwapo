@@ -1225,26 +1225,29 @@ async def ip_locator_page(request):
         return redirect("/login")
     checks = await run(db.list_device_checks, 400)
     logs = await run(db.list_device_logs, 400)
+    overview = await run(db.overview)
+    server_names = {int(s.guild_id): (s.name or "Discord server") for s in overview.get("servers", [])}
     records = []
-    seen = set()
     for item in checks:
         ip = (item.ip_address or "").strip()
-        if ip and ip not in seen:
-            seen.add(ip)
-            records.append({"ip": ip, "member": item.username or "Unknown member",
-                            "user_id": str(item.user_id), "source": "Verification",
-                            "created_at": item.created_at})
+        if not ip:
+            continue
+        gid = int(item.guild_id or 0)
+        records.append({"ip": ip, "member": item.username or "Unknown member",
+                        "user_id": str(item.user_id), "source": "Verification",
+                        "guild_id": str(gid) if gid else "",
+                        "server_name": server_names.get(gid, "Unknown server"),
+                        "created_at": item.created_at})
     for item in logs:
         ip = (item.ip_address or "").strip()
-        if ip and ip not in seen:
-            seen.add(ip)
+        if ip:
             records.append({"ip": ip, "member": "Browser diagnostics",
                             "user_id": "", "source": "Diagnostics",
+                            "guild_id": "", "server_name": "Website diagnostics",
                             "created_at": item.created_at})
     records.sort(key=lambda x: x["created_at"] or dt.datetime.min, reverse=True)
     return templates.TemplateResponse(request=request, name="ip_locator.html",
         context={"records": records[:400], "csrf": csrf_token(request)})
-
 
 async def ip_lookup(request):
     if not authed(request):
