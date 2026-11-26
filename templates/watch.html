@@ -1176,7 +1176,7 @@ a.btn{text-decoration:none}
     if(data.done)break;
     const total=Math.max(1,Number(data.total)||1);
     const current=Math.max(1,Number(data.current)||1);
-    const pct=data.stage==='processing'?Math.min(95,5+((current-1)/total)*90):5;
+    const pct=data.stage==='processing'?Math.min(99,Math.max(5,Number(data.percent)||5)):5;
     const label=data.stage==='processing'?'Processing clip '+current+' of '+total+'…':'Preparing video…';
     status.textContent=label+' Please keep this page open.';
     setProgress(pct,label,'Your clips are being exported. Download links will appear when complete.',false);
