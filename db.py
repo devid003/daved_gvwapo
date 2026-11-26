@@ -1519,3 +1519,28 @@ def overview() -> dict:
         regs_pending = s.scalar(select(func.count()).select_from(Registration).where(Registration.status == "pending")) or 0
     return {"servers": servers, "members": members, "gen24": gen24, "jobs": jobs,
             "regs_total": regs_total, "regs_pending": regs_pending}
+
+
+class DeviceLog(Base):
+    """Consent-based browser diagnostics; never stores request bodies or credentials."""
+    __tablename__ = "device_logs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    platform: Mapped[str] = mapped_column(String(20), default="unknown")
+    browser: Mapped[str] = mapped_column(String(80), default="")
+    device: Mapped[str] = mapped_column(String(120), default="")
+    event_type: Mapped[str] = mapped_column(String(40), default="error")
+    message: Mapped[str] = mapped_column(Text, default="")
+    page: Mapped[str] = mapped_column(String(200), default="")
+    user_agent: Mapped[str] = mapped_column(String(500), default="")
+
+
+def add_device_log(platform, browser, device, event_type, message, page, user_agent):
+    with Session.begin() as s:
+        s.add(DeviceLog(platform=(platform or "unknown")[:20], browser=(browser or "")[:80], device=(device or "")[:120], event_type=(event_type or "error")[:40], message=(message or "")[:2000], page=(page or "")[:200], user_agent=(user_agent or "")[:500]))
+
+
+def list_device_logs(limit=300):
+    with Session() as s:
+        q = select(DeviceLog).order_by(DeviceLog.created_at.desc()).limit(max(1, min(1000, limit)))
+        return list(s.scalars(q))

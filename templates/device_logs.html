@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Device Logs{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Device Logs</h1><p>Opt-in Android/iOS browser diagnostics. This is not full operating-system Logcat.</p></div></div>
+<section class="panel"><div class="panel-head"><div><h2>Enable diagnostics on this browser</h2><p>Captures JavaScript errors, unhandled promise rejections, and failed fetch requests. No form contents or request bodies are collected.</p></div></div>
+<div class="panel-body"><label style="display:flex;gap:10px;align-items:flex-start"><input id="diag-consent" type="checkbox"><span><b>I consent to sending browser diagnostic events from this device.</b><br><span class="muted small">Turn this off anytime by unchecking. Consent is stored only in this browser.</span></span></label><p id="diag-state" class="small muted" aria-live="polite">Diagnostics are off.</p></div></section>
+<section class="panel"><div class="panel-head"><div><h2>Recent device events</h2><p>{{ rows|length }} latest events</p></div></div>
+<div class="scroll"><table><thead><tr><th>Time</th><th>Platform / Device</th><th>Browser</th><th>Event</th><th>Page</th><th>Details</th></tr></thead><tbody>
+{% for r in rows %}<tr><td class="nowrap">{{ r.created_at|local }}</td><td>{{ r.platform }}<br><span class="muted small">{{ r.device or 'Model unavailable' }}</span></td><td>{{ r.browser }}</td><td><span class="badge error">{{ r.event_type }}</span></td><td>{{ r.page }}</td><td class="prompt">{{ r.message }}</td></tr>{% else %}<tr><td colspan="6" class="empty">No device events received yet.</td></tr>{% endfor %}
+</tbody></table></div></section>
+<script>
+(function(){
+ var box=document.getElementById('diag-consent'),state=document.getElementById('diag-state'),enabled=false;
+ try{enabled=localStorage.getItem('deviceDiagConsent')==='yes';}catch(e){}
+ box.checked=enabled;state.textContent=enabled?'Diagnostics are enabled on this browser.':'Diagnostics are off.';
+ function identify(){var ua=navigator.userAgent||'',p=/iPhone|iPad|iPod/.test(ua)?'iOS':(/Android/i.test(ua)?'Android':'Other');var b=/Edg\\//.test(ua)?'Edge':/CriOS/.test(ua)?'Chrome iOS':/Chrome\\//.test(ua)?'Chrome':/Firefox\\//.test(ua)?'Firefox':/Safari\\//.test(ua)?'Safari':'Browser';var d=p==='iOS'?'Apple device (exact model unavailable)':((ua.match(/Android[^;]*;\\s*([^;)]+)/i)||[])[1]||'Android device');return {platform:p,browser:b,device:d};}
+ function send(type,message){if(!enabled)return;var id=identify();var payload={consent:true,platform:id.platform,browser:id.browser,device:id.device,type:type,message:String(message||'').slice(0,2000),page:location.pathname};try{fetch('/api/device-logs',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),keepalive:true}).catch(function(){});}catch(e){}}
+ box.addEventListener('change',function(){enabled=box.checked;try{localStorage.setItem('deviceDiagConsent',enabled?'yes':'no');}catch(e){}state.textContent=enabled?'Diagnostics enabled.':'Diagnostics disabled.';});
+ window.addEventListener('error',function(e){send('javascript_error',(e.message||'Script error')+' ('+(e.filename||'')+':'+(e.lineno||0)+')');});
+ window.addEventListener('unhandledrejection',function(e){send('unhandled_rejection',e.reason&&e.reason.message?e.reason.message:'Unhandled promise rejection');});
+ var original=window.fetch;window.fetch=function(){var args=arguments;return original.apply(this,args).then(function(r){if(!r.ok){var u=typeof args[0]==='string'?args[0]:(args[0]&&args[0].url)||'';send('network_error','HTTP '+r.status+' '+u.split('?')[0]);}return r;},function(err){var u=typeof args[0]==='string'?args[0]:(args[0]&&args[0].url)||'';send('network_error',(err&&err.message||'Fetch failed')+' '+u.split('?')[0]);throw err;});};
+})();
+</script>
+{% endblock %}
