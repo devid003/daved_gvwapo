@@ -1138,7 +1138,7 @@ a.btn{text-decoration:none}
     const info=document.createElement('span');info.textContent='Clip '+(i+1)+' · '+clip.seconds+' sec · '+fmt(clip.size);
     const link=document.createElement('a');link.href=clip.url;link.download=clip.name;link.textContent='Download MP4';
     const del=document.createElement('button');del.type='button';del.className='ac-delete';del.textContent='Delete';
-    del.addEventListener('click',async()=>{await fetch('/watch/autoclip/delete/'+encodeURIComponent(clip.name),{method:'POST',credentials:'same-origin'});row.remove();});
+    del.addEventListener('click',async()=>{await fetch('/watch/autoclip/delete/'+encodeURIComponent(clip.name),{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':form.querySelector('[name=csrf]').value}});row.remove();});
     row.append(info,link,del);results.appendChild(row);
    });
   }catch(err){status.textContent=err.message||'Processing error.';}
