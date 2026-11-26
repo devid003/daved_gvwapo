@@ -343,13 +343,23 @@ async def ticketsetup_cmd(interaction: discord.Interaction, panel_channel: disco
     if not _is_staff(interaction.user):
         await interaction.response.send_message("Only the owner or an admin can use this.", ephemeral=True)
         return
+    # Acknowledge immediately so Discord does not show "The application did not respond"
+    # while the database settings are being saved.
+    await interaction.response.defer(ephemeral=True, thinking=True)
     gid = interaction.guild_id
-    await run(db.set_setting, _s("tkt_panel_ch", gid), str(panel_channel.id))
-    await run(db.set_setting, _s("tkt_cat_yta", gid), str(yta_category.id))
-    await run(db.set_setting, _s("tkt_cat_fba", gid), str(fba_category.id))
-    await run(db.set_setting, _s("tkt_mod_role", gid), str(mod_role.id))
-    await run(db.set_setting, _s("tkt_staff_ch", gid), str(staff_channel.id))
-    await interaction.response.send_message(
+    try:
+        await run(db.set_setting, _s("tkt_panel_ch", gid), str(panel_channel.id))
+        await run(db.set_setting, _s("tkt_cat_yta", gid), str(yta_category.id))
+        await run(db.set_setting, _s("tkt_cat_fba", gid), str(fba_category.id))
+        await run(db.set_setting, _s("tkt_mod_role", gid), str(mod_role.id))
+        await run(db.set_setting, _s("tkt_staff_ch", gid), str(staff_channel.id))
+    except Exception:
+        log.exception("ticket setup save failed for guild %s", gid)
+        await interaction.followup.send(
+            "❌ Couldn't save the ticket setup. Please try again; the bot log has the error details.",
+            ephemeral=True)
+        return
+    await interaction.followup.send(
         f"\u2705 Saved.\n\u2022 Panel: {panel_channel.mention}\n\u2022 YTA category: **{yta_category.name}**\n"
         f"\u2022 FBA category: **{fba_category.name}**\n\u2022 Ping role: {mod_role.mention}\n"
         f"\u2022 Summaries: {staff_channel.mention}\n\nNow run **/ticketpanel** to post the panel, and "
@@ -363,6 +373,7 @@ async def ticketpanel_cmd(interaction: discord.Interaction):
     if not _is_staff(interaction.user):
         await interaction.response.send_message("Only the owner or an admin can use this.", ephemeral=True)
         return
+    await interaction.response.defer(ephemeral=True, thinking=True)
     cid = panel_ch(interaction.guild_id)
     ch = interaction.guild.get_channel(cid) if cid else None
     if ch is None:
@@ -370,11 +381,18 @@ async def ticketpanel_cmd(interaction: discord.Interaction):
     e, v = panel_message()
     try:
         await ch.send(embed=e, view=v)
-    except discord.HTTPException:
-        await interaction.response.send_message(
-            "Couldn't post the panel there \u2014 check my permissions in that channel.", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.followup.send(
+            "❌ I can't post in that channel. Check View Channel, Send Messages, and Embed Links permissions.",
+            ephemeral=True)
         return
-    await interaction.response.send_message(f"\u2705 Panel posted in {ch.mention}.", ephemeral=True)
+    except discord.HTTPException:
+        log.exception("ticket panel post failed in guild %s", interaction.guild_id)
+        await interaction.followup.send(
+            "❌ Couldn't post the panel. Please try again; check the bot's channel permissions.",
+            ephemeral=True)
+        return
+    await interaction.followup.send(f"✅ Panel posted in {ch.mention}.", ephemeral=True)
 
 
 @bot.tree.command(name="ticketai", description="Turn the ticket AI on/off and set its key + model (owner/admin)")
