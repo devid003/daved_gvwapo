@@ -120,6 +120,8 @@ def _process(source: Path, folder: Path, orientation: str, clip_seconds: int, pr
     if duration <= 0 or duration > MAX_SOURCE_SECONDS:
         raise ValueError("Hanggang 10 minutes lang ang source video sa free beta.")
     width, height = (1080, 1920) if orientation == "portrait" else (1920, 1080)
+    if progress:
+        progress({"stage": "scanning", "current": 0, "total": 3, "percent": 3})
     starts = _highlight_starts(source, duration, clip_seconds)
     outputs = []
     total = len(starts)
