@@ -590,6 +590,13 @@ def add_device_check(**kw) -> None:
         s.add(DeviceCheck(**kw))
 
 
+def list_device_checks(limit=300):
+    """Recent consented website verification checks, including their submitted IP."""
+    with Session() as s:
+        q = select(DeviceCheck).order_by(DeviceCheck.created_at.desc(), DeviceCheck.id.desc()).limit(max(1, min(1000, limit)))
+        return list(s.scalars(q))
+
+
 def latest_device(join_id: int):
     with Session() as s:
         return s.scalars(select(DeviceCheck).where(DeviceCheck.join_id == join_id)
