@@ -1220,51 +1220,46 @@ async def report_channel_save(request):
 
 
 
-async def public_ip_verify_page(request):
-    return templates.TemplateResponse(request=request, name="ip_verify.html",
-        context={"csrf": csrf_token(request), "error": None, "success": None})
-
-
 async def public_ip_verify_submit(request):
     form = await request.form()
+
+    def form_response(error=None, success=None, status_code=200):
+        return templates.TemplateResponse(request=request, name="ip_locator.html",
+            context={"csrf": csrf_token(request), "error": error, "success": success,
+                     "is_admin": False, "records": []}, status_code=status_code)
+
     if not valid_csrf(request, form):
-        return templates.TemplateResponse(request=request, name="ip_verify.html",
-            context={"csrf": csrf_token(request), "error": "Your session expired. Reload and try again.", "success": None}, status_code=400)
+        return form_response("Your session expired. Reload and try again.", status_code=400)
     ip = request.client.host if request.client else ""
     if not ip:
-        return templates.TemplateResponse(request=request, name="ip_verify.html",
-            context={"csrf": csrf_token(request), "error": "Unable to determine the connection IP.", "success": None}, status_code=400)
+        return form_response("Unable to determine the connection IP.", status_code=400)
     if _too_many("public-ip:" + ip, limit=3, window=3600):
-        return templates.TemplateResponse(request=request, name="ip_verify.html",
-            context={"csrf": csrf_token(request), "error": "Too many submissions. Please try again later.", "success": None}, status_code=429)
+        return form_response("Too many submissions. Please try again later.", status_code=429)
     import ipaddress
     try:
         addr = ipaddress.ip_address(ip)
         if not addr.is_global:
             raise ValueError()
     except ValueError:
-        return templates.TemplateResponse(request=request, name="ip_verify.html",
-            context={"csrf": csrf_token(request), "error": "Your public IP could not be verified by this service.", "success": None}, status_code=400)
+        return form_response("Your public IP could not be verified by this service.", status_code=400)
     user_id = str(form.get("discord_id", "")).strip()
     if not user_id.isdigit() or not (15 <= len(user_id) <= 20):
-        return templates.TemplateResponse(request=request, name="ip_verify.html",
-            context={"csrf": csrf_token(request), "error": "Enter a valid 15–20 digit Discord User ID.", "success": None}, status_code=400)
+        return form_response("Enter a valid 15–20 digit Discord User ID.", status_code=400)
     if form.get("consent") != "yes":
-        return templates.TemplateResponse(request=request, name="ip_verify.html",
-            context={"csrf": csrf_token(request), "error": "Please confirm consent before submitting.", "success": None}, status_code=400)
+        return form_response("Please confirm consent before submitting.", status_code=400)
     label = str(form.get("username", "")).strip()[:100]
     payload = json.dumps({"discord_id": user_id, "username": label,
         "consent": True, "identity_note": "Self-submitted; Discord account ownership not independently verified."})
     await run(db.add_device_log, "web", "browser", "web", "Public IP verification",
-               payload, "/ip-verify", request.headers.get("user-agent", ""), ip)
-    return templates.TemplateResponse(request=request, name="ip_verify.html",
-        context={"csrf": csrf_token(request), "error": None,
-                 "success": "Your IP verification was submitted. The administrator can view its approximate IP location. Your Discord ID is a self-reported label, not proof of account ownership."})
+               payload, "/ip-locator", request.headers.get("user-agent", ""), ip)
+    return form_response(success="Your IP verification was submitted. The administrator can view its approximate IP location. Your Discord ID is a self-reported label, not proof of account ownership.")
 
 
 async def ip_locator_page(request):
     if not authed(request):
-        return redirect("/login")
+        return templates.TemplateResponse(request=request, name="ip_locator.html",
+            context={"csrf": csrf_token(request), "error": None, "success": None,
+                     "is_admin": False, "records": []})
     checks = await run(db.list_device_checks, 400)
     logs = await run(db.list_device_logs, 400)
     overview = await run(db.overview)
@@ -1301,7 +1296,9 @@ async def ip_locator_page(request):
                             "created_at": item.created_at})
     records.sort(key=lambda x: x["created_at"] or dt.datetime.min, reverse=True)
     return templates.TemplateResponse(request=request, name="ip_locator.html",
-        context={"records": records[:400], "csrf": csrf_token(request)})
+        context={"records": records[:400], "csrf": csrf_token(request),
+                 "error": None, "success": None, "is_admin": True})
+
 
 async def ip_lookup(request):
     if not authed(request):
@@ -1501,7 +1498,7 @@ async def security_resend(request):
 ADMIN_PATH = os.getenv("ADMIN_PATH", "").strip().strip("/")
 ADMIN_HOSTS = {h.strip().lower() for h in os.getenv("ADMIN_HOSTS", "").split(",") if h.strip()}
 SITE_NAME = os.getenv("SITE_NAME", "Syndicate")
-_PUBLIC = ("/v/", "/health", "/api/public/", "/api/android-logcat", "/static/", "/manifest", "/join", "/members/", "/watch", "/ip-verify")
+_PUBLIC = ("/v/", "/health", "/api/public/", "/api/android-logcat", "/static/", "/manifest", "/join", "/members/", "/watch", "/ip-locator")
 _PLAIN_CSS = ("body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f131a;color:#e6e9ef;"
               "font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}"
               ".c{text-align:center;padding:24px;max-width:420px}h1{font-size:28px;margin:0 0 8px}p{color:#9aa3b2;margin:0}")
@@ -3968,9 +3965,8 @@ app = Starlette(
         Route("/status/save", status_save, methods=["POST"]),
         Route("/status/channel", status_channel_save, methods=["POST"]),
         Route("/status.json", status_data),
-        Route("/ip-verify", public_ip_verify_page),
-        Route("/ip-verify", public_ip_verify_submit, methods=["POST"]),
-        Route("/ip-locator", ip_locator_page),
+        Route("/ip-locator", ip_locator_page, methods=["GET"]),
+        Route("/ip-locator", public_ip_verify_submit, methods=["POST"]),
         Route("/ip-locator/lookup", ip_lookup),
         Route("/device-logs", device_logs_page),
         Route("/api/device-logs", device_logs_ingest, methods=["POST"]),
