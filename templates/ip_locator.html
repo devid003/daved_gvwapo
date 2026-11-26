@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}IP Locator{% endblock %}
+{% block head %}
+<style>
+.locator{max-width:1100px}.loc-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:18px;overflow:hidden}.loc-head{padding:16px 20px;border-bottom:1px solid var(--line)}.loc-body{padding:16px 20px}.loc-form{display:flex;gap:9px;flex-wrap:wrap}.loc-form input{flex:1;min-width:240px}.loc-result{display:none;margin-top:14px;padding:14px;background:var(--sunk);border:1px solid var(--line);border-radius:8px}.loc-map{width:100%;height:310px;border:0;border-radius:8px;margin-top:12px}.loc-table{min-width:760px}.loc-note{font-size:13px;color:var(--muted)}
+</style>
+{% endblock %}
+{% block content %}
+<div class="locator">
+ <div class="head"><div><h1>⌖ IP Address Locator</h1><p>Approximate public IP locations from recorded verification and browser diagnostic events.</p></div><a class="btn" href="/ip-locator">↻ Refresh</a></div>
+ <section class="loc-card">
+  <div class="loc-head"><h2>Look up an IP address</h2><p class="muted small">Choose a recorded IP or enter a public IP manually. The lookup sends the IP to ipwho.is for approximate geolocation.</p></div>
+  <div class="loc-body">
+   <form id="loc-form" class="loc-form"><input id="loc-ip" type="text" placeholder="Example: 8.8.8.8" autocomplete="off" required><button class="btn primary" type="submit">Locate IP</button></form>
+   <p id="loc-status" class="loc-note" aria-live="polite"></p>
+   <div id="loc-result" class="loc-result"><b id="loc-title"></b><p id="loc-details" class="loc-note"></p><a id="loc-open" class="btn" target="_blank" rel="noopener noreferrer">Open map</a><iframe id="loc-map" class="loc-map" title="Approximate IP location map" loading="lazy"></iframe></div>
+  </div>
+ </section>
+ <section class="loc-card">
+  <div class="loc-head"><h2>Recorded IP history</h2><p class="muted small">{{ records|length }} unique IP addresses in the latest records.</p></div>
+  <div class="loc-body"><input id="loc-filter" type="search" placeholder="Filter IP, member, Discord ID…" style="width:100%;max-width:420px"></div>
+  <div class="scroll"><table class="loc-table"><thead><tr><th>IP address</th><th>Member / source</th><th>Discord ID</th><th>Source</th><th>Recorded</th><th></th></tr></thead><tbody id="loc-rows">
+  {% for r in records %}<tr data-filter="{{ (r.ip ~ ' ' ~ r.member ~ ' ' ~ r.user_id)|lower }}"><td><code>{{ r.ip }}</code></td><td>{{ r.member }}</td><td>{{ r.user_id or '—' }}</td><td>{{ r.source }}</td><td>{{ r.created_at|local }}</td><td><button class="btn sm loc-one" type="button" data-ip="{{ r.ip }}">Locate</button></td></tr>
+  {% else %}<tr><td colspan="6" class="empty">No IP records yet. IPs appear when a member submits the website verification page or sends opted-in browser diagnostics.</td></tr>{% endfor %}
+  </tbody></table></div>
+ </section>
+ <p class="loc-note">IP location is approximate. It may identify an ISP gateway, mobile-network exit point, VPN, or proxy—not a person's exact home or street. Location is not proof of identity. Use only for legitimate, authorized security review.</p>
+</div>
+<script>
+(function(){
+ const form=document.getElementById('loc-form'),input=document.getElementById('loc-ip'),status=document.getElementById('loc-status'),result=document.getElementById('loc-result');
+ async function locate(ip){
+  input.value=ip;status.textContent='Looking up approximate location…';result.style.display='none';
+  try{
+   const response=await fetch('lookup?ip='+encodeURIComponent(ip),{credentials:'same-origin'});
+   const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Lookup failed');
+   document.getElementById('loc-title').textContent=data.ip;
+   document.getElementById('loc-details').textContent=[data.city,data.region,data.country,data.postal?'Postal '+data.postal:'',data.isp?'ISP: '+data.isp:'',data.org?'Organization: '+data.org:'',data.latitude!=null?data.latitude+', '+data.longitude:''].filter(Boolean).join(' · ');
+   document.getElementById('loc-open').href=data.map_url||'#';
+   if(data.latitude!=null&&data.longitude!=null){
+    const lat=Number(data.latitude),lon=Number(data.longitude),box=[lon-.12,lat-.08,lon+.12,lat+.08].join('%2C');
+    document.getElementById('loc-map').src='https://www.openstreetmap.org/export/embed.html?bbox='+box+'&layer=mapnik&marker='+lat+'%2C'+lon;
+   }else{document.getElementById('loc-map').removeAttribute('src');}
+   result.style.display='block';status.textContent='Approximate location found. The map marker is not an exact address.';
+  }catch(err){status.textContent=err.message||'Unable to locate this IP.';}
+ }
+ form.addEventListener('submit',e=>{e.preventDefault();locate(input.value.trim());});
+ document.querySelectorAll('.loc-one').forEach(btn=>btn.addEventListener('click',()=>locate(btn.dataset.ip)));
+ document.getElementById('loc-filter').addEventListener('input',e=>{
+  const q=e.target.value.toLowerCase();document.querySelectorAll('#loc-rows tr[data-filter]').forEach(row=>row.hidden=!row.dataset.filter.includes(q));
+ });
+})();
+</script>
+{% endblock %}
