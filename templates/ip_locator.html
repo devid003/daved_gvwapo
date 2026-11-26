@@ -2,7 +2,7 @@
 {% block title %}IP Locator{% endblock %}
 {% block head %}
 <style>
-.locator{max-width:1100px}.loc-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:18px;overflow:hidden}.loc-head{padding:16px 20px;border-bottom:1px solid var(--line)}.loc-body{padding:16px 20px}.loc-form{display:flex;gap:9px;flex-wrap:wrap}.loc-form input{flex:1;min-width:240px}.loc-result{display:none;margin-top:14px;padding:14px;background:var(--sunk);border:1px solid var(--line);border-radius:8px}.loc-map{width:100%;height:310px;border:0;border-radius:8px;margin-top:12px}.loc-table{min-width:980px}.server-tag{display:inline-flex;align-items:center;padding:4px 9px;border-radius:999px;background:var(--sunk);border:1px solid var(--line);font-size:12px;font-weight:700;white-space:nowrap}.server-meta{display:block;font-size:11px;color:var(--muted);margin-top:4px}.loc-note{font-size:13px;color:var(--muted)}
+.locator{max-width:1100px}.loc-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:18px;overflow:hidden}.loc-head{padding:16px 20px;border-bottom:1px solid var(--line)}.loc-body{padding:16px 20px}.loc-form{display:flex;gap:9px;flex-wrap:wrap}.loc-form input{flex:1;min-width:240px}.loc-result{display:none;margin-top:14px;padding:14px;background:var(--sunk);border:1px solid var(--line);border-radius:8px}.loc-map-note{margin-top:12px;padding:18px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:13px}.loc-table{min-width:980px}.server-tag{display:inline-flex;align-items:center;padding:4px 9px;border-radius:999px;background:var(--sunk);border:1px solid var(--line);font-size:12px;font-weight:700;white-space:nowrap}.server-meta{display:block;font-size:11px;color:var(--muted);margin-top:4px}.loc-note{font-size:13px;color:var(--muted)}
 </style>
 {% endblock %}
 {% block content %}
@@ -13,7 +13,7 @@
   <div class="loc-body">
    <form id="loc-form" class="loc-form"><input id="loc-ip" type="text" placeholder="Example: 8.8.8.8" autocomplete="off" required><button class="btn primary" type="submit">Locate IP</button></form>
    <p id="loc-status" class="loc-note" aria-live="polite"></p>
-   <div id="loc-result" class="loc-result"><b id="loc-title"></b><p id="loc-details" class="loc-note"></p><a id="loc-open" class="btn" target="_blank" rel="noopener noreferrer">Open map</a><iframe id="loc-map" class="loc-map" title="Approximate IP location map" loading="lazy"></iframe></div>
+   <div id="loc-result" class="loc-result"><b id="loc-title"></b><p id="loc-details" class="loc-note"></p><a id="loc-open" class="btn primary" target="_blank" rel="noopener noreferrer">Open location in map ↗</a><div class="loc-map-note">The map opens in a separate tab to avoid embedded-map blocking by some browsers or hosting security policies.</div></div>
   </div>
  </section>
  <section class="loc-card">
@@ -38,9 +38,8 @@
    document.getElementById('loc-details').textContent=[data.city,data.region,data.country,data.postal?'Postal '+data.postal:'',data.isp?'ISP: '+data.isp:'',data.org?'Organization: '+data.org:'',data.latitude!=null?data.latitude+', '+data.longitude:''].filter(Boolean).join(' · ');
    document.getElementById('loc-open').href=data.map_url||'#';
    if(data.latitude!=null&&data.longitude!=null){
-    const lat=Number(data.latitude),lon=Number(data.longitude),box=[lon-.12,lat-.08,lon+.12,lat+.08].join('%2C');
-    document.getElementById('loc-map').src='https://www.openstreetmap.org/export/embed.html?bbox='+box+'&layer=mapnik&marker='+lat+'%2C'+lon;
-   }else{document.getElementById('loc-map').removeAttribute('src');}
+    document.getElementById('loc-open').href='https://www.openstreetmap.org/?mlat='+encodeURIComponent(data.latitude)+'&mlon='+encodeURIComponent(data.longitude)+'#map=12/'+encodeURIComponent(data.latitude)+'/'+encodeURIComponent(data.longitude);
+   }else{document.getElementById('loc-open').href=data.map_url||'#';}
    result.style.display='block';status.textContent='Approximate location found. The map marker is not an exact address.';
   }catch(err){status.textContent=err.message||'Unable to locate this IP.';}
  }
