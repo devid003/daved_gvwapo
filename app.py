@@ -105,6 +105,12 @@ def csrf_token(request) -> str:
         request.session["csrf"] = secrets.token_urlsafe(16)
     return request.session["csrf"]
 
+def valid_csrf(request, form) -> bool:
+    """Reject missing tokens as well as mismatched tokens."""
+    expected = request.session.get("csrf")
+    supplied = str(form.get("csrf", ""))
+    return bool(expected and supplied and hmac.compare_digest(supplied, expected))
+
 
 def redirect(url: str):
     return RedirectResponse(url, status_code=303)
@@ -119,7 +125,7 @@ async def guarded_post(request):
     if not authed(request):
         return None, redirect("/login")
     form = await request.form()
-    if not hmac.compare_digest(str(form.get("csrf", "")), request.session.get("csrf", "")):
+    if not valid_csrf(request, form):
         return None, PlainTextResponse("Bad CSRF token. Go back and reload the page.", status_code=400)
     return form, None
 
@@ -127,7 +133,7 @@ async def guarded_post(request):
 async def public_post(request):
     """For member-facing forms: CSRF check only (no admin login needed)."""
     form = await request.form()
-    if not hmac.compare_digest(str(form.get("csrf", "")), request.session.get("csrf", "")):
+    if not valid_csrf(request, form):
         return None, PlainTextResponse("Bad CSRF token. Go back and reload the page.", status_code=400)
     return form, None
 
@@ -184,7 +190,7 @@ async def login(request):
     status = 200
     if request.method == "POST":
         form = await request.form()
-        if not hmac.compare_digest(str(form.get("csrf", "")), request.session.get("csrf", "")):
+        if not valid_csrf(request, form):
             error, status = "Your session expired. Reload the page and try again.", 400
             return templates.TemplateResponse(request=request, name="login.html",
                                               context={"error": error, "csrf": csrf_token(request)},
