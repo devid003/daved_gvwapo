@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container" style="max-width:1200px;margin:28px auto;padding:0 16px">
+  <h1>Android Logcat</h1>
+  <p style="color:#94a3b8">Opt-in Android system log entries received from paired companion devices. Only devices with the required ADB-granted permission can send full Logcat.</p>
+  <div style="overflow:auto;background:#0f172a;border:1px solid #334155;border-radius:12px">
+    <table style="width:100%;border-collapse:collapse;color:#e2e8f0">
+      <thead><tr><th style="padding:12px;text-align:left">Time (UTC)</th><th>Device</th><th>Priority</th><th>Tag</th><th style="text-align:left">Message</th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr style="border-top:1px solid #334155">
+          <td style="padding:10px;white-space:nowrap">{{ row.created_at }}</td><td>{{ row.device_name }}<br><small>{{ row.device_id }}</small></td>
+          <td>{{ row.priority }}</td><td>{{ row.tag }}</td>
+          <td style="padding:10px;white-space:pre-wrap;overflow-wrap:anywhere">{{ row.message }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" style="padding:24px;text-align:center;color:#94a3b8">No Android Logcat entries yet. Install and pair the companion app, grant READ_LOGS with ADB, and enable collection with consent.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
