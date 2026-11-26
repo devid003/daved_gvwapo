@@ -67,19 +67,66 @@ def _duration(path: Path) -> float:
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
+def _highlight_starts(source: Path, duration: float, clip_seconds: int) -> list:
+    """Choose up to three energetic scene-change windows using FFmpeg only.
+
+    This is lightweight activity-based selection, not semantic AI understanding.
+    """
+    scan = subprocess.run(
+        [FFMPEG, "-hide_banner", "-i", str(source), "-an",
+         "-vf", "select='gt(scene,0.22)',showinfo", "-vsync", "vfr",
+         "-f", "null", "-"],
+        capture_output=True, text=True, timeout=150
+    )
+    cuts = []
+    for match in re.finditer(r"pts_time:([0-9]+(?:\\.[0-9]+)?)", scan.stderr or ""):
+        try:
+            cuts.append(float(match.group(1)))
+        except ValueError:
+            pass
+
+    length = min(float(clip_seconds), duration)
+    if duration <= length:
+        return [0.0]
+    step = max(2.0, min(5.0, length / 4.0))
+    candidates = []
+    start = 0.0
+    while start + length <= duration + 0.01:
+        end = start + length
+        # Give more weight to cuts near the middle, while counting all cuts in the window.
+        score = sum(1.0 + max(0.0, 1.0 - abs(t - (start + length / 2)) / (length / 2)) for t in cuts if start <= t <= end)
+        candidates.append((score, start))
+        start += step
+
+    chosen = []
+    for score, start in sorted(candidates, key=lambda item: (item[0], -item[1]), reverse=True):
+        if all(abs(start - picked) >= length * 0.8 for picked in chosen):
+            chosen.append(start)
+        if len(chosen) == 3:
+            break
+    if len(chosen) < min(3, len(candidates)):
+        for _, start in sorted(candidates, key=lambda item: item[1]):
+            if all(abs(start - picked) >= length * 0.8 for picked in chosen):
+                chosen.append(start)
+            if len(chosen) == 3:
+                break
+    if not chosen:
+        chosen = [max(0.0, (duration - length) / 2)]
+    return sorted(chosen)
+
+
 def _process(source: Path, folder: Path, orientation: str, clip_seconds: int, progress=None) -> list:
     duration = _duration(source)
     if duration <= 0 or duration > MAX_SOURCE_SECONDS:
         raise ValueError("Hanggang 10 minutes lang ang source video sa free beta.")
     width, height = (1080, 1920) if orientation == "portrait" else (1920, 1080)
+    starts = _highlight_starts(source, duration, clip_seconds)
     outputs = []
-    total = min(30, int((duration + clip_seconds - 1) // clip_seconds))
-    start = 0.0
-    index = 1
-    while start < duration and index <= 30:
+    total = len(starts)
+    for index, start in enumerate(starts, 1):
         length = min(float(clip_seconds), duration - start)
         if length < 3:
-            break
+            continue
         name = f"clip_{uuid.uuid4().hex[:12]}.mp4"
         target = folder / name
         vf = (f"scale={width}:{height}:force_original_aspect_ratio=increase,"
@@ -119,9 +166,11 @@ def _process(source: Path, folder: Path, orientation: str, clip_seconds: int, pr
             target.unlink(missing_ok=True)
             raise RuntimeError((error_text or "FFmpeg export failed")[-700:])
         outputs.append({"name": name, "url": f"/watch/autoclip/file/{name}",
-                        "seconds": round(length, 1), "size": target.stat().st_size})
-        start += clip_seconds
-        index += 1
+                        "seconds": round(length, 1), "size": target.stat().st_size,
+                        "start_seconds": round(start, 1)})
+        if progress:
+            progress({"stage": "processing", "current": index, "total": total,
+                      "percent": round(5 + index / total * 90, 1)})
         if _storage_used(folder) > MAX_STORAGE:
             for item in outputs:
                 (folder / item["name"]).unlink(missing_ok=True)
