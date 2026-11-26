@@ -184,6 +184,11 @@ async def login(request):
     status = 200
     if request.method == "POST":
         form = await request.form()
+        if not hmac.compare_digest(str(form.get("csrf", "")), request.session.get("csrf", "")):
+            error, status = "Your session expired. Reload the page and try again.", 400
+            return templates.TemplateResponse(request=request, name="login.html",
+                                              context={"error": error, "csrf": csrf_token(request)},
+                                              status_code=status)
         now = time.time()
         FAILS[:] = [t for t in FAILS if now - t < 300]
         if len(FAILS) >= 10:
@@ -196,7 +201,9 @@ async def login(request):
         else:
             FAILS.append(now)
             error, status = "Wrong password.", 401
-    return templates.TemplateResponse(request=request, name="login.html", context={"error": error}, status_code=status)
+    return templates.TemplateResponse(request=request, name="login.html",
+                                      context={"error": error, "csrf": csrf_token(request)},
+                                      status_code=status)
 
 
 async def logout(request):
