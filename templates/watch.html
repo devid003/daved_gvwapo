@@ -507,14 +507,14 @@ a.btn{text-decoration:none}
       <h2 id="autoclip-title">Auto Clip <span style="font-size:12px;font-weight:600;color:#38bdf8">FREE BETA</span></h2>
       <form id="autoclip-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <label class="ac-field"><b>Source video</b><input type="file" name="video" accept="video/mp4,video/quicktime,video/x-m4v,video/x-matroska,video/webm" required><span class="ac-muted">MP4 / MOV / M4V / MKV / WEBM · max 200 MB · max 10 minutes</span></label>
+        <label class="ac-field"><b>Source video</b><input type="file" name="video" accept="video/mp4,video/quicktime,video/x-m4v,video/x-matroska,video/webm" required><span class="ac-muted">MP4 / MOV / M4V / MKV / WEBM · max 1 GB · max 10 minutes</span></label>
         <b>Video orientation</b>
         <div class="ac-grid">
           <label class="ac-choice"><input type="radio" name="orientation" value="portrait" checked><span><b>Portrait 9:16</b><br><small class="ac-muted">1080 × 1920 · Reels / TikTok / Shorts</small></span></label>
           <label class="ac-choice"><input type="radio" name="orientation" value="landscape"><span><b>Landscape 16:9</b><br><small class="ac-muted">1920 × 1080 · YouTube / Facebook</small></span></label>
         </div>
-        <label class="ac-field"><b>Clip length</b><select name="clip_seconds"><option value="15">15 seconds</option><option value="30" selected>30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select></label>
-        <button class="ac-submit" id="autoclip-submit" type="submit">Create clips · 60 FPS · No watermark</button>
+        <label class="ac-field"><b>Highlight clip length</b><select name="clip_seconds"><option value="15">15 seconds</option><option value="30" selected>30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select></label>
+        <button class="ac-submit" id="autoclip-submit" type="submit">Find 3 best highlights · 60 FPS · No watermark</button>
         <p class="ac-status ac-muted" id="autoclip-status" role="status" aria-live="polite"></p>
         <div class="ac-progress" id="autoclip-progress" aria-live="polite">
           <div class="ac-progress-head"><span><span class="ac-progress-spinner" id="autoclip-spinner"></span><span id="autoclip-progress-label">Preparing video…</span></span><span id="autoclip-progress-percent">0%</span></div>
@@ -523,7 +523,7 @@ a.btn{text-decoration:none}
         </div>
       </form>
       <div class="ac-results" id="autoclip-results"></div>
-      <p class="ac-muted">Note: This free beta automatically splits the video into equal-length segments; it does not yet identify story highlights or generate AI captions. Video is center-cropped to fill the selected ratio. Storage is capped at 1 GB on the server and may be temporary on the free hosting disk.</p>
+      <p class="ac-muted">Auto Clip selects up to 3 moments with the most scene changes, then exports each as an MP4. This is lightweight activity-based detection, not semantic AI: it cannot understand story context or guarantee the most meaningful moments. Video is center-cropped to fill the selected ratio. Free beta limit: 1 GB per member and 10 minutes per source video.</p>
     </section>
   </div>
 </section>
@@ -1166,7 +1166,7 @@ a.btn{text-decoration:none}
    const res=await fetch('/watch/autoclip/create',{method:'POST',body:new FormData(form),credentials:'same-origin'});
    const started=await res.json();
    if(!res.ok||!started.ok)throw new Error(started.message||'Hindi natuloy ang upload.');
-   setProgress(5,'Video uploaded · Processing started','Creating your MP4 clips at 1080p / 60 FPS.',false);
+   setProgress(5,'Video uploaded · Processing started','Scanning the video and selecting up to 3 highlight moments.',false);
    let data;
    while(true){
     await new Promise(resolve=>setTimeout(resolve,2000));
@@ -1177,9 +1177,9 @@ a.btn{text-decoration:none}
     const total=Math.max(1,Number(data.total)||1);
     const current=Math.max(1,Number(data.current)||1);
     const pct=data.stage==='processing'?Math.min(99,Math.max(5,Number(data.percent)||5)):5;
-    const label=data.stage==='processing'?'Processing clip '+current+' of '+total+'…':'Preparing video…';
+    const label=data.stage==='processing'?'Exporting highlight '+current+' of '+total+'…':(data.stage==='scanning'?'Scanning for highlights…':'Preparing video…');
     status.textContent=label+' Please keep this page open.';
-    setProgress(pct,label,'Your clips are being exported. Download links will appear when complete.',false);
+    setProgress(pct,label,'Exporting up to 3 selected highlights. Download links will appear when complete.',false);
    }
    if(!data.ok)throw new Error(data.message||'Hindi natapos ang video processing.');
    status.textContent=data.message;
@@ -1194,7 +1194,7 @@ a.btn{text-decoration:none}
     row.append(info,link,del);results.appendChild(row);
    });
   }catch(err){status.textContent=err.message||'Processing error.';setProgress(0,'Processing failed',status.textContent,true);}
-  finally{btn.disabled=false;if(!results.children.length)btn.textContent='Create clips · 60 FPS · No watermark';}
+  finally{btn.disabled=false;if(!results.children.length)btn.textContent='Find 3 best highlights · 60 FPS · No watermark';}
  });
 })();
 </script>
