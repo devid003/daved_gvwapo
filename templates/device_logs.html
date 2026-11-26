@@ -41,7 +41,7 @@
   </div>
   <section class="dl-card">
     <div class="dl-card-head"><div><h2>Diagnostics consent</h2><p>Enable collection on this browser. Users must opt in on each device/browser.</p></div><span id="diag-badge" class="dl-pill">OFF</span></div>
-    <div class="dl-consent"><input id="diag-consent" type="checkbox"><div><b>I consent to sending browser diagnostic events from this device.</b><div class="dl-sub">Collects JavaScript errors, unhandled promise rejections, and failed fetch requests. Does not collect form contents or request bodies. You can turn this off anytime.</div><p id="diag-state" class="dl-sub" aria-live="polite">Diagnostics are off.</p></div></div>
+    <div class="dl-consent"><input id="diag-consent" type="checkbox" aria-label="Enable browser diagnostics"><div><b>I consent to sending browser diagnostic events from this device.</b><div class="dl-sub">Collects JavaScript errors, unhandled promise rejections, and failed fetch requests. Does not collect form contents or request bodies. IP address is recorded with submitted diagnostics and login events for admin security review. You can turn this off anytime.</div><p id="diag-state" class="dl-sub" aria-live="polite">Diagnostics are off.</p></div></div>
   </section>
   <section class="dl-card">
     <div class="dl-card-head"><div><h2>Recent device events</h2><p>{{ rows|length }} latest events · Up to 400 records shown</p></div></div>
@@ -50,17 +50,18 @@
       <select id="dl-event"><option value="">All event types</option><option value="javascript_error">JavaScript error</option><option value="unhandled_rejection">Unhandled rejection</option><option value="network_error">Network error</option></select>
       <input id="dl-search" type="search" placeholder="Search device, browser, page…">
     </div>
-    <div class="scroll"><table class="dl-table"><thead><tr><th>#</th><th>Time</th><th>Device</th><th>Browser</th><th>Event</th><th>Page &amp; details</th></tr></thead><tbody id="dl-rows">
+    <div class="scroll"><table class="dl-table"><thead><tr><th>#</th><th>Time</th><th>Device</th><th>Browser</th><th>IP address</th><th>Event</th><th>Page &amp; details</th></tr></thead><tbody id="dl-rows">
     {% for r in rows %}
-      <tr data-platform="{{ r.platform|lower }}" data-event="{{ r.event_type }}" data-search="{{ (r.device ~ ' ' ~ r.browser ~ ' ' ~ r.page ~ ' ' ~ r.message)|lower }}">
+      <tr data-platform="{{ r.platform|lower }}" data-event="{{ r.event_type }}" data-search="{{ (r.device ~ ' ' ~ r.browser ~ ' ' ~ r.ip_address ~ ' ' ~ r.page ~ ' ' ~ r.message)|lower }}">
         <td>{{ loop.index }}</td>
         <td class="nowrap">{{ r.created_at|local }}</td>
         <td><div class="dl-device"><span class="symbol">{% if r.platform|lower == 'android' %}🤖{% elif r.platform|lower == 'ios' %}{% else %}▣{% endif %}</span><span><b>{{ r.device or 'Device unavailable' }}</b><br><span class="dl-sub">{{ r.platform or 'Unknown' }}</span></span></div></td>
         <td>{{ r.browser or 'Unknown' }}</td>
+        <td class="nowrap">{{ r.ip_address or '—' }}</td>
         <td><span class="dl-pill">{{ r.event_type|replace('_',' ') }}</span></td>
         <td><b>{{ r.page or '—' }}</b><div class="dl-details">{{ r.message or 'No details' }}</div></td>
       </tr>
-    {% else %}<tr><td colspan="6" class="dl-empty">No device events received yet. Enable diagnostics on a device and reproduce an issue to see events here.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="7" class="dl-empty">No device events received yet. Enable diagnostics on a device and reproduce an issue to see events here.</td></tr>{% endfor %}
     </tbody></table></div>
   </section>
   <p class="dl-sub">Privacy note: this page shows browser-level diagnostics only. A website cannot read the full Android Logcat or iOS system logs. Exact iPhone/iPad model may not be available from the browser.</p>
@@ -68,12 +69,13 @@
 <script>
 (function(){
  var box=document.getElementById('diag-consent'),state=document.getElementById('diag-state'),badge=document.getElementById('diag-badge'),enabled=false;
- try{enabled=localStorage.getItem('deviceDiagConsent')==='yes';}catch(e){}
- function paint(){box.checked=enabled;state.textContent=enabled?'Diagnostics are enabled on this browser.':'Diagnostics are off.';badge.textContent=enabled?'ON':'OFF';badge.className='dl-pill'+(enabled?' ok':'');}
- paint();
+ var storageOK=true;
+ try{enabled=localStorage.getItem('deviceDiagConsent')==='yes';}catch(e){storageOK=false;}
+ function paint(note){box.checked=enabled;state.textContent=note||(enabled?'Diagnostics are enabled on this browser.':'Diagnostics are off.');badge.textContent=enabled?'ON':'OFF';badge.className='dl-pill'+(enabled?' ok':'');}
+ paint(storageOK?'':'Browser storage is blocked. Allow site storage to save your consent setting.');
  function identify(){var ua=navigator.userAgent||'',p=/iPhone|iPad|iPod/.test(ua)?'iOS':(/Android/i.test(ua)?'Android':'Other');var b=/Edg\\//.test(ua)?'Edge':/CriOS/.test(ua)?'Chrome iOS':/Chrome\\//.test(ua)?'Chrome':/Firefox\\//.test(ua)?'Firefox':/Safari\\//.test(ua)?'Safari':'Browser';var d=p==='iOS'?'Apple device (exact model unavailable)':((ua.match(/Android[^;]*;\\s*([^;)]+)/i)||[])[1]||'Android device');return {platform:p,browser:b,device:d};}
  function send(type,message){if(!enabled)return;var id=identify();var payload={consent:true,platform:id.platform,browser:id.browser,device:id.device,type:type,message:String(message||'').slice(0,2000),page:location.pathname};try{fetch('/api/device-logs',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),keepalive:true}).catch(function(){});}catch(e){}}
- box.addEventListener('change',function(){enabled=box.checked;try{localStorage.setItem('deviceDiagConsent',enabled?'yes':'no');}catch(e){}paint();});
+ box.addEventListener('change',function(){var requested=box.checked;try{localStorage.setItem('deviceDiagConsent',requested?'yes':'no');enabled=requested;paint();}catch(e){enabled=false;box.checked=false;paint('Could not save consent. Enable browser storage/cookies for this site, then try again.');}});
  window.addEventListener('error',function(e){send('javascript_error',(e.message||'Script error')+' ('+(e.filename||'')+':'+(e.lineno||0)+')');});
  window.addEventListener('unhandledrejection',function(e){send('unhandled_rejection',e.reason&&e.reason.message?e.reason.message:'Unhandled promise rejection');});
  var original=window.fetch;window.fetch=function(){var args=arguments;return original.apply(this,args).then(function(r){if(!r.ok){var u=typeof args[0]==='string'?args[0]:(args[0]&&args[0].url)||'';send('network_error','HTTP '+r.status+' '+u.split('?')[0]);}return r;},function(err){var u=typeof args[0]==='string'?args[0]:(args[0]&&args[0].url)||'';send('network_error',(err&&err.message||'Fetch failed')+' '+u.split('?')[0]);throw err;});};
