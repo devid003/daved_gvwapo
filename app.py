@@ -362,13 +362,13 @@ async def tickets_save(request):
     }
     if gid is None:
         flash(request, "Enter a valid Discord Server ID first.")
-        return redirect("/")
+        return redirect("/tickets")
     values = {}
     for key, field in fields.items():
         raw = str(form.get(field, "")).strip()
         if not raw.isdigit() or not (15 <= len(raw) <= 20):
             flash(request, f"Invalid Discord ID for {field.replace('_', ' ')}.")
-            return redirect("/")
+            return redirect("/tickets")
         values[key] = raw
     try:
         for key, value in values.items():
@@ -376,9 +376,9 @@ async def tickets_save(request):
     except Exception:
         log.exception("ticket dashboard settings save failed for guild %s", gid)
         flash(request, "Couldn't save ticket settings. Check the server logs.")
-        return redirect("/")
+        return redirect("/tickets")
     flash(request, f"Ticket settings saved for server {gid}. Run /ticketpanel in Discord to publish the panel.")
-    return redirect("/")
+    return redirect("/tickets")
 
 
 async def members_set(request):
