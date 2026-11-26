@@ -1238,6 +1238,44 @@ async def device_logs_ingest(request):
     return JSONResponse({"ok": True})
 
 
+
+async def android_logcat_ingest(request):
+    expected = os.getenv("ANDROID_LOGCAT_API_KEY", "")
+    supplied = request.headers.get("x-logcat-key", "")
+    if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False}, status_code=400)
+    if not isinstance(data, dict) or data.get("consent") is not True:
+        return JSONResponse({"ok": False, "error": "explicit consent required"}, status_code=400)
+    entries = data.get("entries")
+    if not isinstance(entries, list) or not entries or len(entries) > 100:
+        return JSONResponse({"ok": False, "error": "entries must contain 1-100 items"}, status_code=400)
+    clean = []
+    import re
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        message = str(item.get("message", ""))[:4000]
+        message = re.sub(r"(?i)(token|password|authorization|api[_-]?key)\\s*[:=]\\s*[^\\s,;]+", r"\\1=[redacted]", message)
+        clean.append({"device_id": item.get("device_id", ""), "device_name": item.get("device_name", ""),
+                      "app_version": item.get("app_version", ""), "priority": item.get("priority", "I"),
+                      "tag": item.get("tag", ""), "message": message})
+    if not clean:
+        return JSONResponse({"ok": False, "error": "no valid entries"}, status_code=400)
+    await run(db.add_android_logcat_entries, clean)
+    return JSONResponse({"ok": True, "accepted": len(clean)})
+
+
+async def android_logcat_page(request):
+    if not authed(request):
+        return redirect("/login")
+    rows = await run(db.list_android_logcat_entries, 300)
+    return templates.TemplateResponse(request=request, name="android_logcat.html", context={"rows": rows})
+
+
 async def security_page_v2(request):
     if not authed(request):
         return redirect("/login")
@@ -3780,6 +3818,8 @@ app = Starlette(
         Route("/status.json", status_data),
         Route("/device-logs", device_logs_page),
         Route("/api/device-logs", device_logs_ingest, methods=["POST"]),
+        Route("/api/android-logcat", android_logcat_ingest, methods=["POST"]),
+        Route("/android-logcat", android_logcat_page),
         Route("/security", security_page_v2),
         Route("/security/gate", security_gate, methods=["POST"]),
         Route("/security/log", security_log, methods=["POST"]),
