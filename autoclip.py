@@ -1,6 +1,8 @@
 """Free member Auto Clip beta: split a source video into clean, watermark-free MP4 clips."""
 import asyncio
 import hashlib
+import json
+import tempfile
 import os
 import re
 import shutil
@@ -19,7 +21,6 @@ MAX_UPLOAD = 200 * 1024 * 1024
 MAX_SOURCE_SECONDS = 600
 ALLOWED = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
-JOBS = {}
 
 
 def _user_dir(username: str) -> Path:
@@ -27,6 +28,19 @@ def _user_dir(username: str) -> Path:
     path = ROOT / key
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _job_path(folder: Path, job_id: str) -> Path:
+    if not re.fullmatch(r"[a-f0-9]{32}", job_id):
+        raise ValueError("Invalid job ID.")
+    return folder / f"job_{job_id}.json"
+
+
+def _save_job(folder: Path, job_id: str, data: dict) -> None:
+    path = _job_path(folder, job_id)
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(data), encoding="utf-8")
+    os.replace(temp, path)
 
 
 def _storage_used() -> int:
@@ -56,16 +70,12 @@ def _process(source: Path, folder: Path, orientation: str, clip_seconds: int, pr
     duration = _duration(source)
     if duration <= 0 or duration > MAX_SOURCE_SECONDS:
         raise ValueError("Hanggang 10 minutes lang ang source video sa free beta.")
-    if orientation == "portrait":
-        width, height = 1080, 1920
-    else:
-        width, height = 1920, 1080
+    width, height = (1080, 1920) if orientation == "portrait" else (1920, 1080)
     outputs = []
+    total = min(30, int((duration + clip_seconds - 1) // clip_seconds))
     start = 0.0
     index = 1
     while start < duration and index <= 30:
-        if progress:
-            progress({'stage': 'processing', 'current': index, 'total': min(30, int((duration + clip_seconds - 1) // clip_seconds))})
         length = min(float(clip_seconds), duration - start)
         if length < 3:
             break
@@ -77,11 +87,36 @@ def _process(source: Path, folder: Path, orientation: str, clip_seconds: int, pr
                "-ss", f"{start:.3f}", "-i", str(source), "-t", f"{length:.3f}",
                "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
                "-threads", "2", "-c:a", "aac", "-b:a", "160k",
-               "-movflags", "+faststart", str(target)]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        if result.returncode != 0 or not target.exists() or target.stat().st_size == 0:
+               "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(target)]
+        if progress:
+            progress({"stage": "processing", "current": index, "total": total, "percent": int(((index - 1) / total) * 90) + 5})
+        with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as errfile:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errfile,
+                                    text=True, bufsize=1)
+            try:
+                for line in proc.stdout:
+                    if not progress:
+                        continue
+                    key, sep, value = line.strip().partition("=")
+                    if sep and key == "out_time_ms":
+                        try:
+                            elapsed = int(value) / 1000000
+                            clip_pct = min(99.0, max(0.0, elapsed / max(length, 0.1) * 100))
+                            overall = 5 + ((index - 1 + clip_pct / 100) / total) * 90
+                            progress({"stage": "processing", "current": index, "total": total,
+                                      "percent": round(overall, 1)})
+                        except ValueError:
+                            pass
+                code = proc.wait(timeout=600)
+            except Exception:
+                proc.kill()
+                proc.wait()
+                raise
+            errfile.seek(0)
+            error_text = errfile.read()
+        if code != 0 or not target.exists() or target.stat().st_size == 0:
             target.unlink(missing_ok=True)
-            raise RuntimeError((result.stderr or "FFmpeg export failed")[-700:])
+            raise RuntimeError((error_text or "FFmpeg export failed")[-700:])
         outputs.append({"name": name, "url": f"/watch/autoclip/file/{name}",
                         "seconds": round(length, 1), "size": target.stat().st_size})
         start += clip_seconds
@@ -94,15 +129,25 @@ def _process(source: Path, folder: Path, orientation: str, clip_seconds: int, pr
 
 
 def _run_job(job_id: str, source: Path, folder: Path, orientation: str, clip_seconds: int):
-    job = JOBS[job_id]
     try:
-        job["stage"] = "processing"
-        clips = _process(source, folder, orientation, clip_seconds, progress=lambda p: job.update(p))
-        job.update({"ok": True, "done": True, "stage": "done", "clips": clips,
-                    "message": f"Tapos na! {len(clips)} clip(s) ang nagawa. Walang watermark."})
+        def update(values):
+            try:
+                current = json.loads(_job_path(folder, job_id).read_text(encoding="utf-8"))
+                current.update(values)
+                _save_job(folder, job_id, current)
+            except Exception:
+                pass
+        update({"stage": "processing", "percent": 1})
+        clips = _process(source, folder, orientation, clip_seconds, progress=update)
+        update({"ok": True, "done": True, "stage": "done", "percent": 100,
+                "clips": clips,
+                "message": f"Tapos na! {len(clips)} clip(s) ang nagawa. Walang watermark."})
     except Exception as exc:
-        job.update({"ok": False, "done": True, "stage": "error",
+        try:
+            update({"ok": False, "done": True, "stage": "error",
                     "message": f"Processing failed: {str(exc)[:400]}"})
+        except Exception:
+            pass
     finally:
         source.unlink(missing_ok=True)
 
@@ -152,8 +197,8 @@ async def create_clips(request):
         if size == 0:
             raise ValueError("Empty o invalid ang video file.")
         job_id = uuid.uuid4().hex
-        JOBS[job_id] = {"owner": username, "done": False, "ok": False,
-                        "stage": "queued", "current": 0, "total": 0}
+        _save_job(folder, job_id, {"done": False, "ok": True, "stage": "queued",
+                                   "current": 0, "total": 0, "percent": 0})
         asyncio.create_task(asyncio.to_thread(_run_job, job_id, source, folder, orientation, clip_seconds))
         return JSONResponse({"ok": True, "job_id": job_id, "message": "Upload complete. Processing started."})
     except ValueError as exc:
@@ -169,10 +214,12 @@ async def job_status(request):
     if not username:
         return JSONResponse({"ok": False, "message": "Mag-login muna."}, status_code=401)
     job_id = request.path_params.get("job_id", "")
-    job = JOBS.get(job_id)
-    if not job or job.get("owner") != username:
-        return JSONResponse({"ok": False, "message": "Processing job not found. Subukan ulit."}, status_code=404)
-    return JSONResponse({k: v for k, v in job.items() if k != "owner"})
+    try:
+        path = _job_path(_user_dir(username), job_id)
+        job = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError, json.JSONDecodeError):
+        return JSONResponse({"ok": False, "message": "Processing job not found. Pakisubukang muli."}, status_code=404)
+    return JSONResponse(job)
 
 
 async def get_clip(request):
