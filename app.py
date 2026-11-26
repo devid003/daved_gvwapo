@@ -1289,10 +1289,18 @@ async def ip_locator_page(request):
                             "source": "Consent-based public verification",
                             "guild_id": "", "server_name": "Public / outsider",
                             "created_at": item.created_at})
-        elif item.event_type in ("login_success", "login_failed"):
-            member_name = (item.message or "").removeprefix("Member: ").strip() or "Member"
+        elif item.event_type in ("login_success", "login_failed", "prompt_page_access",
+                                  "prompt_generate", "prompt_chat"):
+            member_name = (item.message or "").removeprefix("Member: ").split(" | ", 1)[0].strip() or "Member"
+            source_labels = {
+                "login_success": "Member login",
+                "login_failed": "Failed member login",
+                "prompt_page_access": "Prompt page access",
+                "prompt_generate": "Prompt / image generation",
+                "prompt_chat": "Prompt workspace AI chat",
+            }
             records.append({"ip": ip, "member": member_name,
-                            "user_id": "", "source": "Member login" if item.event_type == "login_success" else "Failed member login",
+                            "user_id": "", "source": source_labels.get(item.event_type, "Member activity"),
                             "guild_id": "", "server_name": "Member accounts",
                             "created_at": item.created_at})
         else:
@@ -2289,9 +2297,22 @@ async def member_logout(request):
     return redirect("/members/login")
 
 
+async def _record_member_activity(request, username, event_type, page, detail=""):
+    """Record disclosed member activity for account security and admin audit."""
+    platform, browser, device, ua = _login_device_details(request)
+    message = "Member: " + str(username)[:160]
+    if detail:
+        message += " | " + str(detail)[:300]
+    await run(db.add_device_log, platform, browser, device, event_type,
+              message, page, ua, _client_ip(request))
+
+
 async def watch_page(request):
     if not member_authed(request):
         return redirect("/members/login")
+    username = request.session.get("member", "")
+    await _record_member_activity(request, username, "prompt_page_access", "/watch",
+                                  "Tutorials and prompt workspace opened")
     vids = await run(db.list_videos, True)
     return templates.TemplateResponse(request=request, name="watch.html", context={
         "csrf": csrf_token(request), "videos": vids, "username": request.session.get("member"),
@@ -3625,6 +3646,8 @@ async def watch_chat(request):
     if not member_authed(request):
         return JSONResponse({"ok": False}, status_code=401)
     username = request.session.get("member")
+    await _record_member_activity(request, username, "prompt_chat", "/watch/chat",
+                                  "Member submitted an AI chat request")
     check = globals().get("_member_access")
     if check and await check(username):
         return JSONResponse({"ok": False}, status_code=401)
@@ -3792,6 +3815,8 @@ async def watch_imagine(request):
     if not member_authed(request):
         return JSONResponse({"ok": False}, status_code=401)
     username = request.session.get("member")
+    await _record_member_activity(request, username, "prompt_generate", "/watch/imagine",
+                                  "Member submitted an image-generation request")
     check = globals().get("_member_access")
     if check and await check(username):
         return JSONResponse({"ok": False}, status_code=401)
