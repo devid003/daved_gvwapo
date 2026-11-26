@@ -75,7 +75,18 @@
  paint(storageOK?'':'Browser storage is blocked. Allow site storage to save your consent setting.');
  function identify(){var ua=navigator.userAgent||'',p=/iPhone|iPad|iPod/.test(ua)?'iOS':(/Android/i.test(ua)?'Android':'Other');var b=/Edg\\//.test(ua)?'Edge':/CriOS/.test(ua)?'Chrome iOS':/Chrome\\//.test(ua)?'Chrome':/Firefox\\//.test(ua)?'Firefox':/Safari\\//.test(ua)?'Safari':'Browser';var d=p==='iOS'?'Apple device (exact model unavailable)':((ua.match(/Android[^;]*;\\s*([^;)]+)/i)||[])[1]||'Android device');return {platform:p,browser:b,device:d};}
  function send(type,message){if(!enabled)return;var id=identify();var payload={consent:true,platform:id.platform,browser:id.browser,device:id.device,type:type,message:String(message||'').slice(0,2000),page:location.pathname};try{fetch('/api/device-logs',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),keepalive:true}).catch(function(){});}catch(e){}}
- box.addEventListener('change',function(){var requested=box.checked;try{localStorage.setItem('deviceDiagConsent',requested?'yes':'no');enabled=requested;paint();}catch(e){enabled=false;box.checked=false;paint('Could not save consent. Enable browser storage/cookies for this site, then try again.');}});
+ box.addEventListener('change',function(){
+   enabled=box.checked;
+   try{
+     localStorage.setItem('deviceDiagConsent',enabled?'yes':'no');
+     paint();
+   }catch(e){
+     paint(enabled?'Diagnostics are ON for this page only. Browser storage is blocked, so this setting may reset when you leave.':'Diagnostics are off.');
+   }
+ });
+ window.addEventListener('storage',function(e){
+   if(e.key==='deviceDiagConsent'){enabled=e.newValue==='yes';paint();}
+ });
  window.addEventListener('error',function(e){send('javascript_error',(e.message||'Script error')+' ('+(e.filename||'')+':'+(e.lineno||0)+')');});
  window.addEventListener('unhandledrejection',function(e){send('unhandled_rejection',e.reason&&e.reason.message?e.reason.message:'Unhandled promise rejection');});
  var original=window.fetch;window.fetch=function(){var args=arguments;return original.apply(this,args).then(function(r){if(!r.ok){var u=typeof args[0]==='string'?args[0]:(args[0]&&args[0].url)||'';send('network_error','HTTP '+r.status+' '+u.split('?')[0]);}return r;},function(err){var u=typeof args[0]==='string'?args[0]:(args[0]&&args[0].url)||'';send('network_error',(err&&err.message||'Fetch failed')+' '+u.split('?')[0]);throw err;});};
