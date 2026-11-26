@@ -1271,7 +1271,7 @@ async def ip_locator_page(request):
             continue
         gid = int(item.guild_id or 0)
         records.append({"ip": ip, "member": item.username or "Unknown member",
-                        "user_id": str(item.user_id), "source": "Verification",
+                        "user_id": str(item.user_id), "source": "Verification", "device": "Discord verification",
                         "guild_id": str(gid) if gid else "",
                         "server_name": server_names.get(gid, "Unknown server"),
                         "created_at": item.created_at})
@@ -1286,7 +1286,7 @@ async def ip_locator_page(request):
                 details = {}
             records.append({"ip": ip, "member": details.get("username") or "Public user",
                             "user_id": str(details.get("discord_id") or ""),
-                            "source": "Consent-based public verification",
+                            "source": "Consent-based public verification", "device": "Browser details unavailable",
                             "guild_id": "", "server_name": "Public / outsider",
                             "created_at": item.created_at})
         elif item.event_type in ("login_success", "login_failed", "prompt_page_access",
@@ -1301,11 +1301,13 @@ async def ip_locator_page(request):
             }
             records.append({"ip": ip, "member": member_name,
                             "user_id": "", "source": source_labels.get(item.event_type, "Member activity"),
+                            "device": " · ".join(x for x in (item.platform, item.browser, item.device) if x) or "Unknown device",
                             "guild_id": "", "server_name": "Member accounts",
                             "created_at": item.created_at})
         else:
             records.append({"ip": ip, "member": "Browser diagnostics",
                             "user_id": "", "source": "Diagnostics",
+                            "device": " · ".join(x for x in (item.platform, item.browser, item.device) if x) or "Unknown device",
                             "guild_id": "", "server_name": "Website diagnostics",
                             "created_at": item.created_at})
     records.sort(key=lambda x: x["created_at"] or dt.datetime.min, reverse=True)
