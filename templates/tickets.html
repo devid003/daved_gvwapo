@@ -35,11 +35,12 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="guild_id" value="{{ ticket_config.guild_id }}">
       <label class="row" style="gap:9px"><input type="checkbox" name="ai_on" value="1" {{ 'checked' if ticket_config.ai_on else '' }}> Enable AI replies in tickets</label>
+      <label class="field">Monid API key<input type="password" name="ai_key" value="" placeholder="{{ 'Saved key — leave blank to keep it' if ticket_config.ai_key_set else 'Paste your Monid API key' }}" autocomplete="new-password"></label>
       <label class="field">Monid chat model<input type="text" name="ai_model" value="{{ ticket_config.ai_model }}" placeholder="e.g. gpt-5-mini" maxlength="100"></label>
       <label class="field">AI instructions<textarea name="ai_system" rows="4" maxlength="490" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font:inherit" placeholder="Optional custom support instructions">{{ ticket_config.ai_system }}</textarea></label>
-      <div class="row" style="justify-content:space-between"><span class="muted small">API key stays private and is never shown here.</span><button class="btn primary">Save ticket AI settings</button></div>
+      <div class="row" style="justify-content:space-between"><span class="muted small">API key is stored privately for this server. Leave blank to keep the current key.</span><button class="btn primary">Save ticket AI settings</button></div>
     </form>
-    <p class="muted small" style="margin:14px 0 0">To securely set or update the Monid API key, use <b>/ticketai</b> in Discord with the key and model. This page saves the model and instructions for this server.</p>
+    <p class="muted small" style="margin:14px 0 0">You can set or replace the Monid API key here. The saved key is never displayed again.</p>
   </div>
 </section>
 {% endblock %}
