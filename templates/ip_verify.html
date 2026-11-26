@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Public IP Verification{% endblock %}
+{% block content %}
+<div style="max-width:680px;margin:0 auto">
+ <div class="head"><div><h1>Public IP Verification</h1><p>Optional security verification for Discord users, including people outside the server.</p></div></div>
+ <section class="panel">
+  <div class="panel-head"><div><h2>Submit your own verification</h2><p>This form records the public IP address used to submit it.</p></div></div>
+  <div class="panel-body">
+   {% if error %}<div class="flash" style="color:var(--bad);margin-bottom:14px">{{ error }}</div>{% endif %}
+   {% if success %}<div class="flash" style="color:var(--live);margin-bottom:14px">{{ success }}</div>{% endif %}
+   <form method="post" action="/ip-verify">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="field">Discord User ID <input type="text" name="discord_id" inputmode="numeric" minlength="15" maxlength="20" required placeholder="Your Discord User ID"></label>
+    <label class="field" style="margin-top:12px">Discord username (optional) <input type="text" name="username" maxlength="100" placeholder="Your username"></label>
+    <div class="panel" style="padding:14px;margin:16px 0">
+     <strong>What will be collected?</strong>
+     <p class="small muted">Your public IP address, the Discord ID/username you enter, browser user-agent, and submission time. The IP may be used to estimate your city/region/country and ISP. IP geolocation is approximate and does not reveal an exact home address.</p>
+     <p class="small muted">Entering a Discord ID does not verify that you own that account. Do not submit another person's ID without their permission.</p>
+    </div>
+    <label style="display:flex;gap:10px;align-items:flex-start;font-size:14px"><input type="checkbox" name="consent" value="yes" required style="margin-top:4px"> I am submitting my own information, I have read the notice, and I consent to this site's collection and use of the data described above for security verification.</label>
+    <button class="btn primary" type="submit" style="margin-top:16px">Submit my IP verification</button>
+   </form>
+  </div>
+ </section>
+ <p class="small muted">This is not a live tracker. It only records the IP used when you voluntarily submit this form. You may close the page without submitting.</p>
+</div>
+{% endblock %}
