@@ -1279,7 +1279,19 @@ async def ip_locator_page(request):
                         "created_at": item.created_at})
     for item in logs:
         ip = (item.ip_address or "").strip()
-        if ip:
+        if not ip:
+            continue
+        if item.event_type == "Public IP verification":
+            try:
+                details = json.loads(item.message or "{}")
+            except (TypeError, ValueError):
+                details = {}
+            records.append({"ip": ip, "member": details.get("username") or "Public user",
+                            "user_id": str(details.get("discord_id") or ""),
+                            "source": "Consent-based public verification",
+                            "guild_id": "", "server_name": "Public / outsider",
+                            "created_at": item.created_at})
+        else:
             records.append({"ip": ip, "member": "Browser diagnostics",
                             "user_id": "", "source": "Diagnostics",
                             "guild_id": "", "server_name": "Website diagnostics",
