@@ -51,6 +51,7 @@ a{color:inherit}
 .frame:fullscreen{border-radius:0;border:0;aspect-ratio:auto;width:100vw;height:100vh}
 .frame:-webkit-full-screen{border-radius:0;border:0;aspect-ratio:auto;width:100vw;height:100vh}
 .frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.player-fallback{margin:10px 0 0;text-align:right;font-size:13px}.player-fallback a{color:#9bbcff;text-decoration:none}.player-fallback a:hover{text-decoration:underline}
 .notop{position:absolute;top:0;left:0;right:0;height:60px;z-index:4}
 .wm{position:absolute;z-index:5;pointer-events:none;color:rgba(255,255,255,.55);font-size:13px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.75)}
 .wm.tl{top:12px;left:14px}.wm.br{bottom:52px;right:14px}
@@ -411,12 +412,13 @@ a.btn{text-decoration:none}
 {% if vids %}
   <main class="stage">
     <div class="frame" id="frame">
-      <iframe id="vid" title="Tutorial video" src="https://drive.google.com/file/d/{{ vids[0].drive_id }}/preview" allow="autoplay" referrerpolicy="no-referrer"{% if strict %} sandbox="allow-scripts allow-same-origin"{% endif %}></iframe>
+      <iframe id="vid" title="Tutorial video" src="https://drive.google.com/file/d/{{ vids[0].drive_id }}/preview" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe>
       <div class="notop"></div>
       <div class="wm tl">{{ watermark }}</div>
       <div class="wm mid">{{ watermark }} &middot; {{ username }}</div>
       <div class="wm br">{{ watermark }}</div>
     </div>
+    <p class="player-fallback"><a id="drive-open" href="https://drive.google.com/file/d/{{ vids[0].drive_id }}/view" target="_blank" rel="noopener noreferrer">Having trouble playing? Open this lesson in Google Drive ↗</a></p>
     <section class="about" aria-live="polite">
       <p class="count" id="count">Lesson 1 of {{ vids|length }}</p>
       <h1 id="title">{{ vids[0].title }}</h1>
@@ -797,7 +799,7 @@ a.btn{text-decoration:none}
     $('title').textContent=b.getAttribute('data-title');
     var d=b.getAttribute('data-desc')||''; $('desc').textContent=d; $('desc').style.display=d?'':'none';
     $('prev').disabled=i===0; $('next').disabled=i===steps.length-1;
-    if(load)$('vid').src='https://drive.google.com/file/d/'+encodeURIComponent(b.getAttribute('data-drive'))+'/preview';
+    if(load){var player=$('vid'),drive=b.getAttribute('data-drive');player.src='https://drive.google.com/file/d/'+encodeURIComponent(drive)+'/preview';$('drive-open').href='https://drive.google.com/file/d/'+encodeURIComponent(drive)+'/view';}
     store('lastLesson',b.getAttribute('data-vid'));
     markSeenLater(b.getAttribute('data-vid')); ping();
   }

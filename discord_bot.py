@@ -74,47 +74,28 @@ async def log_use(interaction, command, prompt, status, ms, error=""):
 class LockedTree(app_commands.CommandTree):
     """Runs before every command: server must be allowed AND member approved."""
 
-async def interaction_check(self, interaction: discord.Interaction) -> bool:
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
         allowed = await run(db.allowed_guild_ids)
         if interaction.guild_id is None or interaction.guild_id not in allowed:
-            try:
-                await deny(interaction, "This bot is private and isn't available in this server.")
-            except Exception:
-                pass
+            await deny(interaction, "This bot is private and isn't available in this server.")
             return False
-        return True
 
         uid = interaction.user.id
-
         if uid in OWNER_IDS:
             return True
 
         status = await run(db.member_status, uid)
-
         if status == "approved":
             return True
 
         cmd = interaction.command.qualified_name if interaction.command else "?"
-
         if status == "denied":
-            await log_use(
-                interaction, cmd, "", "denied", 0, "access denied"
-            )
-            await deny(
-                interaction,
-                "Your access to this bot was declined by the owner.",
-            )
+            await log_use(interaction, cmd, "", "denied", 0, "access denied")
+            await deny(interaction, "Your access to this bot was declined by the owner.")
             return False
 
-        await run(
-            db.request_access,
-            uid,
-            str(interaction.user),
-            interaction.guild_id,
-        )
-        await log_use(
-            interaction, cmd, "", "denied", 0, "awaiting approval"
-        )
+        await run(db.request_access, uid, str(interaction.user), interaction.guild_id)
+        await log_use(interaction, cmd, "", "denied", 0, "awaiting approval")
         await deny(
             interaction,
             "🔒 You're not approved for image generation yet. "
