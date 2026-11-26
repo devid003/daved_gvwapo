@@ -921,7 +921,7 @@ a.btn{text-decoration:none}
     t.addEventListener('keydown',function(e){if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();
       var o=tabs[(i+(e.key==='ArrowRight'?1:tabs.length-1))%tabs.length];o.focus();o.click();}});
   });
-  function fromHash(){var h=location.hash.slice(1);return (h==='create'&&document.getElementById('gen'))||(h==='auto'&&document.getElementById('ae'))||(h==='chat'&&document.getElementById('chat-view'))?h:'';}
+  function fromHash(){var h=location.hash.slice(1);return (h==='create'&&document.getElementById('gen'))||(h==='auto'&&document.getElementById('ae'))||(h==='chat'&&document.getElementById('chat-view'))||(h==='clip'&&document.getElementById('clip-view'))?h:'';}
   if(fromHash())view(fromHash(),false);
   window.addEventListener('hashchange',function(){view(fromHash(),false);});
 })();
