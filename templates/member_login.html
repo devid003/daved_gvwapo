@@ -3,6 +3,7 @@
 {% block body %}
 <h1>Welcome back</h1>
 <p class="sub">Log in to watch the member tutorials.</p>
+<p class="sub" style="font-size:12px">For account security, this website records your public IP address and login time. IP-based location is approximate and is not an exact address.</p>
 <form method="post" action="/members/login" autocomplete="on">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <label for="u">Username</label>
