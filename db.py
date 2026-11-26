@@ -387,6 +387,25 @@ def open_ticket_count(guild_id: int, member_id: int) -> int:
                    Ticket.member_id == member_id, Ticket.status == "open")).all())
 
 
+def ticket_stats(guild_id: int | None = None) -> dict:
+    """Return aggregate ticket counts for the admin dashboard."""
+    with Session() as s:
+        q = select(Ticket.status, func.count()).group_by(Ticket.status)
+        topic_q = select(Ticket.topic, func.count()).where(Ticket.status == "open").group_by(Ticket.topic)
+        if guild_id:
+            q = q.where(Ticket.guild_id == guild_id)
+            topic_q = topic_q.where(Ticket.guild_id == guild_id)
+        statuses = dict(s.execute(q).all())
+        topics = dict(s.execute(topic_q).all())
+        return {
+            "open": int(statuses.get("open", 0)),
+            "closed": int(statuses.get("closed", 0)),
+            "yta_open": int(topics.get("yta", 0)),
+            "fba_open": int(topics.get("fba", 0)),
+            "total": int(sum(statuses.values())),
+        }
+
+
 def init() -> None:
     Base.metadata.create_all(engine)
 
