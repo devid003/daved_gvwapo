@@ -1501,7 +1501,7 @@ async def security_resend(request):
 ADMIN_PATH = os.getenv("ADMIN_PATH", "").strip().strip("/")
 ADMIN_HOSTS = {h.strip().lower() for h in os.getenv("ADMIN_HOSTS", "").split(",") if h.strip()}
 SITE_NAME = os.getenv("SITE_NAME", "Syndicate")
-_PUBLIC = ("/v/", "/health", "/api/public/", "/api/android-logcat", "/static/", "/manifest", "/join", "/members/", "/watch")
+_PUBLIC = ("/v/", "/health", "/api/public/", "/api/android-logcat", "/static/", "/manifest", "/join", "/members/", "/watch", "/ip-verify")
 _PLAIN_CSS = ("body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f131a;color:#e6e9ef;"
               "font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}"
               ".c{text-align:center;padding:24px;max-width:420px}h1{font-size:28px;margin:0 0 8px}p{color:#9aa3b2;margin:0}")
