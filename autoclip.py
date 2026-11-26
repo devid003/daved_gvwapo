@@ -17,7 +17,7 @@ from starlette.routing import Route
 
 ROOT = Path(__file__).parent / "static" / "autoclip"
 MAX_STORAGE = 1024 * 1024 * 1024
-MAX_UPLOAD = 200 * 1024 * 1024
+MAX_UPLOAD = 1024 * 1024 * 1024
 MAX_SOURCE_SECONDS = 600
 ALLOWED = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
@@ -43,11 +43,12 @@ def _save_job(folder: Path, job_id: str, data: dict) -> None:
     os.replace(temp, path)
 
 
-def _storage_used() -> int:
-    if not ROOT.exists():
+def _storage_used(folder: Path | None = None) -> int:
+    base = folder if folder is not None else ROOT
+    if not base.exists():
         return 0
     total = 0
-    for p in ROOT.rglob("*"):
+    for p in base.rglob("*"):
         if p.is_file():
             try:
                 total += p.stat().st_size
@@ -121,7 +122,7 @@ def _process(source: Path, folder: Path, orientation: str, clip_seconds: int, pr
                         "seconds": round(length, 1), "size": target.stat().st_size})
         start += clip_seconds
         index += 1
-        if _storage_used() > MAX_STORAGE:
+        if _storage_used(folder) > MAX_STORAGE:
             for item in outputs:
                 (folder / item["name"]).unlink(missing_ok=True)
             raise ValueError("Naabot na ang 1 GB storage cap. I-download at burahin muna ang lumang clips.")
@@ -177,7 +178,7 @@ async def create_clips(request):
         clip_seconds = 30
     if clip_seconds not in (15, 30, 45, 60):
         clip_seconds = 30
-    if _storage_used() >= MAX_STORAGE:
+    if _storage_used(_user_dir(username)) >= MAX_STORAGE:
         return JSONResponse({"ok": False, "message": "Naabot na ang 1 GB storage limit."}, status_code=507)
     folder = _user_dir(username)
     source = folder / f"source_{uuid.uuid4().hex}{suffix}"
@@ -190,8 +191,8 @@ async def create_clips(request):
                     break
                 size += len(chunk)
                 if size > MAX_UPLOAD:
-                    raise ValueError("Maximum upload size ay 200 MB sa free beta.")
-                if _storage_used() + len(chunk) > MAX_STORAGE:
+                    raise ValueError("Maximum upload size ay 1 GB kahit free beta.")
+                if _storage_used(folder) + len(chunk) > MAX_STORAGE:
                     raise ValueError("Kulang na ang available space sa 1 GB storage cap.")
                 out.write(chunk)
         if size == 0:
