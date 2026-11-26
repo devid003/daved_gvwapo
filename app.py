@@ -265,6 +265,27 @@ async def index(request):
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
 
 
+async def tickets_page(request):
+    if not authed(request):
+        return redirect("/login")
+    data = await run(db.overview)
+    servers = data["servers"]
+    gid = parse_id(request.query_params.get("guild_id")) or (servers[0].guild_id if servers else 0)
+    ticket_config = {
+        "guild_id": gid,
+        "panel_ch": await run(db.get_setting, f"tkt_panel_ch:{gid}", "") if gid else "",
+        "yta_cat": await run(db.get_setting, f"tkt_cat_yta:{gid}", "") if gid else "",
+        "fba_cat": await run(db.get_setting, f"tkt_cat_fba:{gid}", "") if gid else "",
+        "mod_role": await run(db.get_setting, f"tkt_mod_role:{gid}", "") if gid else "",
+        "staff_ch": await run(db.get_setting, f"tkt_staff_ch:{gid}", "") if gid else "",
+    }
+    return templates.TemplateResponse(request=request, name="tickets.html", context={
+        "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+        "servers": servers, "ticket_config": ticket_config,
+        "ticket_counts": await run(db.ticket_stats), "nav_path": "/tickets",
+    })
+
+
 async def usage(request):
     if not authed(request):
         return redirect("/login")
@@ -341,13 +362,13 @@ async def tickets_save(request):
     }
     if gid is None:
         flash(request, "Enter a valid Discord Server ID first.")
-        return redirect("/")
+        return redirect("/tickets")
     values = {}
     for key, field in fields.items():
         raw = str(form.get(field, "")).strip()
         if not raw.isdigit() or not (15 <= len(raw) <= 20):
             flash(request, f"Invalid Discord ID for {field.replace('_', ' ')}.")
-            return redirect("/")
+            return redirect("/tickets")
         values[key] = raw
     try:
         for key, value in values.items():
@@ -355,9 +376,9 @@ async def tickets_save(request):
     except Exception:
         log.exception("ticket dashboard settings save failed for guild %s", gid)
         flash(request, "Couldn't save ticket settings. Check the server logs.")
-        return redirect("/")
+        return redirect("/tickets")
     flash(request, f"Ticket settings saved for server {gid}. Run /ticketpanel in Discord to publish the panel.")
-    return redirect("/")
+    return redirect("/tickets")
 
 
 async def members_set(request):
@@ -3651,6 +3672,7 @@ app = Starlette(
         Route("/usage.csv", usage_csv),
         Route("/servers/add", servers_add, methods=["POST"]),
         Route("/servers/remove", servers_remove, methods=["POST"]),
+        Route("/tickets", tickets_page),
         Route("/tickets/save", tickets_save, methods=["POST"]),
         Route("/members/set", members_set, methods=["POST"]),
         Route("/image/toggle", image_toggle, methods=["POST"]),
