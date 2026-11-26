@@ -411,7 +411,7 @@ a.btn{text-decoration:none}
 {% if vids %}
   <main class="stage">
     <div class="frame" id="frame">
-      <iframe id="vid" title="Tutorial video" src="https://drive.google.com/file/d/{{ vids[0].drive_id }}/preview" allow="autoplay" referrerpolicy="no-referrer"{% if strict %} sandbox="allow-scripts allow-same-origin"{% endif %}></iframe>
+      <iframe id="vid" title="Tutorial video" src="https://drive.google.com/file/d/{{ vids[0].drive_id }}/preview" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe>
       <div class="notop"></div>
       <div class="wm tl">{{ watermark }}</div>
       <div class="wm mid">{{ watermark }} &middot; {{ username }}</div>
@@ -797,7 +797,7 @@ a.btn{text-decoration:none}
     $('title').textContent=b.getAttribute('data-title');
     var d=b.getAttribute('data-desc')||''; $('desc').textContent=d; $('desc').style.display=d?'':'none';
     $('prev').disabled=i===0; $('next').disabled=i===steps.length-1;
-    if(load)$('vid').src='https://drive.google.com/file/d/'+encodeURIComponent(b.getAttribute('data-drive'))+'/preview';
+    if(load){var player=$('vid');player.src='https://drive.google.com/file/d/'+encodeURIComponent(b.getAttribute('data-drive'))+'/preview';}
     store('lastLesson',b.getAttribute('data-vid'));
     markSeenLater(b.getAttribute('data-vid')); ping();
   }
