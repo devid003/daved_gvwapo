@@ -2574,7 +2574,7 @@ async def _notify_member_action(discord_user_id: int, title: str, message: str) 
         return False
     try:
         user = bot.get_user(discord_user_id) or await bot.fetch_user(discord_user_id)
-        await user.send(f"**{title}**\\n{message}")
+        await user.send(f"**{title}**\n{message}")
         return True
     except Exception as exc:
         log.warning("Could not DM member %s about %s: %s", discord_user_id, title, exc)
@@ -2599,16 +2599,6 @@ async def member_device_reset(request):
             note += " Discord DM was not sent (the bot may be offline or the member's DMs may be closed)."
         flash(request, note)
     return redirect("/videos")
-    form, resp = await guarded_post(request)
-    if resp:
-        return resp
-    name = str(form.get("username", "")).strip()[:40]
-    if name:
-        await run(db.device_reset, name)
-        flash(request, f"Device reset for {name}. The next device they log in on becomes their device.")
-    return redirect("/videos")
-
-
 async def one_device_toggle(request):
     form, resp = await guarded_post(request)
     if resp:
