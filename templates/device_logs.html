@@ -44,6 +44,22 @@
     <div class="dl-consent"><input id="diag-consent" type="checkbox" aria-label="Enable browser diagnostics"><div><b>I consent to sending browser diagnostic events from this device.</b><div class="dl-sub">Collects JavaScript errors, unhandled promise rejections, and failed fetch requests. Does not collect form contents or request bodies. IP address is recorded with submitted diagnostics and login events for admin security review. You can turn this off anytime.</div><p id="diag-state" class="dl-sub" aria-live="polite">Diagnostics are off.</p></div></div>
   </section>
   <section class="dl-card">
+    <div class="dl-card-head"><div><h2>Verification activity</h2><p>Website verification checks and Discord join-gate status. IP is available only when the member opens the verification link.</p></div><span class="dl-pill ok">{{ verification_rows|length }} checks</span></div>
+    <div class="scroll"><table class="dl-table"><thead><tr><th>Member</th><th>Discord ID</th><th>Status</th><th>IP address</th><th>Device</th><th>Time</th><th>Check</th></tr></thead><tbody>
+    {% for v in verification_rows %}
+      <tr><td><b>{{ v.username or 'Unknown member' }}</b></td><td class="nowrap">{{ v.user_id }}</td>
+      <td><span class="dl-pill {{ 'ok' if v.status == 'approved' else '' }}">{{ v.status|upper }}</span></td>
+      <td class="nowrap">{{ v.ip_address or 'Not captured' }}</td><td>{{ v.device or 'Unknown device' }}</td>
+      <td class="nowrap">{{ v.created_at|local }}</td><td>{{ v.result|replace('_',' ') }}</td></tr>
+    {% else %}<tr><td colspan="7" class="dl-empty">No website verification checks yet. Members appear here after opening and submitting the verification link.</td></tr>{% endfor %}
+    </tbody></table></div>
+    <div class="dl-card-head"><div><h3>Waiting for verification</h3><p>Members currently pending approval in the Discord join gate.</p></div><span class="dl-pill">{{ pending_joins|length }} pending</span></div>
+    <div class="scroll"><table class="dl-table"><thead><tr><th>Member</th><th>Discord ID</th><th>Status</th><th>Joined</th></tr></thead><tbody>
+    {% for j in pending_joins %}<tr><td><b>{{ j.username }}</b></td><td class="nowrap">{{ j.user_id }}</td><td><span class="dl-pill">PENDING</span></td><td class="nowrap">{{ j.joined_at|local }}</td></tr>
+    {% else %}<tr><td colspan="4" class="dl-empty">No members are currently waiting.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+  <section class="dl-card">
     <div class="dl-card-head"><div><h2>Recent device events</h2><p>{{ rows|length }} latest events · Up to 400 records shown</p></div></div>
     <div class="dl-filters">
       <select id="dl-platform"><option value="">All platforms</option><option value="android">Android</option><option value="ios">iOS</option><option value="other">Other</option></select>
