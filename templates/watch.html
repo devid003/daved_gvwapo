@@ -167,6 +167,7 @@ a{color:inherit}
 .gen{display:none}
 .v-create .gen{display:block}
 
+.clip-view{display:none}.v-clip #lessons-view{display:none}.v-clip .clip-view{display:block}
 /* ---------- image generator ---------- */
 .gen [hidden]{display:none!important}
 .gen-in{max-width:1320px;margin:0 auto;padding:26px 22px 64px;display:grid;grid-template-columns:380px minmax(0,1fr);gap:26px;align-items:start}
@@ -411,7 +412,7 @@ a.btn{text-decoration:none}
 </div></header>
 {% set ig = imagine_member(username) if imagine_member is defined else {} %}
 {% set ae = autoedit_member(username) if autoedit_member is defined else {} %}
-{% if ig.show or ae.show or chat_ready() %}
+{% if true %}
 <nav class="views" aria-label="Sections"><div class="views-in" role="tablist">
   <button class="vt" type="button" role="tab" id="tab-lessons" aria-selected="true" aria-controls="lessons-view">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg>Lessons</button>
@@ -419,6 +420,8 @@ a.btn{text-decoration:none}
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>Create images</button>{% endif %}
   {% if ae.show %}<button class="vt" type="button" role="tab" id="tab-auto" aria-selected="false" aria-controls="ae">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h11a3 3 0 0 1 3 3v7H7a3 3 0 0 1-3-3V7z"/><path d="M18 11l3-2v8l-3-2"/><path d="M8 3.5l.7 1.6 1.6.7-1.6.7L8 8.1l-.7-1.6-1.6-.7 1.6-.7z" fill="currentColor"/></svg>Auto edit</button>{% endif %}
+  <button class="vt" type="button" role="tab" id="tab-clip" aria-selected="false" aria-controls="clip-view">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/><path d="M20 8l-4 2m4 6l-4-2" /></svg>Auto Clip</button>
   {% if chat_ready() %}<button class="vt" type="button" role="tab" id="tab-chat" aria-selected="false" aria-controls="chat-view">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-11.6 7.8L4 21l1.7-5.3A8.4 8.4 0 1 1 21 11.5z"/></svg>Chat</button>{% endif %}
 </div></nav>
@@ -463,24 +466,7 @@ a.btn{text-decoration:none}
       <p class="fb-msg" id="fb-msg" role="status"></p>
     </section>
   
-    <section class="ac-wrap" id="autoclip-panel" aria-labelledby="autoclip-title">
-      <h2 id="autoclip-title">Auto Clip <span style="font-size:12px;font-weight:600;color:#38bdf8">FREE BETA</span></h2>
-      <p class="ac-muted">Upload a video and split it into short MP4 clips. Walang watermark. Piliin kung portrait o landscape ang output.</p>
-      <form id="autoclip-form">
-        <input type="hidden" name="csrf" value="{{ csrf }}">
-        <label class="ac-field"><b>Source video</b><input type="file" name="video" accept="video/mp4,video/quicktime,video/x-m4v,video/x-matroska,video/webm" required><span class="ac-muted">MP4 / MOV / M4V / MKV / WEBM · max 200 MB · max 10 minutes</span></label>
-        <b>Video orientation</b>
-        <div class="ac-grid">
-          <label class="ac-choice"><input type="radio" name="orientation" value="portrait" checked><span><b>Portrait 9:16</b><br><small class="ac-muted">1080 × 1920 · Reels / TikTok / Shorts</small></span></label>
-          <label class="ac-choice"><input type="radio" name="orientation" value="landscape"><span><b>Landscape 16:9</b><br><small class="ac-muted">1920 × 1080 · YouTube / Facebook</small></span></label>
-        </div>
-        <label class="ac-field"><b>Clip length</b><select name="clip_seconds"><option value="15">15 seconds</option><option value="30" selected>30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select></label>
-        <button class="ac-submit" id="autoclip-submit" type="submit">Create clips · 60 FPS · No watermark</button>
-        <p class="ac-status ac-muted" id="autoclip-status" role="status" aria-live="polite"></p>
-      </form>
-      <div class="ac-results" id="autoclip-results"></div>
-      <p class="ac-muted">Note: This free beta automatically splits the video into equal-length segments; it does not yet identify story highlights or generate AI captions. Video is center-cropped to fill the selected ratio. Storage is capped at 1 GB on the server and may be temporary on the free hosting disk.</p>
-    </section>
+
 </main>
 
   <aside class="course" aria-label="Lessons">
@@ -508,6 +494,29 @@ a.btn{text-decoration:none}
   <div class="empty-page"><h1>No tutorials yet</h1><p>New lessons will appear here as soon as they are added.</p></div>
 {% endif %}
 </div>
+
+<section class="clip-view" id="clip-view" role="tabpanel" aria-labelledby="tab-clip">
+  <div style="max-width:1100px;margin:0 auto;padding:24px 22px 64px">
+<section class="ac-wrap" id="autoclip-panel" aria-labelledby="autoclip-title">
+      <h2 id="autoclip-title">Auto Clip <span style="font-size:12px;font-weight:600;color:#38bdf8">FREE BETA</span></h2>
+      <p class="ac-muted">Upload a video and split it into short MP4 clips. Walang watermark. Piliin kung portrait o landscape ang output.</p>
+      <form id="autoclip-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="ac-field"><b>Source video</b><input type="file" name="video" accept="video/mp4,video/quicktime,video/x-m4v,video/x-matroska,video/webm" required><span class="ac-muted">MP4 / MOV / M4V / MKV / WEBM · max 200 MB · max 10 minutes</span></label>
+        <b>Video orientation</b>
+        <div class="ac-grid">
+          <label class="ac-choice"><input type="radio" name="orientation" value="portrait" checked><span><b>Portrait 9:16</b><br><small class="ac-muted">1080 × 1920 · Reels / TikTok / Shorts</small></span></label>
+          <label class="ac-choice"><input type="radio" name="orientation" value="landscape"><span><b>Landscape 16:9</b><br><small class="ac-muted">1920 × 1080 · YouTube / Facebook</small></span></label>
+        </div>
+        <label class="ac-field"><b>Clip length</b><select name="clip_seconds"><option value="15">15 seconds</option><option value="30" selected>30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select></label>
+        <button class="ac-submit" id="autoclip-submit" type="submit">Create clips · 60 FPS · No watermark</button>
+        <p class="ac-status ac-muted" id="autoclip-status" role="status" aria-live="polite"></p>
+      </form>
+      <div class="ac-results" id="autoclip-results"></div>
+      <p class="ac-muted">Note: This free beta automatically splits the video into equal-length segments; it does not yet identify story highlights or generate AI captions. Video is center-cropped to fill the selected ratio. Storage is capped at 1 GB on the server and may be temporary on the free hosting disk.</p>
+    </section>
+  </div>
+</section>
 
 {% if ig.show %}
 <section class="gen" id="gen" role="tabpanel" aria-labelledby="tab-create">
@@ -897,9 +906,9 @@ a.btn{text-decoration:none}
 <script>
 (function(){
   var tabs=[].slice.call(document.querySelectorAll('.views .vt')); if(!tabs.length)return;
-  var body=document.body, vid=document.getElementById('vid'), vidSrc='', names={'tab-lessons':'','tab-create':'create','tab-auto':'auto','tab-chat':'chat'};
+  var body=document.body, vid=document.getElementById('vid'), vidSrc='', names={'tab-lessons':'','tab-create':'create','tab-auto':'auto','tab-chat':'chat','tab-clip':'clip'};
   function view(name,push){
-    body.classList.toggle('v-create',name==='create'); body.classList.toggle('v-auto',name==='auto'); body.classList.toggle('v-chat',name==='chat');
+    body.classList.toggle('v-create',name==='create'); body.classList.toggle('v-auto',name==='auto'); body.classList.toggle('v-chat',name==='chat'); body.classList.toggle('v-clip',name==='clip');
     tabs.forEach(function(t){t.setAttribute('aria-selected',String(names[t.id]===name));});
     if(vid){ if(name){ if(vid.getAttribute('src')){vidSrc=vid.getAttribute('src');vid.removeAttribute('src');} }
              else if(vidSrc&&!vid.getAttribute('src')){vid.setAttribute('src',vidSrc);} }
