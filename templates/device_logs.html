@@ -34,9 +34,9 @@
     <a class="dl-refresh" href="/device-logs">⟳ Refresh</a>
   </div>
   <div class="dl-stats">
-    <div class="dl-stat"><span class="ico">▣</span><div class="k">Total Events</div><div class="v">{{ rows|length }}</div></div>
-    <div class="dl-stat android"><span class="ico">🤖</span><div class="k">Android Events</div><div class="v">{{ ns.android }}</div></div>
-    <div class="dl-stat ios"><span class="ico"></span><div class="k">iOS Events</div><div class="v">{{ ns.ios }}</div></div>
+    <div class="dl-stat"><span class="ico">▣</span><div class="k">Total Events</div><div class="v">{{ total_events }}</div></div>
+    <div class="dl-stat android"><span class="ico">🤖</span><div class="k">Android Events</div><div class="v">{{ android_events }}</div></div>
+    <div class="dl-stat ios"><span class="ico"></span><div class="k">iOS Events</div><div class="v">{{ ios_events }}</div></div>
     <div class="dl-stat errors"><span class="ico">⚠</span><div class="k">Error Events</div><div class="v">{{ ns.errors }}</div></div>
   </div>
   <section class="dl-card">
