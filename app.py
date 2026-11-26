@@ -234,6 +234,17 @@ async def index(request):
         "ping": round(b.latency * 1000) if ready and b.latency == b.latency else None,
     }
     members = data["members"]
+    ticket_servers = data["servers"]
+    ticket_gid = ticket_servers[0].guild_id if ticket_servers else 0
+    ticket_config = {
+        "guild_id": ticket_gid,
+        "panel_ch": await run(db.get_setting, f"tkt_panel_ch:{ticket_gid}", "") if ticket_gid else "",
+        "yta_cat": await run(db.get_setting, f"tkt_cat_yta:{ticket_gid}", "") if ticket_gid else "",
+        "fba_cat": await run(db.get_setting, f"tkt_cat_fba:{ticket_gid}", "") if ticket_gid else "",
+        "mod_role": await run(db.get_setting, f"tkt_mod_role:{ticket_gid}", "") if ticket_gid else "",
+        "staff_ch": await run(db.get_setting, f"tkt_staff_ch:{ticket_gid}", "") if ticket_gid else "",
+    }
+    ticket_counts = await run(db.ticket_stats)
     ctx = {
         "csrf": csrf_token(request),
         "flash": request.session.pop("flash", None),
@@ -248,6 +259,8 @@ async def index(request):
         "regs_total": data.get("regs_total", 0),
         "regs_pending": data.get("regs_pending", 0),
         "prompts_total": await run(db.prompt_use_total),
+        "ticket_config": ticket_config,
+        "ticket_counts": ticket_counts,
     }
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
 
@@ -311,6 +324,39 @@ async def servers_remove(request):
     if gid:
         await run(db.remove_server, gid)
         flash(request, f"Server {gid} removed. The bot will leave it within ~30 seconds.")
+    return redirect("/")
+
+
+async def tickets_save(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    gid = parse_id(form.get("guild_id"))
+    fields = {
+        "tkt_panel_ch": "panel_channel",
+        "tkt_cat_yta": "yta_category",
+        "tkt_cat_fba": "fba_category",
+        "tkt_mod_role": "mod_role",
+        "tkt_staff_ch": "staff_channel",
+    }
+    if gid is None:
+        flash(request, "Enter a valid Discord Server ID first.")
+        return redirect("/")
+    values = {}
+    for key, field in fields.items():
+        raw = str(form.get(field, "")).strip()
+        if not raw.isdigit() or not (15 <= len(raw) <= 20):
+            flash(request, f"Invalid Discord ID for {field.replace('_', ' ')}.")
+            return redirect("/")
+        values[key] = raw
+    try:
+        for key, value in values.items():
+            await run(db.set_setting, f"{key}:{gid}", value)
+    except Exception:
+        log.exception("ticket dashboard settings save failed for guild %s", gid)
+        flash(request, "Couldn't save ticket settings. Check the server logs.")
+        return redirect("/")
+    flash(request, f"Ticket settings saved for server {gid}. Run /ticketpanel in Discord to publish the panel.")
     return redirect("/")
 
 
@@ -3572,6 +3618,7 @@ app = Starlette(
         Route("/usage.csv", usage_csv),
         Route("/servers/add", servers_add, methods=["POST"]),
         Route("/servers/remove", servers_remove, methods=["POST"]),
+        Route("/tickets/save", tickets_save, methods=["POST"]),
         Route("/members/set", members_set, methods=["POST"]),
         Route("/image/toggle", image_toggle, methods=["POST"]),
         Route("/uploads", uploads),
