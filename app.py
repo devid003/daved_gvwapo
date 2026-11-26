@@ -1960,6 +1960,7 @@ async def videos_page(request):
     return templates.TemplateResponse(request=request, name="videos.html", context={
         "devices": await run(db.device_map),
         "one_device": (await run(db.get_setting, "member_one_device", "1")) != "0",
+        "strict": (await run(db.get_setting, "video_strict", "1")) != "0",
         "announce": await _announce_options(),
         "announce_video": await run(db.get_setting, "announce_video", ""),
         "announce_resource": await run(db.get_setting, "announce_resource", ""),
