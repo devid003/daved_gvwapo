@@ -2355,6 +2355,11 @@ async def _record_member_activity(request, username, event_type, page, detail=""
               message, page, ua, _client_ip(request))
 
 
+async def autoclip_shortlink(request):
+    """Friendly direct link; member authentication is enforced by /watch."""
+    return redirect("/watch#clip")
+
+
 async def watch_page(request):
     if not member_authed(request):
         return redirect("/members/login")
@@ -4161,6 +4166,7 @@ app = Starlette(
         Route("/members/login", member_login_submit_1dev, methods=["POST"]),
         Route("/members/logout", member_logout, methods=["POST"]),
         Route("/watch", watch_page_1dev),
+    Route("/autoclip", autoclip_shortlink),
         Route("/watch/go/{token}", magic_login_page),
         Route("/watch/go/{token}", magic_login_submit, methods=["POST"]),
         Route("/watch/feedback", watch_feedback, methods=["GET", "POST"]),
