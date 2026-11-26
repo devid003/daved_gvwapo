@@ -1230,7 +1230,10 @@ async def public_ip_verify_submit(request):
     if not valid_csrf(request, form):
         return templates.TemplateResponse(request=request, name="ip_verify.html",
             context={"csrf": csrf_token(request), "error": "Your session expired. Reload and try again.", "success": None}, status_code=400)
-    ip = _client_ip(request)
+    ip = request.client.host if request.client else ""
+    if not ip:
+        return templates.TemplateResponse(request=request, name="ip_verify.html",
+            context={"csrf": csrf_token(request), "error": "Unable to determine the connection IP.", "success": None}, status_code=400)
     if _too_many("public-ip:" + ip, limit=3, window=3600):
         return templates.TemplateResponse(request=request, name="ip_verify.html",
             context={"csrf": csrf_token(request), "error": "Too many submissions. Please try again later.", "success": None}, status_code=429)
