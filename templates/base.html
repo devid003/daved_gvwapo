@@ -141,7 +141,7 @@ td.actions .btn{margin-left:4px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
-{% block head %}{% endblock %}
+<link rel="stylesheet" href="/static/ui-refresh.css?v=1">\n{% block head %}{% endblock %}
 </head>
 <body>
 {% if request.session.get('auth') %}
