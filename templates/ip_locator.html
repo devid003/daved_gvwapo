@@ -32,7 +32,7 @@
  async function locate(ip){
   input.value=ip;status.textContent='Looking up approximate location…';result.style.display='none';
   try{
-   const response=await fetch('lookup?ip='+encodeURIComponent(ip),{credentials:'same-origin'});
+   const response=await fetch('/ip-locator/lookup?ip='+encodeURIComponent(ip),{credentials:'same-origin'});
    const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Lookup failed');
    document.getElementById('loc-title').textContent=data.ip;
    document.getElementById('loc-details').textContent=[data.city,data.region,data.country,data.postal?'Postal '+data.postal:'',data.isp?'ISP: '+data.isp:'',data.org?'Organization: '+data.org:'',data.latitude!=null?data.latitude+', '+data.longitude:''].filter(Boolean).join(' · ');
