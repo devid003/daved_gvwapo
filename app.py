@@ -2949,6 +2949,14 @@ async def autoclip_file_1dev(request):
     _set_dev_cookie(resp, new)
     return resp
 
+async def autoclip_status_1dev(request):
+    ok, new = await _watch_device_ok(request)
+    if not ok:
+        return JSONResponse({"ok": False, "message": "Please sign in on your approved device."}, status_code=401)
+    resp = await autoclip.job_status(request)
+    _set_dev_cookie(resp, new)
+    return resp
+
 
 async def autoclip_delete_1dev(request):
     ok, new = await _watch_device_ok(request)
@@ -4177,6 +4185,7 @@ app = Starlette(
         *autoedit.routes(),
         Route("/watch/autoclip/create", autoclip_create_1dev, methods=["POST"]),
         Route("/watch/autoclip/file/{filename}", autoclip_file_1dev),
+        Route("/watch/autoclip/status/{job_id}", autoclip_status_1dev),
         Route("/watch/autoclip/delete/{filename}", autoclip_delete_1dev, methods=["POST"]),
         Route("/videos/imagine", imagine_settings_save, methods=["POST"]),
         Route("/videos/chat", chat_settings_save, methods=["POST"]),
