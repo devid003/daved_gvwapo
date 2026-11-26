@@ -17,6 +17,46 @@
 
 
 <section class="panel">
+  <div class="panel-head"><div><h2>Support tickets</h2><p>Ticket activity and Discord channel setup.</p></div><span class="badge">Ticket system</span></div>
+  <div class="strip" style="margin:16px 20px;grid-template-columns:repeat(5,minmax(0,1fr))">
+    <div><div class="v">{{ ticket_counts.open }}</div><div class="k">Open tickets</div></div>
+    <div><div class="v">{{ ticket_counts.closed }}</div><div class="k">Closed tickets</div></div>
+    <div><div class="v">{{ ticket_counts.total }}</div><div class="k">All tickets</div></div>
+    <div><div class="v">{{ ticket_counts.yta_open }}</div><div class="k">Open YTA</div></div>
+    <div><div class="v">{{ ticket_counts.fba_open }}</div><div class="k">Open FBA</div></div>
+  </div>
+  <div class="panel-body">
+    <h3 style="margin:0 0 6px">Ticket channel configuration</h3>
+    <p class="muted small" style="margin:0 0 16px">Paste Discord IDs below. Turn on Developer Mode in Discord, then right-click a server, channel, category, or role and choose Copy ID.</p>
+    <form method="post" action="/tickets/save" class="grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Server ID
+        <input type="text" name="guild_id" value="{{ ticket_config.guild_id or '' }}" placeholder="Discord Server ID" required inputmode="numeric">
+      </label>
+      <label>Ticket panel channel ID
+        <input type="text" name="panel_channel" value="{{ ticket_config.panel_ch }}" placeholder="Where members click Open a ticket" required inputmode="numeric">
+      </label>
+      <label>YTA ticket category ID
+        <input type="text" name="yta_category" value="{{ ticket_config.yta_cat }}" placeholder="Category for YTA tickets" required inputmode="numeric">
+      </label>
+      <label>FBA ticket category ID
+        <input type="text" name="fba_category" value="{{ ticket_config.fba_cat }}" placeholder="Category for FBA tickets" required inputmode="numeric">
+      </label>
+      <label>Moderator role ID
+        <input type="text" name="mod_role" value="{{ ticket_config.mod_role }}" placeholder="Role to notify" required inputmode="numeric">
+      </label>
+      <label>Staff summary channel ID
+        <input type="text" name="staff_channel" value="{{ ticket_config.staff_ch }}" placeholder="Where ticket summaries are sent" required inputmode="numeric">
+      </label>
+      <div style="grid-column:1/-1;display:flex;justify-content:flex-end">
+        <button class="btn primary">Save ticket settings</button>
+      </div>
+    </form>
+    <p class="muted small" style="margin:14px 0 0">After saving, use <b>/ticketpanel</b> in your Discord server to post the ticket panel. The bot needs Manage Channels, View Channel, Send Messages, and Embed Links permissions.</p>
+  </div>
+</section>
+
+<section class="panel">
   <div class="panel-head"><div><h2>Approved servers</h2><p>The bot works only here and leaves any other server.</p></div></div>
   <div class="scroll"><table>
     <tr><th>Server</th><th>Server ID</th><th>Added ({{ tz }})</th><th></th></tr>
