@@ -5,7 +5,35 @@
 .locator{max-width:1100px}.loc-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:18px;overflow:hidden}.loc-head{padding:16px 20px;border-bottom:1px solid var(--line)}.loc-body{padding:16px 20px}.loc-form{display:flex;gap:9px;flex-wrap:wrap}.loc-form input{flex:1;min-width:240px}.loc-result{display:none;margin-top:14px;padding:14px;background:var(--sunk);border:1px solid var(--line);border-radius:8px}.loc-map-note{margin-top:12px;padding:18px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:13px}.loc-table{min-width:980px}.server-tag{display:inline-flex;align-items:center;padding:4px 9px;border-radius:999px;background:var(--sunk);border:1px solid var(--line);font-size:12px;font-weight:700;white-space:nowrap}.server-meta{display:block;font-size:11px;color:var(--muted);margin-top:4px}.loc-note{font-size:13px;color:var(--muted)}
 </style>
 {% endblock %}
+{% macro verification_form() %}
+<section class="loc-card" id="public-verification">
+ <div class="loc-head"><h2>Submit your own IP verification</h2><p class="muted small">Optional verification for Discord users, including people outside the server. This form records the public IP address used to submit it.</p></div>
+ <div class="loc-body">
+  {% if error %}<div class="flash" style="color:var(--bad);margin-bottom:14px">{{ error }}</div>{% endif %}
+  {% if success %}<div class="flash" style="color:var(--live);margin-bottom:14px">{{ success }}</div>{% endif %}
+  <form method="post" action="/ip-locator">
+   <input type="hidden" name="csrf" value="{{ csrf }}">
+   <label class="field">Discord User ID <input type="text" name="discord_id" inputmode="numeric" minlength="15" maxlength="20" required placeholder="Your Discord User ID"></label>
+   <label class="field" style="margin-top:12px">Discord username (optional) <input type="text" name="username" maxlength="100" placeholder="Your username"></label>
+   <div class="panel" style="padding:14px;margin:16px 0">
+    <strong>What will be collected?</strong>
+    <p class="small muted">Your public IP address, the Discord ID/username you enter, browser user-agent, and submission time. The IP may be used to estimate your city/region/country and ISP. IP geolocation is approximate and does not reveal an exact home address.</p>
+    <p class="small muted">Entering a Discord ID does not verify that you own that account. Do not submit another person's ID without their permission.</p>
+   </div>
+   <label style="display:flex;gap:10px;align-items:flex-start;font-size:14px"><input type="checkbox" name="consent" value="yes" required style="margin-top:4px"> I am submitting my own information, I have read the notice, and I consent to this site's collection and use of the data described above for security verification.</label>
+   <button class="btn primary" type="submit" style="margin-top:16px">Submit my IP verification</button>
+  </form>
+ </div>
+</section>
+{% endmacro %}
 {% block content %}
+{% if not is_admin %}
+<div class="locator">
+ <div class="head"><div><h1>IP Verification</h1><p>Submit only your own information, with your consent.</p></div></div>
+ {{ verification_form() }}
+ <p class="loc-note">This is not a live tracker. It only records the IP used when you voluntarily submit this form. You may close the page without submitting.</p>
+</div>
+{% else %}
 <div class="locator">
  <div class="head"><div><h1>⌖ IP Address Locator</h1><p>Approximate public IP locations from recorded verification and browser diagnostic events.</p></div><a class="btn" href="/ip-locator">↻ Refresh</a></div>
  <section class="loc-card">
@@ -20,11 +48,12 @@
   <div class="loc-head"><h2>Recorded IP history</h2><p class="muted small">{{ records|length }} recent IP events, including their Discord server tags.</p></div>
   <div class="loc-body"><input id="loc-filter" type="search" placeholder="Filter IP, member, Discord ID, server name or ID…" style="width:100%;max-width:420px"></div>
   <div class="scroll"><table class="loc-table"><thead><tr><th>IP address</th><th>Member / source</th><th>Discord ID</th><th>Discord Server</th><th>Server ID</th><th>Source</th><th>Recorded</th><th></th></tr></thead><tbody id="loc-rows">
-  {% for r in records %}<tr data-filter="{{ (r.ip ~ ' ' ~ r.member ~ ' ' ~ r.user_id ~ ' ' ~ r.server_name ~ ' ' ~ r.guild_id)|lower }}"><td><code>{{ r.ip }}</code></td><td>{{ r.member }}</td><td>{{ r.user_id or '—' }}</td><td><span class="server-tag">{{ r.server_name }}</span></td><td><code>{{ r.guild_id or '—' }}</code></td><td>{{ r.source }}</td><td>{{ r.created_at|local }}</td><td><button class="btn sm loc-one" type="button" data-ip="{{ r.ip }}">Locate</button></td></tr>
-  {% else %}<tr><td colspan="8" class="empty">No IP records yet. IPs appear when a member submits the website verification page or sends opted-in browser diagnostics.</td></tr>{% endfor %}
+  {% for r in records %}<tr data-filter="{{ (r.ip ~ ' ' ~ r.member ~ ' ' ~ r.user_id ~ ' ' ~ r.server_name ~ ' ' ~ r.guild_id)|lower }}"><td><code>{{ r.ip }}</code></td><td>{{ r.member }}</td><td>{{ r.user_id }}</td><td><span class="server-tag">{{ r.server_name }}</span></td><td><code>{{ r.guild_id or '—' }}</code></td><td>{{ r.source }}</td><td>{{ r.created_at|local }}</td><td><button class="btn sm loc-one" type="button" data-ip="{{ r.ip }}">Locate</button></td></tr>
+  {% else %}<tr><td colspan="8" class="empty">No IP records yet. Records appear when someone voluntarily submits the verification form or sends opted-in browser diagnostics.</td></tr>{% endfor %}
   </tbody></table></div>
  </section>
  <p class="loc-note">IP location is approximate. It may identify an ISP gateway, mobile-network exit point, VPN, or proxy—not a person's exact home or street. Location is not proof of identity. Use only for legitimate, authorized security review.</p>
+ {{ verification_form() }}
 </div>
 <script>
 (function(){
@@ -50,4 +79,5 @@
  });
 })();
 </script>
+{% endif %}
 {% endblock %}
