@@ -2040,6 +2040,33 @@ async def member_login_page(request):
     })
 
 
+def _login_device_details(request):
+    import re
+    ua = request.headers.get('user-agent', '')[:500]
+    if re.search(r'iPhone|iPad|iPod', ua, re.I):
+        platform, device = 'iOS', 'iPhone/iPad (exact model unavailable)'
+    elif re.search(r'Android', ua, re.I):
+        platform = 'Android'
+        match = re.search(r'Android[^;)]*;\\s*([^;)]+)', ua, re.I)
+        device = (match.group(1).strip() if match else 'Android device')[:120]
+    elif re.search(r'Windows', ua, re.I): platform, device = 'Windows', 'Windows device'
+    elif re.search(r'Macintosh|Mac OS', ua, re.I): platform, device = 'macOS', 'Mac device'
+    elif re.search(r'Linux', ua, re.I): platform, device = 'Linux', 'Linux device'
+    else: platform, device = 'Other', 'Unknown device'
+    if re.search(r'Edg/', ua): browser = 'Edge'
+    elif re.search(r'OPR/', ua): browser = 'Opera'
+    elif re.search(r'Firefox/', ua): browser = 'Firefox'
+    elif re.search(r'CriOS', ua): browser = 'Chrome iOS'
+    elif re.search(r'Chrome/', ua): browser = 'Chrome'
+    elif re.search(r'Safari/', ua): browser = 'Safari'
+    else: browser = 'Unknown browser'
+    return platform, browser, device, ua
+
+async def _record_member_login(request, username, result='login_success'):
+    platform, browser, device, ua = _login_device_details(request)
+    await run(db.add_device_log, platform, browser, device, result,
+              'Member: ' + str(username)[:200], '/members/login', ua)
+
 async def member_login_submit(request):
     form, resp = await public_post(request)
     if resp:
@@ -2051,8 +2078,11 @@ async def member_login_submit(request):
     password = str(form.get("password", ""))
     u = await run(db.get_web_user, username)
     if u is not None and u.active and _check_pw(u.password_hash, password):
+        await _record_member_login(request, username, "login_success")
         request.session["member"] = username
         return redirect("/watch")
+    if u is not None:
+        await _record_member_login(request, username, "login_failed")
     flash(request, "Wrong username or password.")
     return redirect("/members/login")
 
