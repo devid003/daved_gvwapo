@@ -1220,6 +1220,69 @@ async def report_channel_save(request):
 
 
 
+async def ip_locator_page(request):
+    if not authed(request):
+        return redirect("/login")
+    checks = await run(db.list_device_checks, 400)
+    logs = await run(db.list_device_logs, 400)
+    records = []
+    seen = set()
+    for item in checks:
+        ip = (item.ip_address or "").strip()
+        if ip and ip not in seen:
+            seen.add(ip)
+            records.append({"ip": ip, "member": item.username or "Unknown member",
+                            "user_id": str(item.user_id), "source": "Verification",
+                            "created_at": item.created_at})
+    for item in logs:
+        ip = (item.ip_address or "").strip()
+        if ip and ip not in seen:
+            seen.add(ip)
+            records.append({"ip": ip, "member": "Browser diagnostics",
+                            "user_id": "", "source": "Diagnostics",
+                            "created_at": item.created_at})
+    records.sort(key=lambda x: x["created_at"] or dt.datetime.min, reverse=True)
+    return templates.TemplateResponse(request=request, name="ip_locator.html",
+        context={"records": records[:400], "csrf": csrf_token(request)})
+
+
+async def ip_lookup(request):
+    if not authed(request):
+        return JSONResponse({"ok": False, "error": "Authentication required"}, status_code=401)
+    import ipaddress
+    import urllib.request
+    raw = str(request.query_params.get("ip", "")).strip()
+    try:
+        addr = ipaddress.ip_address(raw)
+    except ValueError:
+        return JSONResponse({"ok": False, "error": "Enter a valid IPv4 or IPv6 address."}, status_code=400)
+    if not addr.is_global:
+        return JSONResponse({"ok": False, "error": "Private, local, and reserved IP addresses do not have public geolocation."}, status_code=400)
+
+    def fetch_location():
+        req = urllib.request.Request("https://ipwho.is/" + raw,
+            headers={"User-Agent": "DabidBots-IP-Locator/1.0"})
+        with urllib.request.urlopen(req, timeout=8) as response:
+            return json.loads(response.read(12000).decode("utf-8"))
+
+    try:
+        data = await run(fetch_location)
+    except Exception:
+        return JSONResponse({"ok": False, "error": "IP lookup service is unavailable. Try again later."}, status_code=502)
+    if not data.get("success"):
+        return JSONResponse({"ok": False, "error": str(data.get("message", "Location unavailable"))[:180]}, status_code=502)
+    conn = data.get("connection") or {}
+    lat, lon = data.get("latitude"), data.get("longitude")
+    map_url = ""
+    if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+        map_url = "https://www.openstreetmap.org/?mlat={}&mlon={}#map=10/{}/{}".format(lat, lon, lat, lon)
+    return JSONResponse({"ok": True, "ip": raw, "city": data.get("city"),
+        "region": data.get("region"), "country": data.get("country"),
+        "postal": data.get("postal"), "latitude": lat, "longitude": lon,
+        "isp": conn.get("isp"), "org": conn.get("org"), "map_url": map_url})
+
+
+
 
 async def device_logs_page(request):
     if not authed(request): return redirect("/login")
@@ -3848,6 +3911,8 @@ app = Starlette(
         Route("/status/save", status_save, methods=["POST"]),
         Route("/status/channel", status_channel_save, methods=["POST"]),
         Route("/status.json", status_data),
+        Route("/ip-locator", ip_locator_page),
+        Route("/ip-locator/lookup", ip_lookup),
         Route("/device-logs", device_logs_page),
         Route("/api/device-logs", device_logs_ingest, methods=["POST"]),
         Route("/api/android-logcat", android_logcat_ingest, methods=["POST"]),
