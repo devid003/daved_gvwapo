@@ -111,8 +111,12 @@ def uptime_text(seconds: int) -> str:
 
 
 def state() -> dict:
-    """Current health: color (green/yellow/red), label, ping, ready, uptime."""
+    """Current health, with planned maintenance taking precedence over gateway health."""
+    maintenance = db.get_setting("site_maintenance", "0") == "1"
     ready = discord_bot.bot.is_ready() and not discord_bot.bot.is_closed()
+    if maintenance:
+        return {"color": "maintenance", "label": "Maintenance", "ping": ping_ms() if ready else None,
+                "ready": ready, "uptime": int(time.time() - _BOOT), "maintenance": True}
     ms = ping_ms()
     if not ready or ms is None:
         color, label = "red", "Down"
@@ -126,7 +130,7 @@ def state() -> dict:
             "uptime": int(time.time() - _BOOT)}
 
 
-_COLORS = {"green": 0x1F9D4D, "yellow": 0xE0A800, "red": 0xB42318}
+_COLORS = {"green": 0x1F9D4D, "yellow": 0xE0A800, "red": 0xB42318, "maintenance": 0x5865F2}
 _DOTS = {"green": "\U0001f7e2", "yellow": "\U0001f7e1", "red": "\U0001f534"}
 _NOTES = {
     "green": "Everything is working \u2014 prompts and the website are OK.",
