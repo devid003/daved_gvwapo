@@ -239,16 +239,24 @@ async def _upsert(gid: int, ch, *, offline: bool = False) -> None:
 
 async def _targets():
     out = []
+    # Maintenance status must still be published to the configured status
+    # channel even if the regular health monitor has been switched off.
+    maintenance = await run(db.get_setting, "site_maintenance", "0") == "1"
     for gid in await run(db.allowed_guild_ids):
-        if not await run(on_sync, gid):
+        if not maintenance and not await run(on_sync, gid):
             continue
         cid = await run(channel_sync, gid)
         if not cid:
+            log.warning("No status channel configured for approved guild %s", gid)
             continue
         guild = bot.get_guild(gid)
         ch = guild.get_channel(cid) if guild else None
-        if ch is not None:
-            out.append((gid, ch))
+        if ch is None:
+            log.warning("Configured status channel %s is unavailable in guild %s", cid, gid)
+            continue
+        out.append((gid, ch))
+    if not out:
+        log.warning("No Discord status targets found (maintenance=%s). Check approved server and Status channel ID.", maintenance)
     return out
 
 
@@ -263,15 +271,19 @@ def _due(gid: int) -> bool:
 
 async def tick() -> None:
     global _first_tick
-    force = _first_tick
     _first_tick = False
-    current_state = state().get("color", "red")
-    for gid, ch in await _targets():
-        last_state = await run(db.get_setting, _s("health_last_state", gid), "")
-        # Refresh the existing status post every 5 seconds; state changes are reflected immediately.
-        await _upsert(gid, ch)
-        await run(db.set_setting, _s("health_last", gid), str(time.time()))
-        await run(db.set_setting, _s("health_last_state", gid), current_state)
+    current = state()
+    current_state = current.get("color", "red")
+    targets = await _targets()
+    for gid, ch in targets:
+        try:
+            # Force an immediate edit/post on every heartbeat so the maintenance
+            # state cannot remain stale after the dashboard toggle.
+            await _upsert(gid, ch)
+            await run(db.set_setting, _s("health_last", gid), str(time.time()))
+            await run(db.set_setting, _s("health_last_state", gid), current_state)
+        except Exception:
+            log.exception("Could not refresh status message for guild %s (state=%s)", gid, current_state)
 
 
 async def post_offline() -> None:
