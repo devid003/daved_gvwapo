@@ -131,7 +131,7 @@
     yellow: "The server is slow \u2014 prompts or the website may lag.",
     red: "Down \u2014 prompts can't be used and the website is unavailable."
   };
-  var BAN = {green:"g", yellow:"y", red:"r"}, CLS = {green:"st-g", yellow:"st-y", red:"st-r"};
+  var BAN = {green:"g", yellow:"y", red:"r", maintenance:"r"}, CLS = {green:"st-g", yellow:"st-y", red:"st-r", maintenance:"st-r"};
   function $(id){ return document.getElementById(id); }
 
   function fmtUptime(s){
@@ -166,7 +166,7 @@
 
   function applyState(d){
     if(typeof d.boot === "number") boot = d.boot;
-    var col = d.color || "red";
+    var col = d.maintenance ? "maintenance" : (d.color || "red");
     var ban = $("st-banner"), dot = $("st-dot"), word = $("st-word"), sub = $("st-sub"), ping = $("st-ping");
     if(ban)  ban.className  = "st-banner " + (BAN[col]||"r");
     if(dot)  dot.className  = "st-dot " + (CLS[col]||"st-r");
