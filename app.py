@@ -103,11 +103,18 @@ class MaintenanceGate(BaseHTTPMiddleware):
         if maintenance_on and (prompt_paths or (not is_admin and path not in {"/login", "/health"} and not path.startswith("/static/"))):
             page = """<!doctype html><html lang="en"><meta charset="utf-8">
             <meta name="viewport" content="width=device-width,initial-scale=1">
-            <title>Official Maintenance Notice</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1020;color:#eef3ff;font:16px system-ui">
-            <main style="max-width:640px;padding:32px;text-align:center"><h1>OFFICIAL MAINTENANCE NOTICE</h1>
-            <p>Subject: Temporary Server Maintenance and Service Interruption</p>
-            <p>Dear Users, our server is currently undergoing scheduled maintenance. Certain website features and services may be temporarily unavailable. We apologize for the inconvenience and appreciate your patience.</p>
-            <p>Respectfully,<br><strong>David_5522</strong></p></main></body></html>"""
+            <title>OFFICIAL MAINTENANCE NOTICE</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1020;color:#eef3ff;font:16px/1.65 system-ui;padding:24px;box-sizing:border-box">
+            <main style="width:min(760px,100%);padding:clamp(24px,5vw,48px);box-sizing:border-box;background:#151d32;border:1px solid #34415f;border-radius:20px;box-shadow:0 24px 80px #0008">
+            <h1 style="margin:0 0 22px;text-align:center;letter-spacing:.04em">OFFICIAL MAINTENANCE NOTICE</h1>
+            <p><strong>Subject: Temporary Server Maintenance and Service Interruption</strong></p>
+            <p>Dear Users,</p>
+            <p>We would like to formally inform everyone that our server is currently undergoing scheduled maintenance to implement system improvements, perform technical updates, and ensure the overall stability, security, and reliability of our platform.</p>
+            <p>During this maintenance period, certain website features and services may be temporarily unavailable or experience interruptions.</p>
+            <p>Our technical team is working to complete the necessary procedures as efficiently as possible. Full access will be restored once all maintenance activities and system verification have been completed.</p>
+            <p>We sincerely apologize for any inconvenience this temporary interruption may cause. We appreciate your patience, cooperation, and continued support.</p>
+            <p>A separate announcement will be provided once the maintenance has been completed and the server is fully operational.</p>
+            <p>Thank you for your understanding.</p>
+            <p><strong>Respectfully,</strong><br><strong>David_5522</strong></p></main></body></html>"""
             if path.startswith("/watch/") and path != "/watch":
                 return JSONResponse({"ok": False, "message": "The website is under maintenance. Please try again later."}, status_code=503)
             return HTMLResponse(page, status_code=503, headers={"Cache-Control": "no-store"})
@@ -934,6 +941,7 @@ async def status_data(request):
     samples = await run(db.ping_samples, botstatus.GRAPH_HOURS)
     return JSONResponse({
         "color": st["color"], "label": st["label"], "ping": st["ping"],
+        "maintenance": st.get("maintenance", False),
         "boot": int(botstatus._BOOT),
         "samples": [p for _, p in samples if p is not None],
     })
