@@ -132,3 +132,24 @@ body:has(.bar){background-color:#080b13;background-image:radial-gradient(ellipse
 .dh,.tool+.tool{border-bottom-color:rgba(148,163,184,.14);border-top-color:rgba(148,163,184,.14)}
 @media(max-width:1050px){.course{top:auto}.page{padding-top:22px}}
 @media(max-width:600px){.bar-in{height:62px}.page{padding-top:16px}.frame{border-radius:15px}.about{padding-top:20px}.about h1{font-size:25px}.course{border-radius:16px}.prog{padding:17px}.step button{padding:12px 10px}.views-in{gap:4px}.vt{height:48px;padding-inline:12px}}
+
+
+/* Lessons desktop width correction — final override */
+@media (min-width:1021px){
+  body:has(.bar) .page{
+    display:grid !important;
+    width:calc(100% - 64px) !important;
+    max-width:1500px !important;
+    margin-left:auto !important;
+    margin-right:auto !important;
+    grid-template-columns:minmax(0,1fr) 360px !important;
+    gap:28px !important;
+    padding:28px 0 68px !important;
+  }
+  body:has(.bar) .stage{min-width:0;width:100%}
+  body:has(.bar) .frame{width:100%;aspect-ratio:16/9}
+  body:has(.bar) .course{width:100%;min-width:0;position:sticky;top:86px}
+}
+@media (min-width:1500px){
+  body:has(.bar) .page{width:calc(100% - 96px) !important;max-width:1540px !important;grid-template-columns:minmax(0,1fr) 390px !important;gap:32px !important}
+}
