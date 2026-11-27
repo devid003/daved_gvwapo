@@ -74,11 +74,50 @@ class MaintenanceGate(BaseHTTPMiddleware):
                      path.startswith("/v/"))
         if protected and await run(db.get_setting, "site_maintenance", "0") == "1":
             if request.session.get("auth") is not True:
-                page = """<!doctype html><html lang="en"><meta charset="utf-8">
-                <meta name="viewport" content="width=device-width,initial-scale=1">
-                <title>Under Maintenance</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1020;color:#eef3ff;font:16px system-ui">
-                <main style="max-width:520px;padding:40px;text-align:center"><div style="font-size:48px">🛠️</div>
-                <h1>We'll be back soon</h1><p style="color:#aab6ce">The website is currently undergoing maintenance. Please check back shortly.</p></main></body></html>"""
+                page = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#080d1b">
+<title>Official Maintenance Notice</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;min-height:100vh;padding:34px 18px;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 0%,#18345a 0%,#0b1428 42%,#070b15 100%);color:#eaf1ff;font:15px/1.75 Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif}
+.wrap{width:min(100%,790px)}.top{display:flex;align-items:center;gap:12px;margin:0 0 18px;color:#a9bddb;font-size:12px;font-weight:800;letter-spacing:.19em;text-transform:uppercase}
+.pulse{width:9px;height:9px;border-radius:50%;background:#f5b84b;box-shadow:0 0 18px #f5b84b}
+.panel{position:relative;overflow:hidden;border:1px solid #ffffff20;border-radius:24px;background:linear-gradient(145deg,#14233beF,#0d1729f5);box-shadow:0 28px 90px #0008;padding:clamp(25px,6vw,54px)}
+.panel:before{content:"";position:absolute;inset:0 0 auto;height:3px;background:linear-gradient(90deg,#4ba3ff,#8b7cff,#4bd6c1)}
+.icon{width:62px;height:62px;display:grid;place-items:center;border:1px solid #f5b84b55;border-radius:18px;background:#f5b84b14;font-size:29px;margin-bottom:25px}
+.eyebrow{color:#f4c46e;font-size:11px;font-weight:800;letter-spacing:.2em;text-transform:uppercase}
+h1{margin:8px 0 5px;font-size:clamp(27px,5vw,43px);line-height:1.12;letter-spacing:-.035em}
+.subject{margin:0 0 28px;color:#9eb1ce;font-size:14px;font-weight:600}
+.copy{color:#c4d0e3}.copy p{margin:0 0 17px}.copy p:last-child{margin-bottom:0}
+.divider{height:1px;background:#ffffff18;margin:28px 0 22px}
+.sign{color:#aebed5;font-size:14px}.sign strong{display:block;margin-top:4px;color:#f2f6ff;font-size:16px}
+.footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:18px 4px 0;color:#8295b3;font-size:11px;letter-spacing:.04em}
+@media(max-width:480px){body{padding:20px 13px}.panel{border-radius:19px}.footer{justify-content:center;text-align:center}}
+</style></head>
+<body><main class="wrap">
+<div class="top"><span class="pulse"></span> Service status <span>•</span> Maintenance in progress</div>
+<section class="panel" aria-labelledby="notice-title">
+<div class="icon" aria-hidden="true">🛠️</div>
+<div class="eyebrow">Official announcement</div>
+<h1 id="notice-title">OFFICIAL MAINTENANCE NOTICE</h1>
+<p class="subject">Subject: Temporary Server Maintenance and Service Interruption</p>
+<div class="copy">
+<p>Dear Users,</p>
+<p>We would like to formally inform everyone that our server is currently undergoing scheduled maintenance to implement system improvements, perform technical updates, and ensure the overall stability, security, and reliability of our platform.</p>
+<p>During this maintenance period, certain website features and services may be temporarily unavailable or experience interruptions.</p>
+<p>Our technical team is working to complete the necessary procedures as efficiently as possible. Full access will be restored once all maintenance activities and system verification have been completed.</p>
+<p>We sincerely apologize for any inconvenience this temporary interruption may cause. We appreciate your patience, cooperation, and continued support.</p>
+<p>A separate announcement will be provided once the maintenance has been completed and the server is fully operational.</p>
+<p>Thank you for your understanding.</p>
+</div>
+<div class="divider"></div>
+<div class="sign">Respectfully,<strong>David_5522</strong></div>
+</section>
+<div class="footer"><span>Thank you for your patience and continued support.</span><span>Official Server Notice</span></div>
+</main></body></html>"""
                 if path.startswith("/watch/") and path != "/watch":
                     return JSONResponse({"ok": False, "message": "The website is under maintenance. Please try again later."}, status_code=503)
                 return HTMLResponse(page, status_code=503, headers={"Cache-Control": "no-store"})
