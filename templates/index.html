@@ -7,6 +7,18 @@
 </div>
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
 
+<section class="panel">
+  <div class="panel-head"><div><h2>Website maintenance</h2><p>Temporarily block member-facing prompts, verification, and lessons while keeping this admin dashboard available.</p></div><span class="badge {{ 'pending' if maintenance else 'live' }}">{{ 'Maintenance ON' if maintenance else 'Website live' }}</span></div>
+  <div class="panel-body">
+    <p class="muted small" style="margin:0 0 14px">{{ 'Members currently see a maintenance notice. Admin dashboard remains accessible.' if maintenance else 'Member pages are currently available.' }}</p>
+    <form method="post" action="/maintenance/toggle" class="row" onsubmit="return confirm('{{ 'Turn OFF maintenance and restore member access?' if maintenance else 'Turn ON maintenance and block member access?' }}')">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="enabled" value="{{ '0' if maintenance else '1' }}">
+      <button class="btn {{ 'primary' if maintenance else 'bad' }}">{{ 'Disable maintenance' if maintenance else 'Enable maintenance' }}</button>
+    </form>
+  </div>
+</section>
+
 <div class="strip">
   <div><div class="v row" style="gap:8px"><span class="dot {{ 'on' if bot.online }}" id="ov-dot"></span><span id="ov-online">{{ 'Online' if bot.online else 'Offline' }}</span></div>
        <div class="k">{% if bot.online %}{{ bot.guilds }} server{{ '' if bot.guilds == 1 else 's' }}{% if bot.ping is not none %}, {{ bot.ping }} ms{% endif %}{% else %}Waiting to connect{% endif %}</div></div>
