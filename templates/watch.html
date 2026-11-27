@@ -518,7 +518,40 @@ body{background:#0b0b0c;color:#f5f5f5}
 }
 
 </style>
-<link rel="stylesheet" href="/static/ui-refresh.css?v=4">
+<link rel="stylesheet" href="/static/ui-refresh.css?v=5">
+
+<style id="lessons-workspace-final">
+/* Final authoritative lesson layout: loaded after all shared styles. */
+@media screen and (min-width: 1101px) {
+  #lessons-view.page {
+    display:grid !important;
+    box-sizing:border-box !important;
+    width:calc(100% - 64px) !important;
+    max-width:1680px !important;
+    margin:0 auto !important;
+    padding:30px 0 68px !important;
+    grid-template-columns:minmax(0,1fr) minmax(360px,420px) !important;
+    column-gap:30px !important;
+    row-gap:24px !important;
+    align-items:start !important;
+  }
+  #lessons-view.page > .stage,
+  #lessons-view.page > .course { min-width:0 !important; width:100% !important; max-width:none !important; }
+  #lessons-view.page > .stage { grid-column:1 !important; }
+  #lessons-view.page > .course { grid-column:2 !important; position:sticky !important; top:88px !important; }
+  #lessons-view .frame { width:100% !important; max-width:none !important; aspect-ratio:16/9 !important; }
+}
+@media screen and (max-width:1100px) {
+  #lessons-view.page {
+    display:grid !important; width:100% !important; max-width:100% !important;
+    margin:0 auto !important; padding:18px 16px 52px !important;
+    grid-template-columns:minmax(0,1fr) !important; gap:20px !important;
+  }
+  #lessons-view.page > .stage,
+  #lessons-view.page > .course { grid-column:1 !important; width:100% !important; min-width:0 !important; position:static !important; }
+  #lessons-view .rail { max-height:520px !important; }
+}
+</style>
 </head>
 <body oncontextmenu="return false">
 {% set vids = videos|reverse|list %}
@@ -969,7 +1002,7 @@ body{background:#0b0b0c;color:#f5f5f5}
     $('title').textContent=b.getAttribute('data-title');
     var d=b.getAttribute('data-desc')||''; $('desc').textContent=d; $('desc').style.display=d?'':'none';
     $('prev').disabled=i===0; $('next').disabled=i===steps.length-1;
-    if(load){var player=$('vid'),drive=b.getAttribute('data-drive');player.src='https://drive.google.com/file/d/'+encodeURIComponent(drive)+'/preview';$('drive-open').href='https://drive.google.com/file/d/'+encodeURIComponent(drive)+'/view';}
+    if(load){var player=$('vid'),drive=b.getAttribute('data-drive');if(player&&drive){player.src='https://drive.google.com/file/d/'+encodeURIComponent(drive)+'/preview';}var driveOpen=$('drive-open');if(driveOpen&&drive){driveOpen.href='https://drive.google.com/file/d/'+encodeURIComponent(drive)+'/view';}}
     store('lastLesson',b.getAttribute('data-vid'));
     markSeenLater(b.getAttribute('data-vid')); ping();
   }
