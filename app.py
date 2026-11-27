@@ -3003,6 +3003,68 @@ async def _watch_device_ok(request) -> tuple:
     return True, new
 
 
+async def member_prompt_library(request):
+    """Website prompt library for approved website members; replaces the Discord niche button panel."""
+    if not member_authed(request):
+        return redirect("/members/login")
+    username = request.session.get("member", "")
+    why = await _member_access(username)
+    if why:
+        request.session.pop("member", None)
+        return redirect("/members/login")
+    user = await run(db.get_web_user, username)
+    uid = int(user.discord_user_id or 0) if user else 0
+    gids = await run(db.allowed_guild_ids)
+    gid = next((g for g in gids if uid and db.is_registered_approved(g, uid)), 0)
+    if not gid and uid not in discord_bot.OWNER_IDS:
+        return HTMLResponse("Prompt access is required for this page.", status_code=403)
+    if not gid:
+        gid = sorted(gids)[0] if gids else 0
+    niches = await run(db.list_niches, True)
+    return templates.TemplateResponse(request=request, name="member_prompts.html", context={
+        "username": username, "niches": niches, "csrf": csrf_token(request),
+        "public_name": await run(db.get_setting, "site_title", "") or SITE_NAME,
+    })
+
+
+async def member_prompt_generate(request):
+    if not member_authed(request):
+        return JSONResponse({"ok": False, "message": "Please sign in first."}, status_code=401)
+    username = request.session.get("member", "")
+    why = await _member_access(username)
+    if why:
+        request.session.pop("member", None)
+        return JSONResponse({"ok": False, "message": "Your member access is no longer active."}, status_code=403)
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    key = str(data.get("niche", "")).strip()[:40]
+    user = await run(db.get_web_user, username)
+    uid = int(user.discord_user_id or 0) if user else 0
+    gids = await run(db.allowed_guild_ids)
+    gid = next((g for g in gids if uid and db.is_registered_approved(g, uid)), 0)
+    if not gid and uid not in discord_bot.OWNER_IDS:
+        return JSONResponse({"ok": False, "message": "Approved prompt access is required."}, status_code=403)
+    if not gid:
+        gid = sorted(gids)[0] if gids else 0
+    niche = await run(db.get_niche, key)
+    if not niche or not niche.active:
+        return JSONResponse({"ok": False, "message": "This niche is unavailable."}, status_code=404)
+    prompt = await run(db.random_prompt, key)
+    if not prompt:
+        return JSONResponse({"ok": False, "message": "No active prompts in this niche yet."}, status_code=404)
+    rows = await run(db.list_prompts, key, True)
+    index = next((i + 1 for i, row in enumerate(rows) if row.id == prompt.id), 1)
+    await run(db.log_prompt, gid, uid, username, key, niche.label, prompt.id, prompt.text)
+    from prompts import render_txt
+    import base64
+    file_data = await run(render_txt, key, prompt.text, index, len(rows), niche.label)
+    return JSONResponse({"ok": True, "niche": niche.label, "prompt": prompt.text,
+                         "filename": f"{key}-prompt.txt",
+                         "download": base64.b64encode(file_data).decode("ascii")})
+
+
 async def watch_page_1dev(request):
     ok, new = await _watch_device_ok(request)
     if not ok:
@@ -4255,6 +4317,8 @@ app = Starlette(
         Route("/members/login", member_login_submit_1dev, methods=["POST"]),
         Route("/members/logout", member_logout, methods=["POST"]),
         Route("/watch", watch_page_1dev),
+        Route("/watch/prompts", member_prompt_library),
+        Route("/watch/prompts/generate", member_prompt_generate, methods=["POST"]),
     Route("/autoclip", autoclip_shortlink),
         Route("/watch/go/{token}", magic_login_page),
         Route("/watch/go/{token}", magic_login_submit, methods=["POST"]),
