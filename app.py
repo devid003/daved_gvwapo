@@ -2445,7 +2445,7 @@ async def watch_page(request):
                                   "Tutorials and prompt workspace opened")
     vids = await run(db.list_videos, True)
     return templates.TemplateResponse(request=request, name="watch.html", context={
-        "csrf": csrf_token(request), "videos": vids, "username": request.session.get("member"),
+        "csrf": csrf_token(request), "videos": vids, "vids": vids, "username": request.session.get("member"),
         "public_name": await run(db.get_setting, "site_title", "") or SITE_NAME,
         "watermark": await run(db.get_setting, "video_watermark", "") or "David_5522",
         "resources": [{"id": r.id, "name": r.name, "url": r.url, "description": r.description,
