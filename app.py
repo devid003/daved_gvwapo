@@ -2983,9 +2983,12 @@ async def join_submit_1dev(request):
 
 
 async def _watch_device_ok(request) -> tuple:
+    # Never allow anonymous visitors through the shared /watch feature gate.
+    # A valid website member session is required before checking registration,
+    # account status, Discord approval, and the one-device restriction.
     user = request.session.get("member")
     if not user:
-        return True, None
+        return False, None
     why = await _member_access(user)
     if why:
         request.session.pop("member", None)
