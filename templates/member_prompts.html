@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0d14"><title>Prompt Library · {{ public_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark;--bg:#090b12;--panel:#121725;--panel2:#171e2e;--line:#273149;--text:#f4f6fc;--muted:#9aa6bc;--violet:#7785ff;--cyan:#49c6d8;--orange:#f47742}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 15% 0%,#20254b 0,transparent 34%),radial-gradient(ellipse at 90% 18%,#10303b 0,transparent 27%),var(--bg);color:var(--text);font:15px/1.55 Inter,system-ui,sans-serif;min-height:100vh}
+a{color:inherit;text-decoration:none}.top{height:72px;border-bottom:1px solid #ffffff12;background:#090b12c9;backdrop-filter:blur(18px);display:flex;align-items:center;justify-content:space-between;padding:0 max(22px,calc((100vw - 1320px)/2));position:sticky;top:0;z-index:5}
+.brand{font-weight:800;letter-spacing:.02em;display:flex;align-items:center;gap:12px}.mark{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--violet),#4655c8);display:grid;place-items:center;box-shadow:0 8px 24px #5967e744}
+.topright{display:flex;align-items:center;gap:18px;color:var(--muted);font-size:13px}.back{border:1px solid var(--line);border-radius:10px;padding:9px 13px;color:#e7eaff}
+.wrap{max-width:1320px;margin:auto;padding:46px 24px 80px}.eyebrow{color:#a5adff;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.15em}
+h1{font-size:clamp(30px,4vw,46px);line-height:1.08;letter-spacing:-.045em;margin:12px 0}.lead{color:var(--muted);max-width:680px;font-size:16px}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin:24px 0 34px}.stat{border:1px solid var(--line);background:#151b2aaf;border-radius:12px;padding:10px 14px;color:var(--muted);font-size:13px}.stat b{color:var(--text);margin-right:5px}
+.tools{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 18px}.tools h2{font-size:19px;margin:0}.search{width:min(360px,100%);height:44px;background:#111725;border:1px solid var(--line);border-radius:12px;padding:0 14px;color:var(--text);font:inherit;outline:none}.search:focus{border-color:var(--violet)}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.card{position:relative;min-height:188px;padding:20px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,#171e2e,#101521);overflow:hidden;transition:.2s;display:flex;flex-direction:column;align-items:flex-start}
+.card:before{content:"";position:absolute;width:150px;height:150px;border-radius:50%;background:var(--glow,#7785ff);filter:blur(80px);opacity:.12;right:-65px;top:-70px;pointer-events:none}
+.card:hover{transform:translateY(-3px);border-color:#7785ff88;box-shadow:0 18px 40px #0005}
+.icon{width:44px;height:44px;border-radius:13px;background:#252d48;display:grid;place-items:center;font-size:22px;margin-bottom:16px;border:1px solid #ffffff10}
+.card h3{font-size:16px;margin:0 0 5px;line-height:1.3}.meta{color:var(--muted);font-size:12px}.generate{margin-top:auto;padding-top:18px;display:flex;width:100%;justify-content:space-between;align-items:center;color:#b9c1ff;font-size:13px;font-weight:700}
+.arrow{width:28px;height:28px;border-radius:9px;background:#6574f52a;display:grid;place-items:center}
+.empty{padding:30px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:16px;grid-column:1/-1}
+.result{display:none;margin-top:28px;border:1px solid #5867e777;border-radius:18px;background:linear-gradient(145deg,#171d32,#101521);overflow:hidden}
+.result.show{display:block}.result-head{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}.result-head h2{margin:0;font-size:17px}.result-body{padding:20px}.prompt{white-space:pre-wrap;overflow-wrap:anywhere;color:#e5e9f5;background:#0b101b;border:1px solid #273149;border-radius:13px;padding:18px;min-height:110px;font:14px/1.7 ui-monospace,monospace}
+.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}.btn{border:1px solid var(--line);border-radius:10px;background:#1b2335;color:var(--text);padding:10px 15px;font:600 13px Inter;cursor:pointer}.btn.primary{background:linear-gradient(135deg,#6978f5,#5362dc);border:0}.btn:disabled{opacity:.5;cursor:wait}.status{color:var(--muted);font-size:13px;margin-top:12px;min-height:20px}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:580px){.top{height:62px;padding:0 15px}.topright span{display:none}.wrap{padding:32px 15px 60px}.tools{align-items:stretch;flex-direction:column}.search{width:100%}.grid{grid-template-columns:1fr;gap:12px}.card{min-height:160px}.result-head{align-items:flex-start;flex-direction:column}}
+</style></head>
+<body>
+<header class="top"><a class="brand" href="/watch"><span class="mark">✦</span><span>{{ public_name }} <span style="color:#9aa6bc;font-weight:500">/ Prompts</span></span></a><div class="topright"><span>Signed in as {{ username }}</span><a class="back" href="/watch">← Back to Lessons</a></div></header>
+<main class="wrap">
+<div class="eyebrow">Creative workspace · Member library</div><h1>Find your next <span style="background:linear-gradient(90deg,#a8b0ff,#63d5df);background-clip:text;color:transparent">big idea.</span></h1>
+<p class="lead">Choose a niche to generate a fresh prompt. Your prompt is private to your account and can be copied or downloaded instantly.</p>
+<div class="stats"><div class="stat"><b>{{ niches|length }}</b> available niches</div><div class="stat"><b>One click</b> prompt generation</div><div class="stat"><b>Private</b> member workspace</div></div>
+<div class="tools"><h2>Explore prompt niches</h2><input id="search" class="search" type="search" placeholder="Search niches..." aria-label="Search niches"></div>
+<section class="grid" id="grid">
+{% for n in niches %}<button class="card" type="button" data-key="{{ n.key }}" data-label="{{ n.label|e }}" data-search="{{ (n.label ~ ' ' ~ n.key)|lower|e }}" style="text-align:left;color:inherit;font:inherit;cursor:pointer;--glow:{% if loop.index % 3 == 0 %}#49c6d8{% elif loop.index % 3 == 1 %}#7785ff{% else %}#f47742{% endif %}">
+<span class="icon">{{ n.emoji or '✦' }}</span><h3>{{ n.label }}</h3><span class="meta">Creative prompt collection</span><span class="generate">Generate a prompt <span class="arrow">↗</span></span></button>{% else %}<div class="empty">No active niches available right now. Please check back later.</div>{% endfor %}
+</section>
+<section class="result" id="result"><div class="result-head"><h2 id="result-title">Generated prompt</h2><span class="meta">Ready to use</span></div><div class="result-body"><div class="prompt" id="prompt-text"></div><div class="actions"><button class="btn primary" id="copy">Copy prompt</button><button class="btn" id="download">Download .txt</button><button class="btn" id="again">Generate another</button></div><div class="status" id="status" role="status"></div></div></section>
+</main>
+<script>
+(function(){
+const cards=[...document.querySelectorAll('.card')],search=document.getElementById('search'),result=document.getElementById('result'),out=document.getElementById('prompt-text'),title=document.getElementById('result-title'),status=document.getElementById('status');
+let current='',lastKey='';
+search.addEventListener('input',()=>{const q=search.value.trim().toLowerCase();cards.forEach(c=>c.hidden=!c.dataset.search.includes(q));});
+async function generate(key,btn){lastKey=key;current='';cards.forEach(x=>x.disabled=true);if(btn)btn.disabled=true;status.textContent='Generating your prompt…';result.classList.add('show');result.scrollIntoView({behavior:'smooth',block:'nearest'});
+try{const r=await fetch('/watch/prompts/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({niche:key})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.message||'Unable to generate prompt.');current=d.prompt;out.textContent=current;title.textContent=d.niche+' · Generated prompt';status.textContent='Your prompt is ready. Copy it or download the text file.';result.dataset.download=d.download;result.dataset.filename=d.filename;}
+catch(e){status.textContent=e.message;out.textContent='';}
+finally{cards.forEach(x=>x.disabled=false);if(btn)btn.disabled=false;}}
+cards.forEach(c=>c.addEventListener('click',()=>generate(c.dataset.key,c)));
+document.getElementById('copy').addEventListener('click',async()=>{if(!current)return;try{await navigator.clipboard.writeText(current);status.textContent='Copied to clipboard.'}catch(e){status.textContent='Copy is unavailable in this browser.'}});
+document.getElementById('download').addEventListener('click',()=>{if(!current)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([current],{type:'text/plain;charset=utf-8'}));a.download=result.dataset.filename||'prompt.txt';a.click();URL.revokeObjectURL(a.href);});
+document.getElementById('again').addEventListener('click',()=>{if(lastKey)generate(lastKey,null);});
+})();
+</script></body></html>
