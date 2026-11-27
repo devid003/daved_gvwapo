@@ -364,3 +364,60 @@ async def _prompt_button(interaction: discord.Interaction, niche_key: str) -> No
 # Buttons replace the slash commands: members tap the welcome panel and the prompt panel instead.
 for _name in ("prompt", "register", "weblogin"):
     bot.tree.remove_command(_name)
+
+
+async def remove_legacy_prompt_panels() -> None:
+    """Delete previously posted Discord niche panels; prompt generation now lives on the website."""
+    try:
+        guild_ids = await run(db.allowed_guild_ids)
+        for gid in guild_ids:
+            raw = await run(db.get_setting, f"ppanel_msg:{gid}", "")
+            ch_raw, _, mids_raw = (raw or "").partition("|")
+            channel_id = int(ch_raw) if ch_raw.isdigit() else 0
+            channel = bot.get_channel(channel_id) if channel_id else None
+            if channel is None and channel_id and bot.is_ready():
+                try:
+                    channel = await bot.fetch_channel(channel_id)
+                except Exception:
+                    channel = None
+            if channel is not None:
+                for mid in (x for x in mids_raw.split(",") if x.isdigit()):
+                    try:
+                        msg = await channel.fetch_message(int(mid))
+                        await msg.delete()
+                    except discord.NotFound:
+                        pass
+                    except Exception:
+                        log.warning("Could not delete legacy prompt panel message %s in guild %s", mid, gid)
+            await run(db.set_setting, f"ppanel_msg:{gid}", "")
+            await run(db.set_setting, f"ppanel_ch:{gid}", "")
+        log.info("Legacy Discord prompt panels cleanup completed; prompt generation is website-only.")
+    except Exception:
+        log.exception("Legacy prompt panel cleanup failed")
+
+
+async def notify_website_prompt(guild_id: int, discord_user_id: int, username: str,
+                                niche_label: str, prompt_text: str) -> None:
+    """Send website prompt-generation activity to the configured Discord prompt log channel."""
+    try:
+        raw = await run(db.get_setting, security.report_key("prompt", guild_id), "")
+        if not raw.isdigit():
+            log.info("No prompt log channel configured for guild %s", guild_id)
+            return
+        guild = bot.get_guild(guild_id)
+        channel = guild.get_channel(int(raw)) if guild else None
+        if channel is None:
+            log.warning("Prompt log channel %s is unavailable for guild %s", raw, guild_id)
+            return
+        user = bot.get_user(discord_user_id) if discord_user_id else None
+        who = user.mention if user else f"{username} (Discord ID: {discord_user_id})"
+        embed = discord.Embed(
+            title="Website prompt generated",
+            description=f"**Member:** {who}\n**Niche:** {niche_label}\n\n**Prompt:**\n{prompt_text[:3000]}",
+            color=0x5865F2)
+        embed.set_footer(text=f"Website Prompt Library • {username}")
+        embed.timestamp = discord.utils.utcnow()
+        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+    except Exception:
+        log.exception("Website prompt log notification failed for guild %s", guild_id)
+
