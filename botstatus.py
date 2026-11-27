@@ -37,7 +37,7 @@ GREEN_MS = 400
 YELLOW_MS = 1500
 
 # how often the loop wakes up to see if any server is due for a refresh
-TICK_SECONDS = 60
+TICK_SECONDS = 5
 DEFAULT_MINS = 360          # 6 hours, until the owner sets their own
 _first_tick = True          # force one post right after the bot starts (shows it's back up)
 SAMPLE_SECONDS = 120        # how often to record a ping sample for the graph
@@ -264,11 +264,10 @@ async def tick() -> None:
     current_state = state().get("color", "red")
     for gid, ch in await _targets():
         last_state = await run(db.get_setting, _s("health_last_state", gid), "")
-        # Publish immediately when status changes, without waiting for the configured interval.
-        if force or last_state != current_state or await run(_due, gid):
-            await _upsert(gid, ch)
-            await run(db.set_setting, _s("health_last", gid), str(time.time()))
-            await run(db.set_setting, _s("health_last_state", gid), current_state)
+        # Refresh the existing status post every 5 seconds; state changes are reflected immediately.
+        await _upsert(gid, ch)
+        await run(db.set_setting, _s("health_last", gid), str(time.time()))
+        await run(db.set_setting, _s("health_last_state", gid), current_state)
 
 
 async def post_offline() -> None:
