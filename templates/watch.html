@@ -469,7 +469,7 @@ body{
 body{background:#0b0b0c;color:#f5f5f5}
 .bar{background:#101011;border-bottom:1px solid #242426}
 .views{background:#101011;border-bottom:1px solid #242426}
-.page{max-width:1500px;grid-template-columns:minmax(0,1fr) 360px;gap:22px;padding:28px 26px 60px}
+.page{width:calc(100% - 48px);max-width:1760px;grid-template-columns:minmax(0,1fr) 420px;gap:28px;padding:30px 24px 68px}
 .frame{border-radius:14px;border:0;box-shadow:0 14px 40px rgba(0,0,0,.28)}
 .about{margin-top:0;padding:20px 4px 0}
 .count{color:#a6a6ac;font-size:13px;margin-bottom:8px}
@@ -503,8 +503,8 @@ body{background:#0b0b0c;color:#f5f5f5}
 .btn.go{background:#e65320;border-color:#e65320}
 .btn.go:hover{background:#ff6a35;border-color:#ff6a35}
 .btn{border-color:#3b3b40}
-@media(max-width:1020px){
- .page{grid-template-columns:1fr;padding:18px 16px 50px}
+@media(max-width:1100px){
+ .page{width:calc(100% - 32px);grid-template-columns:1fr;padding:18px 16px 50px}
  .course{position:relative;top:auto}
  .rail{max-height:520px}
 }
