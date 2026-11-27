@@ -38,6 +38,8 @@ _SYS = {
            "automation (YTA) at Facebook automation (FBA). Sagutin nang malinaw at maikli ang tanong ng miyembro, "
            "sa Tagalog. Kung hindi mo ito lubusang masagot, sabihin na may admin nang na-notify na tutulong sa kanya."),
 }
+_AI_FIRST_DONE: set[int] = set()  # ticket channel IDs whose first AI reply was delivered
+
 _WELCOME = {
     "en": "Thanks for opening a ticket. Our AI will try to help first, and an admin has been notified. "
           "Describe your concern any time below.",
@@ -216,9 +218,15 @@ async def _open_ticket(interaction: discord.Interaction, topic: str, lang: str, 
         ans = await _ai_answer(gid, lang, reason)
         if ans:
             try:
-                await channel.send(f"\U0001f916 {ans[:1900]}")
+                await channel.send(f"\U0001f916 **AI Support (first reply)**\\n{ans[:1850]}")
+                _AI_FIRST_DONE.add(channel.id)
             except discord.HTTPException:
-                pass
+                log.exception("could not send first AI reply in ticket %s", channel.id)
+        else:
+            await channel.send("⚠️ **AI first reply is not available yet.** Staff replies are paused until the AI responds. "
+                               "The server owner should check the Monid API key, model name, and Render logs.")
+    else:
+        _AI_FIRST_DONE.add(channel.id)
 
     await _notify(guild, channel, member, topic, lang, reason, mod_role)
     await interaction.followup.send(f"Your ticket is open: {channel.mention}", ephemeral=True)
@@ -235,7 +243,15 @@ async def _ai_answer(gid, lang, text):
         status, j, _ = await autoedit.monid_call(key, "POST", "/v1/chat/completions", body, timeout=60)
         if status == 200 and isinstance(j, dict):
             msg = (j.get("choices") or [{}])[0].get("message", {}) or {}
-            return (msg.get("content") or "").strip() or None
+            answer = msg.get("content")
+            if isinstance(answer, list):
+                answer = "".join(str(x.get("text", "")) if isinstance(x, dict) else str(x) for x in answer)
+            answer = str(answer or "").strip()
+            if answer:
+                return answer
+            log.error("ticket AI returned HTTP 200 but no message content (guild=%s model=%s)", gid, model)
+        else:
+            log.error("ticket AI request failed (guild=%s model=%s status=%s response=%r)", gid, model, status, str(j)[:500])
     except Exception:
         log.exception("ticket AI failed")
     return None
@@ -295,9 +311,22 @@ async def _on_message(message: discord.Message):
     if message.guild is None or message.author.bot or not message.content:
         return
     t = await run(db.get_ticket, message.channel.id)
-    if not t or t.status != "open" or message.author.id != t.member_id:
+    if not t or t.status != "open":
         return
     if not ai_on(message.guild.id):
+        return
+    # Staff cannot send a human reply until the initial AI reply has been delivered.
+    if message.author.id != t.member_id and message.channel.id not in _AI_FIRST_DONE:
+        try:
+            await message.delete()
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+        try:
+            await message.channel.send("⏳ Please wait: the AI must send its first reply before staff can respond.")
+        except discord.HTTPException:
+            pass
+        return
+    if message.author.id != t.member_id:
         return
     try:
         async with message.channel.typing():
@@ -305,7 +334,7 @@ async def _on_message(message: discord.Message):
         if ans:
             await message.channel.send(f"\U0001f916 {ans[:1900]}")
     except discord.HTTPException:
-        pass
+        log.exception("ticket AI follow-up send failed in channel %s", message.channel.id)
 
 
 def _install(name, handler):
