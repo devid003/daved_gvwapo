@@ -3548,27 +3548,9 @@ async def _send_prompt_panel(ch) -> list:
 
 
 async def refresh_prompt_panel() -> None:
-    """Niches changed on the dashboard: update the buttons on the posted prompt panel."""
-    b = discord_bot.bot
-    if not b.is_ready():
-        return
+    """Discord prompt panels are retired; ensure no old panel remains."""
     for gid in await run(db.allowed_guild_ids):
-        ch_id, ids = _panel_ids(await run(db.get_setting, f"ppanel_msg:{gid}", ""))
-        ch = b.get_channel(int(ch_id)) if ch_id.isdigit() else None
-        if ch is None or not ids:
-            continue
-        try:
-            parts = await _prompt_panel_parts()
-            if len(parts) == len(ids):
-                for (content, e, v), mid in zip(parts, ids):
-                    await (await ch.fetch_message(int(mid))).edit(content=content, embed=e, view=v)
-            else:                                       # it needs more or fewer messages now: post it again
-                await _remove_prompt_panel(gid)
-                new = await _send_prompt_panel(ch)
-                await run(db.set_setting, f"ppanel_msg:{gid}", f"{ch.id}|{','.join(new)}")
-                await run(db.set_setting, f"ppanel_ch:{gid}", str(ch.id))
-        except Exception:
-            log.warning("Could not update the prompt panel in #%s", getattr(ch, "name", ch_id))
+        await _remove_prompt_panel(gid)
 
 
 async def _remove_prompt_panel(gid: int) -> None:
@@ -4303,8 +4285,6 @@ app = Starlette(
         Route("/prompts/niche/edit", niche_edit, methods=["POST"]),
         Route("/prompts/niche/toggle", niche_toggle, methods=["POST"]),
         Route("/prompts/niche/delete", niche_delete, methods=["POST"]),
-        Route("/prompts/panel", prompts_panel_post, methods=["POST"]),
-        Route("/prompts/panel/remove", prompts_panel_remove, methods=["POST"]),
         Route("/daily", daily_page),
         Route("/daily/save", daily_save, methods=["POST"]),
         Route("/daily/send", daily_send, methods=["POST"]),
