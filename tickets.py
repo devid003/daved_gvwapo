@@ -218,7 +218,7 @@ async def _open_ticket(interaction: discord.Interaction, topic: str, lang: str, 
         ans = await _ai_answer(gid, lang, reason)
         if ans:
             try:
-                await channel.send(f"\U0001f916 **AI Support (first reply)**\\n{ans[:1850]}")
+                await channel.send(f"\U0001f916 **AI Support (first reply)**\n{ans[:1850]}")
                 _AI_FIRST_DONE.add(channel.id)
             except discord.HTTPException:
                 log.exception("could not send first AI reply in ticket %s", channel.id)
@@ -235,6 +235,8 @@ async def _open_ticket(interaction: discord.Interaction, topic: str, lang: str, 
 async def _ai_answer(gid, lang, text):
     key, model = ai_key(gid), ai_model(gid)
     if not key or not model or not autoedit.good_key(key):
+        log.error("ticket AI is enabled but not configured correctly (guild=%s key_set=%s model_set=%s)",
+                  gid, bool(key), bool(model))
         return None
     body = {"model": model, "stream": False,
             "messages": [{"role": "system", "content": ai_system(gid, lang)},
