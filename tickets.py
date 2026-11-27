@@ -335,6 +335,7 @@ async def _on_message(message: discord.Message):
             ans = await _ai_answer(message.guild.id, t.lang, message.content)
         if ans:
             await message.channel.send(f"\U0001f916 {ans[:1900]}")
+            _AI_FIRST_DONE.add(message.channel.id)
     except discord.HTTPException:
         log.exception("ticket AI follow-up send failed in channel %s", message.channel.id)
 
