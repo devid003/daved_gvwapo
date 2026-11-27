@@ -319,6 +319,8 @@ def prompt_panel_messages(niches: list) -> list:
 
 async def _prompt_reply(gid: int, user, niche_key: str) -> dict:
     """What a niche button answers (only the member who tapped sees it)."""
+    if await run(db.get_setting, "site_maintenance", "0") == "1":
+        return {"content": "🛠️ The website is currently under maintenance. Prompt downloads are temporarily disabled. Please try again later."}
     if user.id not in OWNER_IDS:     # prompt access = Get prompt access (device check), approved on the Prompts page
         reg = await run(db.get_registration, gid, user.id)
         if reg is None:
