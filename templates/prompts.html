@@ -33,7 +33,7 @@
 {% endblock %}
 {% block content %}
 <div class="head">
-  <div><h1>Prompts</h1><p>These feed the prompt panel in Discord. Members tap a niche and get a random active prompt. Add your own niches below.</p></div>
+  <div><h1>Prompts</h1><p>Manage the prompt collections used by the website Prompt Library. Members generate and download watermarked prompts directly from the site.</p></div>
 </div>
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
 <section class="panel">
@@ -44,7 +44,6 @@
   <div id="stats-wrap">{% include "_prompts_stats.html" %}</div>
 </section>
 
-{% set pp = prompt_panel_info() %}{% set pcur = pp.current[0] if pp.current else none %}
 <section class="panel">
   <div class="panel-head"><div><h2>Prompt panel</h2><p>Post niche buttons in a channel you pick. Members tap a niche and get a random prompt that only they can see. Adding, renaming or hiding a niche updates the buttons by itself.</p></div>
     {% if pcur %}<form method="post" action="/prompts/panel/remove" class="inline" onsubmit="return confirm('Remove the prompt panel from Discord?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm bad">Remove panel</button></form>{% endif %}
