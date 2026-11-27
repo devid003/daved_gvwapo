@@ -46,7 +46,7 @@ const cards=[...document.querySelectorAll('.card')],search=document.getElementBy
 let current='',lastKey='';
 search.addEventListener('input',()=>{const q=search.value.trim().toLowerCase();cards.forEach(c=>c.hidden=!c.dataset.search.includes(q));});
 async function generate(key,btn){lastKey=key;current='';cards.forEach(x=>x.disabled=true);if(btn)btn.disabled=true;status.textContent='Generating your prompt…';result.classList.add('show');result.scrollIntoView({behavior:'smooth',block:'nearest'});
-try{const r=await fetch('/watch/prompts/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({niche:key})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.message||'Unable to generate prompt.');current=d.prompt;out.textContent=current;title.textContent=d.niche+' · Generated prompt';status.textContent='Your prompt is ready. Copy it or download the text file.';result.dataset.download=d.download;result.dataset.filename=d.filename;}
+try{const r=await fetch('/watch/prompts/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({niche:key})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.message||'Unable to generate prompt.');current=d.preview||d.prompt;out.textContent=current;title.textContent=d.niche+' · Watermarked prompt';status.textContent='Watermarked prompt ready. Copy or download the branded version.';result.dataset.download=d.download;result.dataset.filename=d.filename;}
 catch(e){status.textContent=e.message;out.textContent='';}
 finally{cards.forEach(x=>x.disabled=false);if(btn)btn.disabled=false;}}
 cards.forEach(c=>c.addEventListener('click',()=>generate(c.dataset.key,c)));
