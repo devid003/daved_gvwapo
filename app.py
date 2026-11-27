@@ -3047,7 +3047,11 @@ async def member_prompt_generate(request):
     user = await run(db.get_web_user, username)
     uid = int(user.discord_user_id or 0) if user else 0
     gids = await run(db.allowed_guild_ids)
-    gid = next((g for g in gids if uid and db.is_registered_approved(g, uid)), 0)
+    gid = 0
+    for candidate in gids:
+        if uid and await run(db.is_registered_approved, candidate, uid):
+            gid = candidate
+            break
     if not gid and uid not in discord_bot.OWNER_IDS:
         return JSONResponse({"ok": False, "message": "Approved prompt access is required."}, status_code=403)
     if not gid:
@@ -3061,6 +3065,11 @@ async def member_prompt_generate(request):
     rows = await run(db.list_prompts, key, True)
     index = next((i + 1 for i, row in enumerate(rows) if row.id == prompt.id), 1)
     await run(db.log_prompt, gid, uid, username, key, niche.label, prompt.id, prompt.text)
+    try:
+        import prompt_commands
+        await prompt_commands.notify_website_prompt(gid, uid, username, niche.label, prompt.text)
+    except Exception:
+        log.exception("Could not send website prompt activity to Discord log channel")
     from prompts import render_txt
     import base64
     file_data = await run(render_txt, key, prompt.text, index, len(rows), niche.label)
