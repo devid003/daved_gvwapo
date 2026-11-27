@@ -518,82 +518,58 @@ body{background:#0b0b0c;color:#f5f5f5}
 }
 
 </style>
-<link rel="stylesheet" href="/static/ui-refresh.css?v=6">
+<link rel="stylesheet" href="/static/ui-refresh.css?v=7">
 
 <style id="lessons-workspace-final">
-/* Dedicated member learning workspace */
-:root { color-scheme: dark; }
-html, body { min-height:100%; }
-body { background:#090d17 !important; color:#edf2ff; }
-.bar { background:rgba(8,12,22,.94) !important; border-bottom:1px solid #202a40 !important; }
-.bar-in { max-width:1900px !important; width:100% !important; height:64px !important; padding-inline:clamp(16px,2.5vw,42px) !important; }
-.views { background:#0d1321 !important; border-bottom:1px solid #202a40 !important; }
-.views-in { max-width:1900px !important; width:100% !important; padding-inline:clamp(16px,2.5vw,42px) !important; }
-.vt { height:52px !important; font-size:14px !important; }
-#lessons-view.page {
-  box-sizing:border-box !important;
-  width:100% !important;
-  max-width:1900px !important;
-  margin:0 auto !important;
-  padding:clamp(22px,2.4vw,42px) clamp(16px,2.5vw,42px) 72px !important;
-}
-@media (min-width:1101px) {
-  #lessons-view.page {
-    display:grid !important;
-    grid-template-columns:minmax(0,1fr) minmax(390px, min(27vw,470px)) !important;
-    gap:clamp(22px,2vw,36px) !important;
-    align-items:start !important;
-  }
-  #lessons-view > .stage { grid-column:1 !important; min-width:0 !important; width:100% !important; }
-  #lessons-view > .course {
-    grid-column:2 !important; min-width:0 !important; width:100% !important;
-    position:sticky !important; top:84px !important;
-    max-height:calc(100vh - 104px) !important;
-    display:flex !important; flex-direction:column !important;
-  }
-  #lessons-view .frame {
-    width:100% !important; max-width:none !important; aspect-ratio:16/9 !important;
-    border:1px solid #293651 !important; border-radius:18px !important;
-    box-shadow:0 24px 70px rgba(0,0,0,.38) !important;
-  }
-  #lessons-view .rail { flex:1 1 auto !important; min-height:0 !important; max-height:calc(100vh - 300px) !important; overflow-y:auto !important; }
-}
-#lessons-view .course {
-  background:linear-gradient(160deg,#151f33 0%,#101827 100%) !important;
-  border:1px solid #293651 !important; border-radius:18px !important;
-  box-shadow:0 18px 48px rgba(0,0,0,.25) !important;
-}
-#lessons-view .prog { padding:20px !important; background:transparent !important; border-bottom:1px solid #29344a !important; }
-#lessons-view .prog-top b { font-size:16px !important; }
-#lessons-view .find input { height:44px !important; border-radius:11px !important; background:#0a1120 !important; }
-#lessons-view .step button { padding:13px 14px !important; gap:13px !important; border-radius:12px !important; }
-#lessons-view .step.on button { background:rgba(99,113,255,.14) !important; border:1px solid rgba(123,137,255,.32) !important; }
-#lessons-view .dot { flex-basis:32px !important; width:32px !important; height:32px !important; border-radius:10px !important; }
-#lessons-view .txt b { font-size:14px !important; line-height:1.4 !important; }
-#lessons-view .txt small { font-size:12.5px !important; line-height:1.45 !important; }
-#lessons-view .about { padding:22px 4px 0 !important; }
-#lessons-view .count { display:inline-flex !important; padding:6px 11px !important; border-radius:999px !important; background:rgba(99,113,255,.12) !important; border:1px solid rgba(123,137,255,.3) !important; color:#aeb8ff !important; font-size:12px !important; }
-#lessons-view .about h1 { font-size:clamp(25px,2.4vw,36px) !important; line-height:1.18 !important; letter-spacing:-.035em !important; margin:10px 0 12px !important; max-width:34ch !important; }
-#lessons-view .about p:not(.count) { max-width:78ch !important; color:#b5c0d4 !important; font-size:15px !important; line-height:1.75 !important; }
-#lessons-view .ctl { margin-top:22px !important; gap:11px !important; }
-#lessons-view .btn { min-height:44px !important; border-radius:11px !important; }
-#lessons-view .btn.go { background:linear-gradient(135deg,#5968f5,#7a86ff) !important; border-color:transparent !important; }
-#lessons-view .fb { margin:22px 0 0 !important; padding:20px !important; border-radius:16px !important; background:#111a2b !important; border:1px solid #27344c !important; }
-@media (max-width:1100px) {
-  #lessons-view.page { display:grid !important; grid-template-columns:minmax(0,1fr) !important; gap:22px !important; padding:20px 18px 54px !important; }
-  #lessons-view > .stage, #lessons-view > .course { grid-column:1 !important; width:100% !important; position:static !important; }
-  #lessons-view .course { max-height:none !important; }
-  #lessons-view .rail { max-height:500px !important; overflow:auto !important; }
-}
-@media (max-width:600px) {
-  .bar-in { height:58px !important; padding-inline:12px !important; }
-  #lessons-view.page { padding:14px 12px 42px !important; gap:16px !important; }
-  #lessons-view .frame { border-radius:13px !important; }
-  #lessons-view .about h1 { font-size:24px !important; }
-  #lessons-view .about p:not(.count) { font-size:14px !important; }
-  #lessons-view .course { border-radius:14px !important; }
-  #lessons-view .prog { padding:15px !important; }
-}
+/* Lessons gallery: responsive cards with a focused modal player */
+#lessons-view.page{display:block !important;box-sizing:border-box !important;width:100% !important;max-width:1320px !important;margin:0 auto !important;padding:clamp(20px,2.4vw,40px) clamp(16px,2.5vw,36px) 72px !important}
+body.v-create #lessons-view,body.v-auto #lessons-view,body.v-chat #lessons-view,body.v-clip #lessons-view{display:none !important}
+.lhead{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;margin:0 0 4px}
+.lhead h1{margin:0;font-size:clamp(22px,2.4vw,30px);font-weight:800;letter-spacing:-.02em}
+.lhead .lsub{margin:5px 0 0;color:var(--muted);font-size:13.5px}
+.lsearch{position:relative;display:block;min-width:min(320px,100%)}
+.lsearch svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--faint)}
+.lsearch input{width:100%;height:44px;border-radius:12px;border:1px solid var(--line2);background:#0c1322;color:var(--ink);padding:0 14px 0 38px;font-size:14px;outline:none}
+.lsearch input:focus{border-color:#7c6cff;box-shadow:0 0 0 3px rgba(124,108,255,.18)}
+#lessons-view .meter{height:5px;margin:16px 0 22px;border-radius:99px;background:var(--raise);overflow:hidden}
+#lessons-view .meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7c6cff,#9b8cff);border-radius:99px;transition:width .5s ease}
+#lessons-view .rail{list-style:none;margin:0;padding:0;max-height:none !important;overflow:visible !important;display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:18px}
+#lessons-view .step{position:relative;margin:0}
+#lessons-view .step::before,#lessons-view .step::after{display:none !important}
+#lessons-view .step button{display:block !important;width:100%;padding:0 !important;border:1px solid var(--line) !important;border-radius:16px !important;background:var(--panel) !important;overflow:hidden;text-align:left;cursor:pointer;transition:transform .13s ease,border-color .13s ease,box-shadow .13s ease}
+#lessons-view .step button:hover{transform:translateY(-3px);border-color:#3b4668 !important;box-shadow:0 18px 40px -22px rgba(0,0,0,.9)}
+#lessons-view .step.on button{border-color:#7c6cff !important;box-shadow:0 0 0 1px #7c6cff}
+.lc-thumb{position:relative;display:block;width:100%;aspect-ratio:16/10;background:linear-gradient(135deg,#1b2336,#121a2b);overflow:hidden}
+.lc-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.lc-thumb.no img{display:none}
+.lc-thumb.no::after{content:"";position:absolute;inset:0;background:radial-gradient(130px 90px at 28% 18%,rgba(124,108,255,.4),transparent),linear-gradient(135deg,#242d47,#141c2d)}
+.lc-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .14s;background:rgba(6,9,16,.32)}
+#lessons-view .step button:hover .lc-play,#lessons-view .step.on .lc-play{opacity:1}
+.lc-play svg{width:44px;height:44px;color:#fff;filter:drop-shadow(0 4px 10px rgba(0,0,0,.55))}
+.lc-num{position:absolute;top:10px;left:10px;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:rgba(8,11,19,.8);color:#cfd6e6;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.lc-done{position:absolute;top:9px;right:9px;width:24px;height:24px;border-radius:50%;background:var(--done);color:#07140c;display:none;align-items:center;justify-content:center}
+#lessons-view .step.seen .lc-done{display:inline-flex}
+#lessons-view .step.seen .lc-num{display:none}
+#lessons-view .txt{display:block;padding:12px 13px 14px}
+#lessons-view .txt b{display:-webkit-box;font-size:14.5px;font-weight:700;line-height:1.35;letter-spacing:-.01em;color:var(--ink);overflow:hidden;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+#lessons-view .txt small{display:-webkit-box;margin-top:5px;color:var(--muted);font-size:12.5px;line-height:1.5;overflow:hidden;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.lc-tag{display:inline-flex;align-items:center;gap:5px;margin-top:10px;padding:3px 9px;border-radius:999px;background:rgba(124,108,255,.14);border:1px solid rgba(124,108,255,.3);color:#b9b0ff;font-size:11.5px;font-weight:600}
+#lessons-view .step .playing{display:none}
+#lessons-view .none{padding:30px 10px;color:var(--faint);text-align:center;display:none}
+/* Modal player */
+.lmodal{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:clamp(10px,3vw,34px)}
+.lmodal[hidden]{display:none}
+.lmodal-back{position:absolute;inset:0;background:rgba(5,8,14,.78);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)}
+.lmodal-box{position:relative;z-index:1;width:100%;max-width:1040px;max-height:94vh;overflow:auto;background:var(--panel);border:1px solid var(--line2);border-radius:18px;box-shadow:0 40px 100px -30px rgba(0,0,0,.9);padding:clamp(14px,2vw,22px)}
+.lmodal-x{position:absolute;top:12px;right:12px;z-index:3;width:38px;height:38px;border-radius:10px;border:1px solid var(--line2);background:rgba(10,14,22,.85);color:var(--ink);font-size:22px;line-height:1;cursor:pointer}
+.lmodal-x:hover{background:var(--raise)}
+.lmodal .stage{min-width:0}
+.lmodal .about{padding:18px 4px 0}
+.lmodal .count{display:inline-flex;padding:5px 11px;border-radius:999px;background:rgba(124,108,255,.14);border:1px solid rgba(124,108,255,.3);color:#b9b0ff;font-size:12px;font-weight:600}
+.lmodal .about h1{font-size:clamp(20px,2.4vw,27px);letter-spacing:-.02em;margin:10px 0}
+.lmodal .btn.go{background:linear-gradient(135deg,#7c6cff,#9a8cff) !important;border-color:transparent !important;color:#fff !important}
+body.lmodal-open{overflow:hidden}
+@media(max-width:600px){#lessons-view.page{padding:16px 14px 44px !important}#lessons-view .rail{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:13px}.lsearch{width:100%;min-width:100%}.lmodal{padding:8px}.lmodal-box{max-height:96vh;border-radius:14px;padding:12px}}
 </style>
 </head>
 <body oncontextmenu="return false">
@@ -626,66 +602,51 @@ body { background:#090d17 !important; color:#edf2ff; }
 </div></nav>
 {% endif %}
 
-<div class="page" id="lessons-view">
+<div class="page lgal" id="lessons-view">
 {% if vids %}
-  <main class="stage">
-    <div class="frame" id="frame">
-      <iframe id="vid" title="Tutorial video" src="https://drive.google.com/file/d/{{ vids[0].drive_id }}/preview" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe>
-      <div class="notop"></div>
-      <div class="wm tl">{{ watermark }}</div>
-      <div class="wm mid">{{ watermark }} &middot; {{ username }}</div>
-      <div class="wm br">{{ watermark }}</div>
+  <div class="lhead">
+    <div><h1>Lessons</h1><p class="lsub" id="prog-txt">0 of {{ vids|length }} watched</p></div>
+    <label class="lsearch"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" id="find" placeholder="Search lessons" aria-label="Search lessons"></label>
+  </div>
+  <div class="meter" role="progressbar" aria-label="Lessons watched" aria-valuemin="0" aria-valuemax="{{ vids|length }}" aria-valuenow="0" id="meter"><i id="meter-fill"></i></div>
+  <ol class="rail" id="rail">
+    {% for v in vids %}
+    <li class="step{{ ' on' if loop.first }}" data-i="{{ loop.index0 }}">
+      <button type="button" data-vid="{{ v.id }}" data-drive="{{ v.drive_id }}" data-title="{{ v.title }}" data-desc="{{ v.description }}"{% if loop.first %} aria-current="true"{% endif %}>
+        <span class="lc-thumb">
+          <img src="https://drive.google.com/thumbnail?id={{ v.drive_id }}&amp;sz=w640" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.lc-thumb').classList.add('no')">
+          <span class="lc-num">{{ loop.index }}</span>
+          <span class="lc-done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+          <span class="lc-play"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span>
+        </span>
+        <span class="txt"><b>{{ v.title }}</b>{% if v.description %}<small>{{ v.description }}</small>{% endif %}<span class="lc-tag">Tutorial</span><span class="playing">Playing now</span></span>
+      </button>
+    </li>
+    {% endfor %}
+  </ol>
+  <p class="none" id="none">No lesson matches that search.</p>
+  <div class="lmodal" id="player-modal" hidden>
+    <div class="lmodal-back" data-close></div>
+    <div class="lmodal-box" role="dialog" aria-modal="true" aria-label="Lesson player">
+      <button class="lmodal-x" type="button" data-close aria-label="Close">&times;</button>
+      <main class="stage">
+        <div class="frame" id="frame">
+          <iframe id="vid" title="Tutorial video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+          <div class="notop"></div><div class="wm tl">{{ watermark }}</div><div class="wm mid">{{ watermark }} &middot; {{ username }}</div><div class="wm br">{{ watermark }}</div>
+        </div>
+        <section class="about" aria-live="polite">
+          <p class="count" id="count">Lesson 1 of {{ vids|length }}</p><h1 id="title">{{ vids[0].title }}</h1><p id="desc">{{ vids[0].description }}</p>
+          <div class="ctl"><button class="btn" type="button" id="prev">Previous</button><button class="btn go" type="button" id="next">Next lesson</button><span class="grow"></span><button class="btn" type="button" id="fs">Fullscreen</button></div>
+        </section>
+        <section class="fb" id="fb" aria-labelledby="fb-q">
+          <p class="fb-q" id="fb-q">Was this lesson helpful?</p>
+          <div class="fb-row"><button class="fb-btn" type="button" data-r="1" aria-pressed="false">Yes</button><button class="fb-btn" type="button" data-r="-1" aria-pressed="false">Not really</button></div>
+          <div class="fb-more" id="fb-more" hidden><label for="fb-text">Anything to add? <span>(optional)</span></label><textarea id="fb-text" maxlength="500" rows="3" placeholder="What should we add or fix in this lesson?"></textarea><div class="fb-foot"><span id="fb-left">500 left</span><button class="btn go" type="button" id="fb-send">Send feedback</button></div></div>
+          <p class="fb-msg" id="fb-msg" role="status"></p>
+        </section>
+      </main>
     </div>
-    <section class="about" aria-live="polite">
-      <p class="count" id="count">Lesson 1 of {{ vids|length }}</p>
-      <h1 id="title">{{ vids[0].title }}</h1>
-      <p id="desc">{{ vids[0].description }}</p>
-      <div class="ctl">
-        <button class="btn" type="button" id="prev">Previous</button>
-        <button class="btn go" type="button" id="next">Next lesson</button>
-        <span class="grow"></span>
-        <button class="btn" type="button" id="fs">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Fullscreen</button>
-      </div>
-    </section>
-    <section class="fb" id="fb" aria-labelledby="fb-q">
-      <p class="fb-q" id="fb-q">Was this lesson helpful?</p>
-      <div class="fb-row">
-        <button class="fb-btn" type="button" data-r="1" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 10v11H4V10h3zm0 0l4-7c1.7 0 2.6 1.3 2.2 3L12.6 9H19a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.8 20H7"/></svg>Yes</button>
-        <button class="fb-btn" type="button" data-r="-1" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 14V3h3v11h-3zm0 0l-4 7c-1.7 0-2.6-1.3-2.2-3l.6-3H5a2 2 0 0 1-2-2.3l1.2-7A2 2 0 0 1 6.2 4H17"/></svg>Not really</button>
-      </div>
-      <div class="fb-more" id="fb-more" hidden>
-        <label for="fb-text">Anything to add? <span>(optional)</span></label>
-        <textarea id="fb-text" maxlength="500" rows="3" placeholder="What should we add or fix in this lesson?"></textarea>
-        <div class="fb-foot"><span id="fb-left">500 left</span><button class="btn go" type="button" id="fb-send">Send feedback</button></div>
-      </div>
-      <p class="fb-msg" id="fb-msg" role="status"></p>
-    </section>
-  
-
-</main>
-
-  <aside class="course" aria-label="Lessons">
-    <div class="prog">
-      <div class="prog-top"><b>Your progress</b><span id="prog-txt">0 of {{ vids|length }} watched</span></div>
-      <div class="meter" role="progressbar" aria-label="Lessons watched" aria-valuemin="0" aria-valuemax="{{ vids|length }}" aria-valuenow="0" id="meter"><i id="meter-fill"></i></div>
-      {% if vids|length > 5 %}
-      <label class="find"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input type="search" id="find" placeholder="Search lessons" aria-label="Search lessons"></label>
-      {% endif %}
-    </div>
-    <ol class="rail" id="rail">
-      {% for v in vids %}
-      <li class="step{{ ' on' if loop.first }}" data-i="{{ loop.index0 }}">
-        <button type="button" data-vid="{{ v.id }}" data-drive="{{ v.drive_id }}" data-title="{{ v.title }}" data-desc="{{ v.description }}"{% if loop.first %} aria-current="true"{% endif %}>
-          <span class="dot"><em>{{ loop.index }}</em><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
-          <span class="txt"><b>{{ v.title }}</b>{% if v.description %}<small>{{ v.description }}</small>{% endif %}<span class="playing">Playing now</span></span>
-        </button>
-      </li>
-      {% endfor %}
-    </ol>
-    <p class="none" id="none">No lesson matches that search.</p>
-  </aside>
+  </div>
 {% else %}
   <div class="empty-page"><h1>No tutorials yet</h1><p>New lessons will appear here as soon as they are added.</p></div>
 {% endif %}
@@ -1389,5 +1350,19 @@ body { background:#090d17 !important; color:#edf2ff; }
 })();
 </script>
 
+<script>
+/* Lesson gallery modal: card clicks select the lesson and open its player. */
+(function(){
+  var modal=document.getElementById('player-modal'), rail=document.getElementById('rail');
+  if(!modal||!rail)return;
+  var vid=document.getElementById('vid'), body=document.body;
+  function openM(){modal.hidden=false;body.classList.add('lmodal-open');}
+  function closeM(){if(modal.hidden)return;modal.hidden=true;body.classList.remove('lmodal-open');if(vid)vid.removeAttribute('src');}
+  rail.addEventListener('click',function(e){if(e.target.closest('.step button'))openM();});
+  Array.prototype.forEach.call(modal.querySelectorAll('[data-close]'),function(el){el.addEventListener('click',closeM);});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeM();});
+  document.addEventListener('viewchange',closeM);
+})();
+</script>
 </body>
 </html>
