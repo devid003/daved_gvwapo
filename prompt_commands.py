@@ -197,7 +197,7 @@ async def on_interaction(interaction: discord.Interaction):
         return
     cid = str((interaction.data or {}).get("custom_id", ""))
     if cid.startswith("synp:"):
-        await _prompt_button(interaction, cid[5:])
+        await interaction.response.send_message("Prompt generation has moved to the website. Open the Prompt Library from your member dashboard.", ephemeral=True)
         return
     if not cid.startswith("syn:") or cid[4:] not in PANEL_BUTTONS:
         return
