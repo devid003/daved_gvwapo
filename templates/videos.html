@@ -43,6 +43,8 @@
         <input type="text" name="link" placeholder="https://drive.google.com/file/d/.../view" required></label>
       <label class="field" style="margin-bottom:12px">Description (optional)
         <input type="text" name="description" placeholder="Short note about this tutorial"></label>
+      <label class="field" style="margin-bottom:12px">Thumbnail (optional)
+        <input type="text" name="thumb" placeholder="Image URL, or a Google Drive image link"></label>
       {{ post_to('video', announce_video) }}
       <button class="btn primary">Add video</button>
     </form>
@@ -186,6 +188,7 @@
         <label class="field" style="flex:1;min-width:200px">Drive link or ID<input type="text" name="link" value="{{ v.drive_id }}"></label>
       </div>
       <label class="field" style="margin-top:8px">Description<input type="text" name="description" value="{{ v.description }}"></label>
+      <label class="field" style="margin-top:8px">Thumbnail (optional)<input type="text" name="thumb" value="{{ v.thumb }}" placeholder="Image URL, or a Google Drive image link"></label>
       <button class="btn" style="margin-top:8px">Save changes</button>
     </form>
   </div>

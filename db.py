@@ -200,6 +200,7 @@ class Video(Base):
     title: Mapped[str] = mapped_column(String(200), default="")
     description: Mapped[str] = mapped_column(Text, default="")
     drive_id: Mapped[str] = mapped_column(String(100), default="")
+    thumb: Mapped[str] = mapped_column(String(500), default="")
     active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -432,6 +433,20 @@ def migrate_device_check_columns() -> None:
                 conn.execute(text(f"ALTER TABLE device_checks ADD COLUMN {name} {sql_type}"))
 
 migrate_device_check_columns()
+
+
+def migrate_video_thumb_column() -> None:
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    if "videos" not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns("videos")}
+    if "thumb" not in existing:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE videos ADD COLUMN thumb VARCHAR(500) NOT NULL DEFAULT ''"))
+
+
+migrate_video_thumb_column()
 
 
 # ---------- servers ----------
@@ -796,21 +811,23 @@ def list_videos(active_only: bool = False) -> list:
         return list(s.scalars(q.order_by(Video.created_at.desc())))
 
 
-def add_video(title: str, description: str, drive_id: str) -> int:
+def add_video(title: str, description: str, drive_id: str, thumb: str = "") -> int:
     with Session.begin() as s:
-        v = Video(title=title[:200], description=(description or "")[:2000], drive_id=drive_id[:100])
+        v = Video(title=title[:200], description=(description or "")[:2000], drive_id=drive_id[:100],
+                  thumb=(thumb or "")[:500])
         s.add(v)
         s.flush()
         return v.id
 
 
-def update_video(vid: int, title: str, description: str, drive_id: str) -> None:
+def update_video(vid: int, title: str, description: str, drive_id: str, thumb: str = "") -> None:
     with Session.begin() as s:
         v = s.get(Video, vid)
         if v:
             v.title = title[:200]
             v.description = (description or "")[:2000]
             v.drive_id = drive_id[:100]
+            v.thumb = (thumb or "")[:500]
 
 
 def toggle_video(vid: int) -> None:

@@ -2467,6 +2467,19 @@ def _drive_id(url: str) -> str:
     return ""
 
 
+def _thumb_url(raw: str) -> str:
+    """A usable thumbnail image URL from a pasted Google Drive link/ID (-> image CDN) or a direct http(s) URL."""
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    did = _drive_id(raw)
+    if did:
+        return f"https://lh3.googleusercontent.com/d/{did}=w640"
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw[:500]
+    return ""
+
+
 async def videos_page(request):
     if not authed(request):
         return redirect("/login")
@@ -2497,7 +2510,8 @@ async def video_add(request):
     if not title:
         flash(request, "Please add a title.")
         return redirect("/videos")
-    await run(db.add_video, title, str(form.get("description", "")).strip(), did)
+    await run(db.add_video, title, str(form.get("description", "")).strip(), did,
+              _thumb_url(str(form.get("thumb", ""))))
     flash(request, "Video added.")
     return redirect("/videos")
 
@@ -2510,7 +2524,8 @@ async def video_edit(request):
     did = _drive_id(str(form.get("link", "")))
     if vid and did:
         await run(db.update_video, vid, str(form.get("title", "")).strip(),
-                  str(form.get("description", "")).strip(), did)
+                  str(form.get("description", "")).strip(), did,
+                  _thumb_url(str(form.get("thumb", ""))))
         flash(request, "Video updated.")
     return redirect("/videos")
 

@@ -542,7 +542,15 @@ body.v-create #lessons-view,body.v-auto #lessons-view,body.v-chat #lessons-view,
 .lc-thumb{position:relative;display:block;width:100%;aspect-ratio:16/10;background:linear-gradient(135deg,#1b2336,#121a2b);overflow:hidden}
 .lc-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .lc-thumb.no img{display:none}
-.lc-thumb.no::after{content:"";position:absolute;inset:0;background:radial-gradient(130px 90px at 28% 18%,rgba(124,108,255,.4),transparent),linear-gradient(135deg,#242d47,#141c2d)}
+.lc-thumb.c0{background:linear-gradient(135deg,#6d5cff,#241a52)}
+.lc-thumb.c1{background:linear-gradient(135deg,#2d78dc,#0e2440)}
+.lc-thumb.c2{background:linear-gradient(135deg,#d85a8a,#3a1526)}
+.lc-thumb.c3{background:linear-gradient(135deg,#1fb589,#0a2e26)}
+.lc-thumb.c4{background:linear-gradient(135deg,#e0912a,#3a280a)}
+.lc-thumb.c5{background:linear-gradient(135deg,#9a5cff,#241540)}
+.lc-thumb.c6{background:linear-gradient(135deg,#2fb0e6,#0a2a3c)}
+.lc-thumb.c7{background:linear-gradient(135deg,#e0665a,#3a1414)}
+.lc-thumb.no::after{content:"";position:absolute;inset:0;background:radial-gradient(150px 100px at 74% 16%,rgba(255,255,255,.2),transparent)}
 .lc-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .14s;background:rgba(6,9,16,.32)}
 #lessons-view .step button:hover .lc-play,#lessons-view .step.on .lc-play{opacity:1}
 .lc-play svg{width:44px;height:44px;color:#fff;filter:drop-shadow(0 4px 10px rgba(0,0,0,.55))}
@@ -613,8 +621,8 @@ body.lmodal-open{overflow:hidden}
     {% for v in vids %}
     <li class="step{{ ' on' if loop.first }}" data-i="{{ loop.index0 }}">
       <button type="button" data-vid="{{ v.id }}" data-drive="{{ v.drive_id }}" data-title="{{ v.title }}" data-desc="{{ v.description }}"{% if loop.first %} aria-current="true"{% endif %}>
-        <span class="lc-thumb">
-          <img src="https://drive.google.com/thumbnail?id={{ v.drive_id }}&amp;sz=w640" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.lc-thumb').classList.add('no')">
+        <span class="lc-thumb c{{ loop.index0 % 8 }}{% if not v.thumb %} no{% endif %}">
+          {% if v.thumb %}<img src="{{ v.thumb }}" alt="" loading="lazy" decoding="async" onerror="this.closest('.lc-thumb').classList.add('no')">{% endif %}
           <span class="lc-num">{{ loop.index }}</span>
           <span class="lc-done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
           <span class="lc-play"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span>
