@@ -536,6 +536,7 @@ body{background:#0b0b0c;color:#f5f5f5}
 {% set ae = autoedit_member(username) if autoedit_member is defined else {} %}
 {% if true %}
 <nav class="views" aria-label="Sections"><div class="views-in" role="tablist">
+  <a class="vt" href="/watch/prompts" style="text-decoration:none"><span aria-hidden="true">✦</span> Prompt Library</a>
   <button class="vt" type="button" role="tab" id="tab-lessons" aria-selected="true" aria-controls="lessons-view">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg>Lessons</button>
   {% if ig.show %}<button class="vt" type="button" role="tab" id="tab-create" aria-selected="false" aria-controls="gen">
