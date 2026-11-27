@@ -51,7 +51,7 @@ catch(e){status.textContent=e.message;out.textContent='';}
 finally{cards.forEach(x=>x.disabled=false);if(btn)btn.disabled=false;}}
 cards.forEach(c=>c.addEventListener('click',()=>generate(c.dataset.key,c)));
 document.getElementById('copy').addEventListener('click',async()=>{if(!current)return;try{await navigator.clipboard.writeText(current);status.textContent='Copied to clipboard.'}catch(e){status.textContent='Copy is unavailable in this browser.'}});
-document.getElementById('download').addEventListener('click',()=>{if(!current)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([current],{type:'text/plain;charset=utf-8'}));a.download=result.dataset.filename||'prompt.txt';a.click();URL.revokeObjectURL(a.href);});
+document.getElementById('download').addEventListener('click',()=>{if(!current)return;const encoded=result.dataset.download||'';if(!encoded){status.textContent='Watermarked download is unavailable. Generate the prompt again.';return;}const raw=atob(encoded);const bytes=Uint8Array.from(raw,ch=>ch.charCodeAt(0));const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([bytes],{type:'text/plain;charset=utf-8'}));a.download=result.dataset.filename||'prompt.txt';a.click();URL.revokeObjectURL(a.href);});
 document.getElementById('again').addEventListener('click',()=>{if(lastKey)generate(lastKey,null);});
 })();
 </script></body></html>
