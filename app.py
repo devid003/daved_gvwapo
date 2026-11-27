@@ -83,9 +83,15 @@ class MaintenanceGate(BaseHTTPMiddleware):
             path == "/security/phone" or
             path == "/api/public/send-code"
         )
-        if protected and await run(db.get_setting, "site_maintenance", "0") == "1":
-            if request.session.get("auth") is not True:
-                page = """<!doctype html>
+        maintenance_on = await run(db.get_setting, "site_maintenance", "0") == "1"
+        # Prompt pages and prompt APIs stay blocked for everyone, including admins.
+        # The rest of the admin dashboard remains available to authenticated admins.
+        prompt_paths = (
+            path == "/prompts" or path.startswith("/prompts/") or
+            path == "/api/prompts/live"
+        )
+        if maintenance_on and prompt_paths:
+            page = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -129,9 +135,20 @@ h1{margin:8px 0 5px;font-size:clamp(27px,5vw,43px);line-height:1.12;letter-spaci
 </section>
 <div class="footer"><span>Thank you for your patience and continued support.</span><span>Official Server Notice</span></div>
 </main></body></html>"""
-                if path.startswith("/watch/") and path != "/watch":
-                    return JSONResponse({"ok": False, "message": "The website is under maintenance. Please try again later."}, status_code=503)
-                return HTMLResponse(page, status_code=503, headers={"Cache-Control": "no-store"})
+            if path.startswith("/watch/") and path != "/watch":
+                return JSONResponse({"ok": False, "message": "The website is under maintenance. Please try again later."}, status_code=503)
+            return HTMLResponse(page, status_code=503, headers={"Cache-Control": "no-store"})
+        if protected and maintenance_on and request.session.get("auth") is not True:
+            page = """<!doctype html><html lang="en"><meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>Official Maintenance Notice</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1020;color:#eef3ff;font:16px system-ui">
+            <main style="max-width:640px;padding:32px;text-align:center"><h1>OFFICIAL MAINTENANCE NOTICE</h1>
+            <p>Subject: Temporary Server Maintenance and Service Interruption</p>
+            <p>Dear Users, our server is currently undergoing scheduled maintenance. Certain website features and services may be temporarily unavailable. We apologize for the inconvenience and appreciate your patience.</p>
+            <p>Respectfully,<br><strong>David_5522</strong></p></main></body></html>"""
+            if path.startswith("/watch/") and path != "/watch":
+                return JSONResponse({"ok": False, "message": "The website is under maintenance. Please try again later."}, status_code=503)
+            return HTMLResponse(page, status_code=503, headers={"Cache-Control": "no-store"})
         return await call_next(request)
 
 
