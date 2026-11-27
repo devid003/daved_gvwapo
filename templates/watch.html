@@ -521,35 +521,68 @@ body{background:#0b0b0c;color:#f5f5f5}
 <link rel="stylesheet" href="/static/ui-refresh.css?v=5">
 
 <style id="lessons-workspace-final">
-/* Final authoritative lesson layout: loaded after all shared styles. */
+/* Full-viewport Lessons workspace. Deliberately removes inherited max-width caps. */
+#lessons-view.page {
+  box-sizing:border-box !important;
+  width:calc(100vw - 64px) !important;
+  max-width:none !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
 @media screen and (min-width: 1101px) {
   #lessons-view.page {
     display:grid !important;
-    box-sizing:border-box !important;
-    width:calc(100% - 64px) !important;
-    max-width:1680px !important;
-    margin:0 auto !important;
-    padding:30px 0 68px !important;
-    grid-template-columns:minmax(0,1fr) minmax(360px,420px) !important;
-    column-gap:30px !important;
+    padding:28px 0 68px !important;
+    grid-template-columns:minmax(0,1fr) minmax(420px,22vw) !important;
+    column-gap:32px !important;
     row-gap:24px !important;
     align-items:start !important;
   }
   #lessons-view.page > .stage,
-  #lessons-view.page > .course { min-width:0 !important; width:100% !important; max-width:none !important; }
+  #lessons-view.page > .course {
+    display:block !important;
+    min-width:0 !important;
+    width:100% !important;
+    max-width:none !important;
+  }
   #lessons-view.page > .stage { grid-column:1 !important; }
-  #lessons-view.page > .course { grid-column:2 !important; position:sticky !important; top:88px !important; }
-  #lessons-view .frame { width:100% !important; max-width:none !important; aspect-ratio:16/9 !important; }
+  #lessons-view.page > .course {
+    grid-column:2 !important;
+    position:sticky !important;
+    top:88px !important;
+  }
+  #lessons-view .frame {
+    width:100% !important;
+    max-width:none !important;
+    aspect-ratio:16/9 !important;
+  }
+  #lessons-view .rail {
+    max-height:calc(100vh - 300px) !important;
+    overflow-y:auto !important;
+  }
 }
 @media screen and (max-width:1100px) {
   #lessons-view.page {
-    display:grid !important; width:100% !important; max-width:100% !important;
-    margin:0 auto !important; padding:18px 16px 52px !important;
-    grid-template-columns:minmax(0,1fr) !important; gap:20px !important;
+    display:grid !important;
+    width:100% !important;
+    max-width:100% !important;
+    padding:18px 16px 52px !important;
+    grid-template-columns:minmax(0,1fr) !important;
+    gap:20px !important;
   }
   #lessons-view.page > .stage,
-  #lessons-view.page > .course { grid-column:1 !important; width:100% !important; min-width:0 !important; position:static !important; }
+  #lessons-view.page > .course {
+    grid-column:1 !important;
+    width:100% !important;
+    min-width:0 !important;
+    position:static !important;
+  }
   #lessons-view .rail { max-height:520px !important; }
+}
+@media screen and (max-width:600px) {
+  #lessons-view.page { padding:14px 12px 44px !important; gap:16px !important; }
+  #lessons-view .frame { border-radius:14px !important; }
+  #lessons-view .course { border-radius:15px !important; }
 }
 </style>
 </head>
