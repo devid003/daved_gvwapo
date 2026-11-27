@@ -109,8 +109,11 @@ def _source(track: Track, channel) -> discord.AudioSource:
         kbps = max(64, min(256, int(getattr(channel, "bitrate", 128000) // 1000)))
     except Exception:                            # noqa: BLE001
         pass
-    return discord.FFmpegOpusAudio(track.stream, executable=FFMPEG,
-                                   before_options=_BEFORE, options=_OPTS, bitrate=kbps)
+    # Let discord.py encode PCM to Opus through PyNaCl. The bundled imageio-ffmpeg
+    # binary is not guaranteed to include libopus, so FFmpegOpusAudio can fail on
+    # hosts where that encoder is absent.
+    return discord.FFmpegPCMAudio(track.stream, executable=FFMPEG,
+                                  before_options=_BEFORE, options=_OPTS)
 
 
 def _after(gid: int):
