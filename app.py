@@ -502,6 +502,11 @@ async def maintenance_toggle(request):
         return resp
     enabled = str(form.get("enabled", "")) == "1"
     await run(db.set_setting, "site_maintenance", "1" if enabled else "0")
+    # Immediately refresh the configured Discord status post after the setting is saved.
+    try:
+        await botstatus.tick()
+    except Exception:
+        log.exception("Could not immediately refresh Discord status after maintenance toggle")
     flash(request, "🛠️ Maintenance mode is ON. Member pages are blocked." if enabled
           else "🟢 Maintenance mode is OFF. Member access is restored.")
     return redirect("/")
