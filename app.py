@@ -70,8 +70,19 @@ class MaintenanceGate(BaseHTTPMiddleware):
     """Block member-facing tools during maintenance; authenticated admins retain access."""
     async def dispatch(self, request, call_next):
         path = request.url.path
-        protected = (path == "/watch" or path.startswith("/watch/") or
-                     path.startswith("/v/"))
+        # Public/member tools that must stop during maintenance. Keep the
+        # marketing site and authenticated admin dashboard available.
+        protected = (
+            path == "/watch" or path.startswith("/watch/") or
+            path.startswith("/v/") or
+            path == "/join" or
+            path.startswith("/join/") or
+            path == "/members/login" or
+            path == "/members/logout" or
+            path == "/security/verify" or
+            path == "/security/phone" or
+            path == "/api/public/send-code"
+        )
         if protected and await run(db.get_setting, "site_maintenance", "0") == "1":
             if request.session.get("auth") is not True:
                 page = """<!doctype html>
