@@ -131,7 +131,7 @@ def state() -> dict:
 
 
 _COLORS = {"green": 0x1F9D4D, "yellow": 0xE0A800, "red": 0xB42318, "maintenance": 0x5865F2}
-_DOTS = {"green": "\U0001f7e2", "yellow": "\U0001f7e1", "red": "\U0001f534", "maintenance": "\\U0001f6e0"}
+_DOTS = {"green": "\U0001f7e2", "yellow": "\U0001f7e1", "red": "\U0001f534", "maintenance": "\U0001f6e0"}
 _NOTES = {
     "green": "Everything is working \u2014 prompts and the website are OK.",
     "yellow": "The server is slow right now \u2014 prompts or the website may lag.",
