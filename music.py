@@ -173,15 +173,17 @@ def _not_ready_msg() -> str:
 @app_commands.guild_only()
 @app_commands.describe(song="Song name to search, or a YouTube / audio link")
 async def music_cmd(interaction: discord.Interaction, song: str):
+    # Acknowledge the slash command immediately; yt-dlp import, voice connect,
+    # and stream extraction can take longer than Discord's 3-second deadline.
+    await interaction.response.defer(thinking=True)
     if not ready():
-        await interaction.response.send_message(_not_ready_msg(), ephemeral=True)
+        await interaction.followup.send(_not_ready_msg(), ephemeral=True)
         return
     vs = getattr(interaction.user, "voice", None)
     if vs is None or vs.channel is None:
-        await interaction.response.send_message("Join a voice channel first, then try again.",
-                                                ephemeral=True)
+        await interaction.followup.send("Join a voice channel first, then try again.",
+                                        ephemeral=True)
         return
-    await interaction.response.defer()
     guild = interaction.guild
     vc = guild.voice_client
     try:
