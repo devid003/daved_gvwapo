@@ -404,6 +404,66 @@ a.btn{text-decoration:none}
 .ac-result a{color:var(--brand2,#9aa3ff);font-weight:650}.ac-delete{border:1px solid var(--line,#555);border-radius:8px;background:transparent;color:inherit;padding:7px 10px;cursor:pointer}
 @media(max-width:600px){.ac-grid{grid-template-columns:1fr}.ac-wrap{padding:16px}}
 
+
+/* ---------- premium lessons workspace refresh ---------- */
+body{
+  background:
+    radial-gradient(ellipse at 12% 8%,rgba(88,101,242,.20),transparent 34%),
+    radial-gradient(ellipse at 88% 22%,rgba(25,170,190,.10),transparent 30%),
+    linear-gradient(145deg,#080c16 0%,#0b1020 48%,#0a0e18 100%);
+  background-attachment:fixed;
+}
+.bar{background:rgba(7,11,20,.82);border-bottom-color:rgba(143,160,205,.16)}
+.views{background:rgba(8,12,22,.72);border-bottom-color:rgba(143,160,205,.14);backdrop-filter:blur(12px)}
+.page{gap:24px;padding-top:30px}
+.stage{min-width:0}
+.frame{border-radius:20px;border:1px solid rgba(144,160,210,.24);box-shadow:0 22px 65px rgba(0,0,0,.38),0 0 0 1px rgba(255,255,255,.025) inset}
+.about{padding:24px 8px 0}
+.count{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border:1px solid rgba(122,133,255,.25);border-radius:999px;background:rgba(88,101,242,.12);font-size:12.5px;letter-spacing:.02em}
+.about h1{font-size:clamp(25px,3vw,34px);letter-spacing:-.035em;margin:7px 0 10px}
+.about p:not(.count){color:#aeb9ce}
+.ctl{margin-top:22px}
+.btn{border-color:rgba(150,164,205,.24);background:rgba(19,27,45,.72);transition:transform .18s ease,border-color .18s ease,background .18s ease}
+.btn:hover{transform:translateY(-1px);border-color:rgba(145,157,255,.55);background:rgba(35,45,75,.88)}
+.btn.go{background:linear-gradient(135deg,#5968f5,#7885ff);box-shadow:0 8px 24px rgba(88,101,242,.25)}
+.course{top:84px;background:linear-gradient(165deg,rgba(23,32,54,.96),rgba(13,19,33,.97));border:1px solid rgba(143,160,205,.23);border-radius:20px;box-shadow:0 22px 55px rgba(0,0,0,.32);backdrop-filter:blur(16px)}
+.prog{padding:20px 18px 17px;background:linear-gradient(135deg,rgba(88,101,242,.13),transparent 78%);border-bottom:1px solid rgba(143,160,205,.16)}
+.prog-top b{font-size:16px;letter-spacing:-.01em}
+.prog-top span{font-size:12.5px}
+.meter{height:8px;background:rgba(255,255,255,.08)}
+.meter i{background:linear-gradient(90deg,#38d99a,#76e6c0);box-shadow:0 0 14px rgba(60,207,122,.35)}
+.find input{height:42px;background:rgba(5,10,20,.58);border-color:rgba(143,160,205,.2);border-radius:12px}
+.rail{padding:12px 10px 16px;max-height:calc(100vh - 300px);scrollbar-width:thin;scrollbar-color:rgba(122,133,255,.35) transparent}
+.step{margin:3px 0}
+.step::before,.step.seen::after{left:27px}
+.step button{gap:12px;padding:12px 10px;border:1px solid transparent;border-radius:13px;transition:background .18s ease,border-color .18s ease,transform .18s ease}
+.step button:hover{background:rgba(255,255,255,.045);border-color:rgba(143,160,205,.12);transform:translateX(2px)}
+.dot{flex-basis:30px;height:30px;background:#111a2d;border-color:rgba(143,160,205,.28);font-size:12px}
+.step.on button{background:linear-gradient(110deg,rgba(88,101,242,.20),rgba(88,101,242,.055));border-color:rgba(122,133,255,.42);box-shadow:0 6px 18px rgba(0,0,0,.12)}
+.step.on .dot{background:#5968f5;border-color:#8790ff;color:white;box-shadow:0 0 0 4px rgba(88,101,242,.16)}
+.step.seen .dot{background:#2cbd83;border-color:#2cbd83;color:#07150f}
+.txt b{font-size:13.5px;line-height:1.4;color:#dce4f5}
+.txt small{color:#8794ad;font-size:12px;line-height:1.4}
+.playing{font-size:11px;letter-spacing:.035em;text-transform:uppercase}
+.none{padding:18px;color:#8f9bb2}
+.fb{background:rgba(18,26,43,.78);border-color:rgba(143,160,205,.18);border-radius:16px;backdrop-filter:blur(12px)}
+.empty-page{background:rgba(18,26,43,.62);border-color:rgba(143,160,205,.25)}
+@media(max-width:1020px){
+  .page{grid-template-columns:1fr}
+  .course{position:relative;top:auto}
+  .rail{max-height:460px}
+}
+@media(max-width:520px){
+  .page{padding:14px 12px 44px;gap:16px}
+  .frame{border-radius:14px}
+  .about{padding:18px 3px 0}
+  .about h1{font-size:24px}
+  .course{border-radius:16px}
+  .prog{padding:16px 14px}
+  .rail{max-height:390px;padding:9px}
+  .step button{padding:11px 9px}
+}
+
 </style>
 <link rel="stylesheet" href="/static/ui-refresh.css?v=2">
 </head>
