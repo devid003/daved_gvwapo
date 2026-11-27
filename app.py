@@ -3073,7 +3073,9 @@ async def member_prompt_generate(request):
     from prompts import render_txt
     import base64
     file_data = await run(render_txt, key, prompt.text, index, len(rows), niche.label)
+    watermarked_preview = file_data.decode("utf-8")
     return JSONResponse({"ok": True, "niche": niche.label, "prompt": prompt.text,
+                         "preview": watermarked_preview,
                          "filename": f"{key}-prompt.txt",
                          "download": base64.b64encode(file_data).decode("ascii")})
 
