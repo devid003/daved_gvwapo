@@ -150,8 +150,12 @@ def build_embed(st: dict, *, offline: bool = False, footer: str | None = None) -
     e.add_field(name="Checked", value=f"<t:{ts}:F>\n<t:{ts}:R>", inline=False)
     if color == "maintenance" and not offline:
         e.add_field(name="Maintenance notice", value=("**Subject: Temporary Server Maintenance and Service Interruption**\\n\\nDear Users,\\n\\nWe would like to formally inform everyone that our server is currently undergoing scheduled maintenance to implement system improvements, perform technical updates, and ensure the overall stability, security, and reliability of our platform.\\n\\nDuring this maintenance period, certain website features and services may be temporarily unavailable or experience interruptions.\\n\\nOur technical team is working to complete the necessary procedures as efficiently as possible. Full access will be restored once all maintenance activities and system verification have been completed.\\n\\nWe sincerely apologize for any inconvenience this temporary interruption may cause. We appreciate your patience, cooperation, and continued support.\\n\\nA separate announcement will be provided once the maintenance has been completed and the server is fully operational.\\n\\nThank you for your understanding.\\n\\n**Respectfully,**\\n**David_5522**\\n\\nAttention: @Hustler"), inline=False)
+    elif offline:
+        e.add_field(name="Status", value=_NOTES["red"], inline=False)
     else:
-        e.add_field(name="\\u200b", value=(_NOTES["red"] if offline else _NOTES[color]), inline=False)
+        note = _NOTES.get(color)
+        if note:
+            e.add_field(name="Status", value=note, inline=False)
     if footer:
         e.set_footer(text=footer)
     e.timestamp = now
