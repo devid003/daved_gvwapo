@@ -72,9 +72,8 @@ class MaintenanceGate(BaseHTTPMiddleware):
         path = request.url.path
         maintenance_on = await run(db.get_setting, "site_maintenance", "0") == "1"
         # Keep only the admin control panel available to authenticated admins.
-        admin_paths = (
-            path == "/" or path == "/login" or path == "/logout" or
-            path in {"/usage", "/usage.csv", "/servers/add", "/servers/remove",
+        admin_paths = {
+            "/", "/login", "/logout","/usage", "/usage.csv", "/servers/add", "/servers/remove",
                      "/tickets", "/tickets/save", "/tickets/ai/save", "/members/set",
                      "/image/toggle", "/maintenance/toggle", "/uploads", "/antinuke",
                      "/antinuke/save", "/links", "/links/save", "/links/invites",
@@ -97,8 +96,8 @@ class MaintenanceGate(BaseHTTPMiddleware):
                      "/videos/resource/toggle", "/videos/resource/delete",
                      "/videos/member-device-reset", "/videos/member-device-reset-all",
                      "/videos/one-device", "/videos/member-delete", "/videos/imagine",
-                     "/videos/chat"}
-        )
+                     "/videos/chat"
+        }
         is_admin = request.session.get("auth") is True
         prompt_paths = path == "/prompts" or path.startswith("/prompts/") or path == "/api/prompts/live"
         if maintenance_on and (prompt_paths or (not is_admin and path not in {"/login", "/health"} and not path.startswith("/static/"))):
