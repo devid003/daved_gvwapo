@@ -115,7 +115,7 @@ def state() -> dict:
     maintenance = db.get_setting("site_maintenance", "0") == "1"
     ready = discord_bot.bot.is_ready() and not discord_bot.bot.is_closed()
     if maintenance:
-        return {"color": "maintenance", "label": "Maintenance", "ping": ping_ms() if ready else None,
+        return {"color": "maintenance", "label": "Under Maintenance", "ping": ping_ms() if ready else None,
                 "ready": ready, "uptime": int(time.time() - _BOOT), "maintenance": True}
     ms = ping_ms()
     if not ready or ms is None:
@@ -261,10 +261,14 @@ async def tick() -> None:
     global _first_tick
     force = _first_tick
     _first_tick = False
+    current_state = state().get("color", "red")
     for gid, ch in await _targets():
-        if force or await run(_due, gid):
+        last_state = await run(db.get_setting, _s("health_last_state", gid), "")
+        # Publish immediately when status changes, without waiting for the configured interval.
+        if force or last_state != current_state or await run(_due, gid):
             await _upsert(gid, ch)
             await run(db.set_setting, _s("health_last", gid), str(time.time()))
+            await run(db.set_setting, _s("health_last_state", gid), current_state)
 
 
 async def post_offline() -> None:
