@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Mount, Route
 from starlette.templating import Jinja2Templates
@@ -63,6 +64,25 @@ except Exception:
     TZ = dt.timezone.utc
 
 run = asyncio.to_thread
+
+
+class MaintenanceGate(BaseHTTPMiddleware):
+    """Block member-facing tools during maintenance; authenticated admins retain access."""
+    async def dispatch(self, request, call_next):
+        path = request.url.path
+        protected = (path == "/watch" or path.startswith("/watch/") or
+                     path.startswith("/v/"))
+        if protected and await run(db.get_setting, "site_maintenance", "0") == "1":
+            if request.session.get("auth") is not True:
+                page = """<!doctype html><html lang="en"><meta charset="utf-8">
+                <meta name="viewport" content="width=device-width,initial-scale=1">
+                <title>Under Maintenance</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1020;color:#eef3ff;font:16px system-ui">
+                <main style="max-width:520px;padding:40px;text-align:center"><div style="font-size:48px">🛠️</div>
+                <h1>We'll be back soon</h1><p style="color:#aab6ce">The website is currently undergoing maintenance. Please check back shortly.</p></main></body></html>"""
+                if path.startswith("/watch/") and path != "/watch":
+                    return JSONResponse({"ok": False, "message": "The website is under maintenance. Please try again later."}, status_code=503)
+                return HTMLResponse(page, status_code=503, headers={"Cache-Control": "no-store"})
+        return await call_next(request)
 
 
 def shell_context(request) -> dict:
@@ -262,6 +282,7 @@ async def index(request):
         "prompts_total": await run(db.prompt_use_total),
         "ticket_config": ticket_config,
         "ticket_counts": ticket_counts,
+        "maintenance": await run(db.get_setting, "site_maintenance", "0") == "1",
     }
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
 
@@ -433,6 +454,17 @@ async def members_set(request):
     else:
         await run(db.set_member, uid, status, str(form.get("username", "")).strip()[:200] or None)
         flash(request, f"User {uid}: {status}.")
+    return redirect("/")
+
+
+async def maintenance_toggle(request):
+    form, resp = await guarded_post(request)
+    if resp:
+        return resp
+    enabled = str(form.get("enabled", "")) == "1"
+    await run(db.set_setting, "site_maintenance", "1" if enabled else "0")
+    flash(request, "🛠️ Maintenance mode is ON. Member pages are blocked." if enabled
+          else "🟢 Maintenance mode is OFF. Member access is restored.")
     return redirect("/")
 
 
@@ -4102,6 +4134,7 @@ app = Starlette(
         Route("/tickets/ai/save", tickets_ai_save, methods=["POST"]),
         Route("/members/set", members_set, methods=["POST"]),
         Route("/image/toggle", image_toggle, methods=["POST"]),
+        Route("/maintenance/toggle", maintenance_toggle, methods=["POST"]),
         Route("/uploads", uploads),
         Route("/antinuke", antinuke_page),
         Route("/antinuke/save", antinuke_save, methods=["POST"]),
@@ -4224,7 +4257,8 @@ app = Starlette(
         Middleware(
             SessionMiddleware, secret_key=SECRET_KEY, same_site="lax",
             https_only=bool(os.getenv("RENDER")), max_age=60 * 60 * 12,
-        )
+        ),
+        Middleware(MaintenanceGate)
     ],
     lifespan=lifespan,
 )
