@@ -412,10 +412,10 @@ async def notify_website_prompt(guild_id: int, discord_user_id: int, username: s
         user = bot.get_user(discord_user_id) if discord_user_id else None
         who = user.mention if user else f"{username} (Discord ID: {discord_user_id})"
         embed = discord.Embed(
-            title="Website prompt generated",
-            description=f"**Member:** {who}\n**Niche:** {niche_label}\n\n**Prompt:**\n{prompt_text[:3000]}",
+            title="📝 Prompt generated",
+            description=f"{who} generated a prompt.\n\n**Niche:** {niche_label}",
             color=0x5865F2)
-        embed.set_footer(text=f"Website Prompt Library • {username}")
+        embed.set_footer(text=f"Website Prompt Library • {username} • Prompt content kept private")
         embed.timestamp = discord.utils.utcnow()
         await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
     except Exception:
