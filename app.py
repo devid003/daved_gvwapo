@@ -3015,7 +3015,11 @@ async def member_prompt_library(request):
     user = await run(db.get_web_user, username)
     uid = int(user.discord_user_id or 0) if user else 0
     gids = await run(db.allowed_guild_ids)
-    gid = next((g for g in gids if uid and db.is_registered_approved(g, uid)), 0)
+    gid = 0
+    for candidate in gids:
+        if uid and await run(db.is_registered_approved, candidate, uid):
+            gid = candidate
+            break
     if not gid and uid not in discord_bot.OWNER_IDS:
         return HTMLResponse("Prompt access is required for this page.", status_code=403)
     if not gid:
