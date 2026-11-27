@@ -464,6 +464,59 @@ body{
   .step button{padding:11px 9px}
 }
 
+
+/* Reference-inspired classroom layout: video first, compact chapter playlist */
+body{background:#0b0b0c;color:#f5f5f5}
+.bar{background:#101011;border-bottom:1px solid #242426}
+.views{background:#101011;border-bottom:1px solid #242426}
+.page{max-width:1500px;grid-template-columns:minmax(0,1fr) 360px;gap:22px;padding:28px 26px 60px}
+.frame{border-radius:14px;border:0;box-shadow:0 14px 40px rgba(0,0,0,.28)}
+.about{margin-top:0;padding:20px 4px 0}
+.count{color:#a6a6ac;font-size:13px;margin-bottom:8px}
+.about h1{font-size:clamp(24px,2.3vw,32px);letter-spacing:-.025em}
+.ctl{margin-top:18px}
+.course{position:sticky;top:86px;background:#1b1b1d;border:1px solid #2b2b2e;border-radius:18px;overflow:hidden;box-shadow:0 12px 34px rgba(0,0,0,.22)}
+.prog{padding:17px 17px 14px;border-bottom:1px solid #303034;background:#202023}
+.prog-top b{font-size:16px}
+.prog-top span{font-size:12px;color:#aaaab1}
+.meter{height:5px;background:#39393e}
+.meter i{background:#ed5a24}
+.find input{background:#111113;border:1px solid #39393e;border-radius:999px;height:40px}
+.rail{padding:10px 10px 14px;max-height:calc(100vh - 270px);scrollbar-width:thin;scrollbar-color:#555 transparent}
+.step{margin:3px 0}
+.step::before,.step.seen::after{display:none!important}
+.step button{display:grid;grid-template-columns:58px minmax(0,1fr);gap:12px;align-items:center;padding:9px;border:1px solid transparent;border-radius:13px}
+.step button:hover{background:#29292c}
+.step.on button{background:#29292c;border-color:#3b3b40}
+.dot{width:58px;height:58px;flex-basis:58px;border:0;border-radius:10px;margin:0;background:linear-gradient(135deg,#39475a,#202a39);color:#fff;font-size:15px;position:relative;overflow:hidden}
+.dot:after{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.14),transparent 55%,rgba(0,0,0,.24))}
+.dot em{font-style:normal;z-index:1}
+.step.seen .dot{background:linear-gradient(135deg,#285c53,#183a36);color:#fff}
+.step.on .dot{background:linear-gradient(135deg,#ed5a24,#8f3219);box-shadow:none}
+.step.on.seen .dot{background:linear-gradient(135deg,#285c53,#183a36)}
+.dot svg{z-index:2}
+.txt b{font-size:13.5px;line-height:1.32;color:#f0f0f2}
+.txt small{font-size:12px;line-height:1.35;color:#a0a0a8;-webkit-line-clamp:2;margin-top:4px}
+.playing{font-size:10px;letter-spacing:.06em;color:#ff875b;margin-top:5px}
+.none{color:#aaa}
+.fb{background:#1b1b1d;border:1px solid #2b2b2e;border-radius:15px}
+.btn.go{background:#e65320;border-color:#e65320}
+.btn.go:hover{background:#ff6a35;border-color:#ff6a35}
+.btn{border-color:#3b3b40}
+@media(max-width:1020px){
+ .page{grid-template-columns:1fr;padding:18px 16px 50px}
+ .course{position:relative;top:auto}
+ .rail{max-height:520px}
+}
+@media(max-width:520px){
+ .page{padding:12px 10px 40px;gap:15px}
+ .course{border-radius:14px}
+ .prog{padding:14px}
+ .rail{padding:8px;max-height:440px}
+ .step button{grid-template-columns:52px minmax(0,1fr);gap:10px;padding:8px}
+ .dot{width:52px;height:52px;flex-basis:52px}
+}
+
 </style>
 <link rel="stylesheet" href="/static/ui-refresh.css?v=2">
 </head>
