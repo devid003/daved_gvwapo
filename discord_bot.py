@@ -129,6 +129,11 @@ class ImageBot(discord.Client):
 
     async def on_ready(self):
         log.info("Bot logged in as %s", self.user)
+        try:
+            import prompt_commands
+            await prompt_commands.remove_legacy_prompt_panels()
+        except Exception:
+            log.exception("Could not clean up legacy Discord prompt panels")
 
     async def on_guild_join(self, guild: discord.Guild):
         await do_reconcile()
